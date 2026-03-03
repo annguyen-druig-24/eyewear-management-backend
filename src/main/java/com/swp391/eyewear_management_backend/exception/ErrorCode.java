@@ -10,7 +10,10 @@ public enum ErrorCode {
     UNCATEGORIZED_EXCEPTION(9999, "Uncategorized Exception", HttpStatus.INTERNAL_SERVER_ERROR),
     INVALID_KEY(1001, "Invalid message key", HttpStatus.BAD_REQUEST),
     INVALID_REQUEST(1023, "Invalid request", HttpStatus.BAD_REQUEST),
+
+    //Promotion
     PROMOTION_NOT_FOUND(1024, "Promotion not found", HttpStatus.NOT_FOUND),
+    PROMOTION_NOT_APPLICABLE(1025, "Promotion is not applicable for this checkout", HttpStatus.BAD_REQUEST),
 
     // Auth
     UNAUTHENTICATED(1006, "Unauthenticated", HttpStatus.UNAUTHORIZED),      // 401

@@ -3,6 +3,7 @@ package com.swp391.eyewear_management_backend.service.impl;
 import com.swp391.eyewear_management_backend.dto.request.CheckoutPreviewRequest;
 import com.swp391.eyewear_management_backend.dto.request.CreateOrderRequest;
 import com.swp391.eyewear_management_backend.dto.request.ShippingAddressRequest;
+import com.swp391.eyewear_management_backend.dto.response.CheckoutLineItemResponse;
 import com.swp391.eyewear_management_backend.dto.response.CheckoutPreviewResponse;
 import com.swp391.eyewear_management_backend.dto.response.CreateOrderResponse;
 import com.swp391.eyewear_management_backend.entity.*;
@@ -20,9 +21,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -30,14 +31,18 @@ public class OrderServiceImpl implements OrderService {
 
     private final UserRepo userRepo;
     private final CartItemRepo cartItemRepo;
+    private final CartItemPrescriptionRepo cartItemPrescriptionRepo;
 
     private final OrderRepo orderRepo;
+    private final OrderDetailRepo orderDetailRepo;
+    private final PrescriptionOrderRepo prescriptionOrderRepo;
+    private final PrescriptionOrderDetailRepo prescriptionOrderDetailRepo;
+
     private final ShippingInfoRepo shippingInfoRepo;
     private final PaymentRepo paymentRepo;
     private final InvoiceRepo invoiceRepo;
 
     private final PromotionRepo promotionRepo;
-    private final CartItemPrescriptionRepo cartItemPrescriptionRepo;
 
     private final CheckoutService checkoutService; // reuse preview calculation
     private final PaymentGatewayService paymentGatewayService; // stub for now
@@ -56,19 +61,32 @@ public class OrderServiceImpl implements OrderService {
         String username = auth.getName();
         User user = userRepo.findByUsername(username)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
+        Long userId = user.getUserId();
 
-        // 2) chuẩn hóa ids
-        var ids = request.getCartItemIds().stream()
+        // 2) normalize ids
+        List<Long> ids = request.getCartItemIds() == null ? List.of() : request.getCartItemIds().stream()
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();
-
         if (ids.isEmpty()) throw new AppException(ErrorCode.INVALID_REQUEST);
 
-        // 3) build address: nếu request không gửi => dùng default của user
+        // 3) load cart items belong to user (để insert detail + delete)
+        List<CartItem> cartItems = cartItemRepo.findByUserIdAndIdsFetchAll(userId, ids);
+        if (cartItems.size() != ids.size()) throw new AppException(ErrorCode.INVALID_REQUEST);
+
+        // 3.1) load prescription map
+        Map<Long, CartItemPrescription> rxMap = new HashMap<>();
+        List<CartItemPrescription> rxList = cartItemPrescriptionRepo.findByCartItem_CartItemIdIn(ids);
+        for (CartItemPrescription rx : rxList) {
+            if (rx.getCartItem() != null && rx.getCartItem().getCartItemId() != null) {
+                rxMap.put(rx.getCartItem().getCartItemId(), rx);
+            }
+        }
+
+        // 4) build address: nếu request không gửi => dùng default của user
         ShippingAddressRequest address = resolveAddress(request.getAddress(), user);
 
-        // 4) chạy preview nội bộ để lấy tất cả số tiền chuẩn
+        // 5) chạy preview nội bộ để lấy tất cả số tiền chuẩn
         CheckoutPreviewRequest previewReq = new CheckoutPreviewRequest();
         previewReq.setCartItemIds(ids);
         previewReq.setPromotionId(request.getPromotionId());
@@ -77,11 +95,15 @@ public class OrderServiceImpl implements OrderService {
 
         CheckoutPreviewResponse preview = checkoutService.preview(previewReq);
 
-        // 5) validate payment strategy theo preview.depositRequired
+        // FIX: nếu user gửi promotionId nhưng preview không áp được => báo lỗi rõ ràng
+        if (request.getPromotionId() != null && preview.getAppliedPromotionId() == null) {
+            throw new AppException(ErrorCode.PROMOTION_NOT_APPLICABLE); // bạn thêm ErrorCode này
+        }
+
+        // 6) validate payment strategy theo preview.depositRequired
         PaymentPlan plan = buildPaymentPlan(preview, request);
 
-        // 6) INSERT Order
-        // (giữ theo entity của bạn: Order có orderID, promotion là entity)
+        // 7) INSERT Order
         Order order = new Order();
         order.setUser(user);
         order.setOrderCode(generateOrderCode());
@@ -106,7 +128,96 @@ public class OrderServiceImpl implements OrderService {
 
         Order savedOrder = orderRepo.save(order);
 
-        // 7) INSERT Shipping_Info
+        // 8) INSERT Order_Detail + Prescription_Order(+Detail)
+        Map<Long, CheckoutLineItemResponse> lineMap = new HashMap<>();
+        for (CheckoutLineItemResponse li : preview.getItems()) {
+            lineMap.put(li.getCartItemId(), li);
+        }
+
+        // 8.1) create prescription header if needed
+        boolean hasPrescription = preview.getItems().stream().anyMatch(li -> "PRESCRIPTION".equals(li.getItemType()));
+        PrescriptionOrder savedRxOrder = null;
+
+        if (hasPrescription) {
+            PrescriptionOrder rxOrder = new PrescriptionOrder();
+            rxOrder.setOrder(savedOrder);
+            rxOrder.setUser(user);
+            rxOrder.setPrescriptionDate(LocalDateTime.now());
+            rxOrder.setNote(request.getNote());
+            savedRxOrder = prescriptionOrderRepo.save(rxOrder);
+        }
+
+        // 8.2) loop items
+        List<OrderDetail> normalDetails = new ArrayList<>();
+        List<PrescriptionOrderDetail> rxDetails = new ArrayList<>();
+
+        for (CartItem ci : cartItems) {
+            CheckoutLineItemResponse li = lineMap.get(ci.getCartItemId());
+            if (li == null) continue;
+
+            if (!"PRESCRIPTION".equals(li.getItemType())) {
+                // === NORMAL (DIRECT / PRE_ORDER) -> Order_Detail
+                Product product = resolveOrderDetailProduct(ci);
+                if (product == null) {
+                    throw new AppException(ErrorCode.INVALID_REQUEST);
+                }
+
+                OrderDetail od = new OrderDetail();
+                od.setOrder(savedOrder);
+                od.setProduct(product);
+                od.setUnitPrice(li.getUnitPrice());
+                od.setQuantity(li.getQuantity() == null ? 1 : li.getQuantity());
+                od.setNote(request.getNote());
+
+                normalDetails.add(od);
+            } else {
+                // === PRESCRIPTION -> Prescription_Order_Detail
+                if (savedRxOrder == null) {
+                    throw new AppException(ErrorCode.INVALID_REQUEST);
+                }
+
+                CartItemPrescription rx = rxMap.get(ci.getCartItemId());
+
+                int qty = li.getQuantity() == null ? 1 : li.getQuantity();
+                BigDecimal lineDiscount = li.getLineDiscount() == null ? BigDecimal.ZERO : li.getLineDiscount();
+                BigDecimal perUnitDiscount = (qty <= 0) ? BigDecimal.ZERO : lineDiscount.divide(BigDecimal.valueOf(qty), 0, BigDecimal.ROUND_HALF_UP);
+
+                // ✅ Vì Prescription_Order_Detail của bạn KHÔNG có Quantity
+                // => insert N dòng tương ứng qty (MVP)
+                for (int i = 0; i < qty; i++) {
+                    PrescriptionOrderDetail pod = new PrescriptionOrderDetail();
+                    pod.setPrescriptionOrder(savedRxOrder);
+                    pod.setFrame(ci.getFrame());
+                    pod.setLens(ci.getLens());
+
+                    if (rx != null) {
+                        pod.setRightEyeSph(toBd(rx.getRightEyeSph()));
+                        pod.setRightEyeCyl(toBd(rx.getRightEyeCyl()));
+                        pod.setRightEyeAxis(rx.getRightEyeAxis());
+
+                        pod.setLeftEyeSph(toBd(rx.getLeftEyeSph()));
+                        pod.setLeftEyeCyl(toBd(rx.getLeftEyeCyl()));
+                        pod.setLeftEyeAxis(rx.getLeftEyeAxis());
+                    }
+
+                    // Sub_Total = unitPrice - perUnitDiscount (net per unit)
+                    BigDecimal net = li.getUnitPrice().subtract(perUnitDiscount);
+                    if (net.compareTo(BigDecimal.ZERO) < 0) net = BigDecimal.ZERO;
+                    pod.setSubTotal(net);
+
+                    rxDetails.add(pod);
+                }
+            }
+        }
+
+        if (!normalDetails.isEmpty()) {
+            orderDetailRepo.saveAll(normalDetails);
+        }
+        if (!rxDetails.isEmpty()) {
+            prescriptionOrderDetailRepo.saveAll(rxDetails);
+        }
+
+        // 9) INSERT Shipping_Info
         ShippingInfo ship = new ShippingInfo();
         ship.setOrder(savedOrder);
         ship.setRecipientName(request.getRecipientName());
@@ -114,7 +225,6 @@ public class OrderServiceImpl implements OrderService {
         ship.setRecipientEmail(request.getRecipientEmail());
 
         ship.setRecipientAddress(buildFullAddress(address, user));
-
         ship.setProvinceCode(address != null ? address.getProvinceCode() : null);
         ship.setProvinceName(address != null ? address.getProvinceName() : null);
         ship.setDistrictCode(address != null ? address.getDistrictCode() : null);
@@ -129,7 +239,7 @@ public class OrderServiceImpl implements OrderService {
 
         shippingInfoRepo.save(ship);
 
-        // 8) INSERT Invoice
+        // 10) INSERT Invoice
         Invoice invoice = new Invoice();
         invoice.setOrder(savedOrder);
         invoice.setIssueDate(LocalDateTime.now());
@@ -137,11 +247,10 @@ public class OrderServiceImpl implements OrderService {
         invoice.setStatus("UNPAID");
         invoiceRepo.save(invoice);
 
-        // 9) INSERT Payment record(s)
+        // 11) INSERT Payment record(s)
         Payment createdPayment = null;
 
         if (plan.createDepositPayment) {
-            // FIX: Payment() protected => dùng builder
             Payment dep = Payment.builder()
                     .order(savedOrder)
                     .paymentPurpose("DEPOSIT")
@@ -184,25 +293,26 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
-        // 10) Load managed cart items rồi xóa bằng JPA remove (cascade/orphanRemoval sẽ chạy)
+        // 12) update Promotion.Used_Count + 1
+        if (preview.getAppliedPromotionId() != null) {
+            promotionRepo.incrementUsedCount(preview.getAppliedPromotionId());
+        }
+
+        // 13) Load managed cart items rồi xóa bằng JPA remove (cascade/orphanRemoval sẽ chạy)
         var managedCartItems = cartItemRepo.findByCartItemIdIn(ids);
         if (managedCartItems.size() != ids.size()) {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
         cartItemRepo.deleteAll(managedCartItems);
 
-        // 12) nếu cần online redirect => tạo paymentUrl (hiện tại stub)
+        // 14) nếu cần online redirect => tạo paymentUrl (hiện tại stub)
         String paymentUrl = null;
         boolean redirect = false;
         Long paymentId = null;
 
         if (createdPayment != null && !"COD".equalsIgnoreCase(createdPayment.getPaymentMethod())) {
             redirect = true;
-
-            // FIX: entity Payment field paymentID => getter getPaymentID()
             paymentId = createdPayment.getPaymentID();
-
-            // FIX: entity Order field orderID => getter getOrderID()
             paymentUrl = paymentGatewayService.createPaymentUrl(
                     createdPayment.getPaymentMethod(),
                     savedOrder.getOrderID(),
@@ -212,7 +322,6 @@ public class OrderServiceImpl implements OrderService {
         }
 
         return CreateOrderResponse.builder()
-                // FIX: use getOrderID()
                 .orderId(savedOrder.getOrderID())
                 .orderCode(savedOrder.getOrderCode())
                 .orderStatus(savedOrder.getOrderStatus())
@@ -233,6 +342,13 @@ public class OrderServiceImpl implements OrderService {
                 .paymentUrl(paymentUrl)
                 .paymentId(paymentId)
                 .build();
+    }
+
+    private Product resolveOrderDetailProduct(CartItem ci) {
+        if (ci.getContactLens() != null) return ci.getContactLens().getProduct();
+        if (ci.getFrame() != null && ci.getLens() == null) return ci.getFrame().getProduct();
+        if (ci.getLens() != null && ci.getFrame() == null) return ci.getLens().getProduct();
+        return null; // frame+lens => prescription, không vào Order_Detail
     }
 
     private ShippingAddressRequest resolveAddress(ShippingAddressRequest reqAddr, User user) {
@@ -337,5 +453,12 @@ public class OrderServiceImpl implements OrderService {
             p.fullAmount = fullAmount;
             return p;
         }
+    }
+
+    private BigDecimal toBd(Double v) {
+        if (v == null) return null;
+
+        // tránh sai số double: dùng String để tạo BigDecimal
+        return new BigDecimal(String.valueOf(v)).setScale(2, RoundingMode.HALF_UP);
     }
 }

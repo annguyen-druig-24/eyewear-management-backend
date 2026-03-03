@@ -6,8 +6,8 @@ import com.swp391.eyewear_management_backend.entity.*;
 import com.swp391.eyewear_management_backend.exception.AppException;
 import com.swp391.eyewear_management_backend.exception.ErrorCode;
 import com.swp391.eyewear_management_backend.mapper.ReturnExchangeMapper;
-import com.swp391.eyewear_management_backend.repository.OrderDetailRepository;
-import com.swp391.eyewear_management_backend.repository.ReturnExchangeRepository;
+import com.swp391.eyewear_management_backend.repository.OrderDetailRepo;
+import com.swp391.eyewear_management_backend.repository.ReturnExchangeRepo;
 import com.swp391.eyewear_management_backend.repository.UserRepo;
 import com.swp391.eyewear_management_backend.service.ReturnExchangeService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,10 +26,10 @@ import java.util.stream.Collectors;
 public class ReturnExchangeServiceImpl implements ReturnExchangeService {
 
     @Autowired
-    private ReturnExchangeRepository returnExchangeRepository;
+    private ReturnExchangeRepo returnExchangeRepository;
 
     @Autowired
-    private OrderDetailRepository orderDetailRepository;
+    private OrderDetailRepo orderDetailRepository;
 
     @Autowired
     private UserRepo userRepository;

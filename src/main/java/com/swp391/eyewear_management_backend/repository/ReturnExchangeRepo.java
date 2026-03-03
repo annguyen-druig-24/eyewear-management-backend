@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface ReturnExchangeRepository extends JpaRepository<ReturnExchange, Long> {
+public interface ReturnExchangeRepo extends JpaRepository<ReturnExchange, Long> {
     
     /**
      * Tìm return/exchange theo return code

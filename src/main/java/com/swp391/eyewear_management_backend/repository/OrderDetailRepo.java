@@ -7,7 +7,7 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 @Repository
-public interface OrderDetailRepository extends JpaRepository<OrderDetail, Long> {
+public interface OrderDetailRepo extends JpaRepository<OrderDetail, Long> {
     
     /**
      * Lấy tất cả OrderDetail của một Order
