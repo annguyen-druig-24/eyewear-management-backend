@@ -23,6 +23,9 @@ public enum ErrorCode {
     USER_EXISTED(1002, "User already exists", HttpStatus.BAD_REQUEST),
     USER_NOT_EXISTED(1003, "User not exists", HttpStatus.NOT_FOUND),
 
+    // Order
+    ORDER_NOT_FOUND(1026, "Order not found", HttpStatus.NOT_FOUND), // 404
+
     USERNAME_REQUIRED(1012, "Username is required", HttpStatus.BAD_REQUEST),
     USERNAME_INVALID(1004, "Username must be at least 8 characters!", HttpStatus.BAD_REQUEST),
 

@@ -47,3 +47,27 @@ cloudinary:
   cloud-name: dbgkfgkrl
   api-key: 349146117748721
   api-secret: dW4_Qy27QgUd63_ihqd1iI1173M
+
+vnpay:
+  pay-url: ${VNPAY_PAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+  tmn-code: ${VNPAY_TMN_CODE:WG7VHCKH}
+  hash-secret: ${VNPAY_HASH_SECRET:VC9SQMAEOGZYH3KZSCT6WPDLO7CFP2DU}
+  return-url: ${VNPAY_RETURN_URL:http://localhost:8080/payments/vnpay/return}
+  ipn-url: ${VNPAY_IPN_URL:http://localhost:8080/payments/vnpay/ipn}
+  version: "2.1.0"
+  command: "pay"
+  curr-code: "VND"
+  locale: "vn"
+  order-type: "other"
+  expire-minutes: 15
+
+app:
+  cors:
+    allowed-origin-patterns:
+      - "http://localhost:5173"
+      - "http://localhost:5174"
+      - "http://localhost:5175"
+  frontend:
+    base-url: ${FRONTEND_BASE_URL:http://localhost:5173}
+    success-path: /order-success
+    fail-path: /payment-result

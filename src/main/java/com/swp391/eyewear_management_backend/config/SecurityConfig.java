@@ -1,5 +1,6 @@
 package com.swp391.eyewear_management_backend.config;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -27,9 +28,13 @@ import javax.crypto.spec.SecretKeySpec;
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
 
+    private final CorsProperties corsProperties;
+
     private static final String[] PUBLIC_GET_ENDPOINTS = {
+            "/payments/vnpay/**",
             "/ghn/**",
             "/api/products/search",
             "/api/products/**",   // lưu ý: /{id} nên dùng /** thay vì {id}
@@ -95,9 +100,11 @@ public class SecurityConfig {
     @Bean
     public CorsFilter corsFilter() {
         CorsConfiguration corsConfiguration = new CorsConfiguration();
-        corsConfiguration.addAllowedOrigin("*");
+
+        corsConfiguration.setAllowedOriginPatterns(corsProperties.getAllowedOriginPatterns());
         corsConfiguration.addAllowedHeader("*");
         corsConfiguration.addAllowedMethod("*");
+        corsConfiguration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", corsConfiguration);

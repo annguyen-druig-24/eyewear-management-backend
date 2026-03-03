@@ -3,9 +3,7 @@ package com.swp391.eyewear_management_backend.service.impl;
 import com.swp391.eyewear_management_backend.dto.request.CheckoutPreviewRequest;
 import com.swp391.eyewear_management_backend.dto.request.CreateOrderRequest;
 import com.swp391.eyewear_management_backend.dto.request.ShippingAddressRequest;
-import com.swp391.eyewear_management_backend.dto.response.CheckoutLineItemResponse;
-import com.swp391.eyewear_management_backend.dto.response.CheckoutPreviewResponse;
-import com.swp391.eyewear_management_backend.dto.response.CreateOrderResponse;
+import com.swp391.eyewear_management_backend.dto.response.*;
 import com.swp391.eyewear_management_backend.entity.*;
 import com.swp391.eyewear_management_backend.exception.AppException;
 import com.swp391.eyewear_management_backend.exception.ErrorCode;
@@ -24,6 +22,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -341,6 +340,75 @@ public class OrderServiceImpl implements OrderService {
                 .paymentRedirectRequired(redirect)
                 .paymentUrl(paymentUrl)
                 .paymentId(paymentId)
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public OrderStatusResponse getOrderStatus(Long orderId) {
+
+        // 1) current user
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || auth instanceof AnonymousAuthenticationToken) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+
+        String username = auth.getName();
+        User currentUser = userRepo.findByUsername(username)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
+
+        // 2) load order (fetch invoice + payments + shippingInfo)
+        Order order = orderRepo.findByIdFetchStatus(orderId)
+                .orElseThrow(() -> new AppException(ErrorCode.ORDER_NOT_FOUND)); // bạn thêm ErrorCode nếu chưa có
+
+        // 3) authorize: owner hoặc ADMIN
+        boolean isOwner = order.getUser() != null
+                && Objects.equals(order.getUser().getUserId(), currentUser.getUserId());
+
+        boolean isAdmin = auth.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equalsIgnoreCase(a.getAuthority())
+                        || "ADMIN".equalsIgnoreCase(a.getAuthority()));
+
+        if (!isOwner && !isAdmin) {
+            throw new AppException(ErrorCode.UNAUTHORIZED); // bạn thêm ErrorCode nếu chưa có
+        }
+
+        // 4) map payments
+        List<PaymentStatusResponse> payments = (order.getPayments() == null) ? List.of()
+                : order.getPayments().stream()
+                .map(p -> PaymentStatusResponse.builder()
+                        .paymentId(p.getPaymentID())
+                        .paymentPurpose(p.getPaymentPurpose())
+                        .paymentMethod(p.getPaymentMethod())
+                        .status(p.getStatus())
+                        .amount(p.getAmount())
+                        .paymentDate(p.getPaymentDate())
+                        .build())
+                // sort: DEPOSIT trước, rồi FULL/REMAINING tuỳ bạn
+                .sorted(Comparator.comparing(PaymentStatusResponse::getPaymentPurpose, Comparator.nullsLast(String::compareTo)))
+                .collect(Collectors.toList());
+
+        String invoiceStatus = (order.getInvoice() != null) ? order.getInvoice().getStatus() : null;
+
+        LocalDateTime expectedDeliveryAt = (order.getShippingInfo() != null)
+                ? order.getShippingInfo().getExpectedDeliveryAt()
+                : null;
+
+        return OrderStatusResponse.builder()
+                .orderId(order.getOrderID())
+                .orderCode(order.getOrderCode())
+                .orderStatus(order.getOrderStatus())
+                .orderType(order.getOrderType())
+
+                .subTotal(order.getSubTotal())
+                .discountAmount(order.getDiscountAmount())
+                .shippingFee(order.getShippingFee())
+                .totalAmount(order.getTotalAmount()) // computed column DB
+
+                .invoiceStatus(invoiceStatus)
+                .expectedDeliveryAt(expectedDeliveryAt)
+
+                .payments(payments)
                 .build();
     }
 
