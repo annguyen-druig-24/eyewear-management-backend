@@ -10,7 +10,7 @@ import com.swp391.eyewear_management_backend.exception.ErrorCode;
 import com.swp391.eyewear_management_backend.repository.*;
 import com.swp391.eyewear_management_backend.service.CheckoutService;
 import com.swp391.eyewear_management_backend.service.OrderService;
-import com.swp391.eyewear_management_backend.service.PaymentGatewayService;
+import com.swp391.eyewear_management_backend.service.PaymentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -44,7 +44,7 @@ public class OrderServiceImpl implements OrderService {
     private final PromotionRepo promotionRepo;
 
     private final CheckoutService checkoutService; // reuse preview calculation
-    private final PaymentGatewayService paymentGatewayService; // stub for now
+    private final PaymentService paymentService; // stub for now
 
     @Override
     @Transactional
@@ -312,11 +312,12 @@ public class OrderServiceImpl implements OrderService {
         if (createdPayment != null && !"COD".equalsIgnoreCase(createdPayment.getPaymentMethod())) {
             redirect = true;
             paymentId = createdPayment.getPaymentID();
-            paymentUrl = paymentGatewayService.createPaymentUrl(
-                    createdPayment.getPaymentMethod(),
-                    savedOrder.getOrderID(),
-                    createdPayment.getPaymentID(),
-                    createdPayment.getAmount()
+            long payosAmount = createdPayment.getAmount().longValue();
+
+            paymentUrl = paymentService.createPayOSPaymentUrl(
+                    paymentId,
+                    payosAmount,
+                    savedOrder.getOrderCode()
             );
         }
 
@@ -458,13 +459,13 @@ public class OrderServiceImpl implements OrderService {
     /**
      * Convert rule UI payment => plan tạo Payment records.
      * - Nếu không cần cọc:
-     *    COD => 1 record FULL COD PENDING
-     *    VNPAY/MOMO => 1 record FULL online PENDING (redirect)
+     * COD => 1 record FULL COD PENDING
+     * VNPAY/MOMO => 1 record FULL online PENDING (redirect)
      * - Nếu cần cọc:
-     *    paymentMethod=COD => DEPOSIT online + REMAINING COD
-     *    paymentMethod=VNPAY/MOMO:
-     *       payStrategy=FULL => FULL online
-     *       payStrategy=DEPOSIT => DEPOSIT online + REMAINING COD
+     * paymentMethod=COD => DEPOSIT online + REMAINING COD
+     * paymentMethod=VNPAY/MOMO:
+     * payStrategy=FULL => FULL online
+     * payStrategy=DEPOSIT => DEPOSIT online + REMAINING COD
      */
     private PaymentPlan buildPaymentPlan(CheckoutPreviewResponse preview, CreateOrderRequest req) {
         boolean depositRequired = preview.isDepositRequired();
