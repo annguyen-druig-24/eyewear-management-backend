@@ -36,8 +36,8 @@ public class VnpayController {
 
         boolean valid = verifySignature(vnpParams);
 
-        String rspCode = vnpParams.get("vnp_ResponseCode");   // "00" = success
-        Long paymentId = parseLong(vnpParams.get("vnp_TxnRef"));
+        String rspCode = vnpParams.get("vnp_ResponseCode");   // mã trạng thái giao dịch "00" = success
+        Long paymentId = parseLong(vnpParams.get("vnp_TxnRef"));    //paymentId (id Payment trong DB)
         long amount = parseLong0(vnpParams.get("vnp_Amount")); // amount * 100
 
         // 1) chữ ký sai / thiếu paymentId => redirect fail
@@ -56,21 +56,34 @@ public class VnpayController {
         VnpayCallbackService.IpResult ipResult = callbackService.handleCallback(paymentId, amount, rspCode);
 
         // 3) lấy orderId chắc chắn từ DB theo paymentId
+        // Mục tiêu: FE biết order nào vừa thanh toán
         Long orderId = paymentRepo.findById(paymentId)
                 .map(p -> (p.getOrder() != null ? p.getOrder().getOrderID() : null))
                 .orElse(null);
 
         // 4) build redirect url về FE
         boolean ok = "00".equals(rspCode) && ipResult == VnpayCallbackService.IpResult.CONFIRM_SUCCESS;
-        String status = ok ? "SUCCESS" : "FAILED";
+
+        String targetPath;
+        String status;
+
+        if (ok) {
+            targetPath = feProps.getSuccessPath();       // /success
+            status = "SUCCESS";
+        } else if ("24".equals(rspCode)) {
+            targetPath = feProps.getCancelPath();        // /cancel  ✅ NEW
+            status = "CANCELLED";
+        } else {
+            targetPath = feProps.getFailPath();          // /payment-result
+            status = "FAILED";
+        }
 
         UriComponentsBuilder b = UriComponentsBuilder
-                .fromUriString(feProps.getBaseUrl() + feProps.getSuccessPath())
+                .fromUriString(feProps.getBaseUrl() + targetPath)
                 .queryParam("status", status)
                 .queryParam("paymentId", paymentId)
                 .queryParam("code", rspCode);
 
-        // chỉ add orderId nếu có, tránh URL kiểu "...&orderId&..."
         if (orderId != null) {
             b.queryParam("orderId", orderId);
         }
@@ -113,6 +126,8 @@ public class VnpayController {
         };
     }
 
+    /*  Cách thức: duyệt từng param, check nếu key bắt đầu bằng vnp_ thì lấy giá trị đầu tiên v[0] --> trả về map mới chỉ chứa data VNPAY
+         Mục tiêu: tránh bị nhiễu bởi các query param khác + chuẩn hóa dữ liệu để verify signature */
     private Map<String, String> extractVnpParams(Map<String, String[]> raw) {
         Map<String, String> m = new HashMap<>();
         for (var e : raw.entrySet()) {
@@ -126,8 +141,8 @@ public class VnpayController {
     }
 
     private boolean verifySignature(Map<String, String> params) {
-        String secureHash = params.get("vnp_SecureHash");
-        if (secureHash == null || secureHash.isBlank()) return false;
+        String secureHash = params.get("vnp_SecureHash");               // Lấy chữ ký từ VNPAY: vnp_SecureHash
+        if (secureHash == null || secureHash.isBlank()) return false;   // Nếu ko có chữ ký --> fail
 
         // copy + remove hash fields (VNPAY yêu cầu remove trước khi hash)
         Map<String, String> copy = new HashMap<>(params);
@@ -135,11 +150,13 @@ public class VnpayController {
         copy.remove("vnp_SecureHashType");
 
         // sort + build hash data + sign
+        // Mục tiêu: VNPAY quy định thứ tự params khi hash phải ổn định --> thường hash theo kiểu từ nhỏ đến lớn
         Map<String, String> sorted = VnpayUtils.sortParams(copy);
 
-        // QUAN TRỌNG:
-        // - nếu VnpayUtils của bạn dùng buildHashData() thì dùng buildHashData()
-        // - nếu chỉ có buildQueryString() thì thay bằng buildQueryString()
+        /* LÝ THUYẾT: hashData là chuỗi key=value&key=value... theo chuẩn VNPAY để đem đi ký
+        QUAN TRỌNG:
+         - nếu VnpayUtils của bạn dùng buildHashData() thì dùng buildHashData()
+         - nếu chỉ có buildQueryString() thì thay bằng buildQueryString() */
         String hashData;
         try {
             hashData = VnpayUtils.buildHashData(sorted);

@@ -10,6 +10,7 @@ import com.swp391.eyewear_management_backend.exception.ErrorCode;
 import com.swp391.eyewear_management_backend.repository.*;
 import com.swp391.eyewear_management_backend.service.CheckoutService;
 import com.swp391.eyewear_management_backend.service.OrderService;
+import com.swp391.eyewear_management_backend.service.PaymentGatewayService;
 import com.swp391.eyewear_management_backend.service.PaymentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
@@ -45,35 +46,56 @@ public class OrderServiceImpl implements OrderService {
 
     private final CheckoutService checkoutService; // reuse preview calculation
     private final PaymentService paymentService; // stub for now
+    private final PaymentGatewayService paymentGatewayService;
 
+    /*
+        Hàm này làm 6 nhóm việc chính trong 1 transaction:
+        - Xác thực user hiện tại
+        - Lấy và kiểm tra cart items của user
+        - Tính toán tiền/ship/discount (re-use checkoutService.preview)
+        - Tạo dữ liệu DB: Order, OrderDetail / PrescriptionOrderDetail, ShippingInfo, Invoice, Payment
+        - Update promotion used_count + xóa cart items
+        - Nếu online payment → tạo paymentUrl trả về cho FE redirect
+     */
     @Override
     @Transactional
     public CreateOrderResponse createOrder(CreateOrderRequest request) {
 
-        // 1) current user (fix NPE getName)
+        // 1) Xác thực user hiện tại
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || auth instanceof AnonymousAuthenticationToken) {
-            // đổi ErrorCode theo project bạn nếu khác
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
-
         String username = auth.getName();
         User user = userRepo.findByUsername(username)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
         Long userId = user.getUserId();
 
-        // 2) normalize ids
+        // 2) Kiểm tra xem cart items có chứa items nào ko? --> Nếu ko thì throw exception
         List<Long> ids = request.getCartItemIds() == null ? List.of() : request.getCartItemIds().stream()
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();
         if (ids.isEmpty()) throw new AppException(ErrorCode.INVALID_REQUEST);
 
-        // 3) load cart items belong to user (để insert detail + delete)
+        // 3) Lấy và kiểm tra cart items của user (để insert detail + delete)
+        /*
+            Mục tiêu:
+            - Bảo mật: user A không thể tạo order từ cartItem của user B.
+            - Data integrity: phải đủ items thì order mới đúng.
+         */
         List<CartItem> cartItems = cartItemRepo.findByUserIdAndIdsFetchAll(userId, ids);
-        if (cartItems.size() != ids.size()) throw new AppException(ErrorCode.INVALID_REQUEST);
+        if (cartItems.size() != ids.size()) throw new AppException(ErrorCode.INVALID_REQUEST);  // Kiểm tra số lượng items trong cart của user có bằng với số lượng trong cart đang được chọn hay ko
 
         // 3.1) load prescription map
+        /*
+            Tác dụng:
+            - Với cartItem kiểu PRESCRIPTION, bạn cần thông số mắt (SPH/CYL/AXIS).
+            - Tạo rxMap để tra nhanh theo cartItemId khi loop items.
+            Mục tiêu:
+            - Tránh mỗi vòng lặp lại query DB → tối ưu.
+            - Tách dữ liệu “kính thuốc” (prescription) khỏi CartItem.
+         */
         Map<Long, CartItemPrescription> rxMap = new HashMap<>();
         List<CartItemPrescription> rxList = cartItemPrescriptionRepo.findByCartItem_CartItemIdIn(ids);
         for (CartItemPrescription rx : rxList) {
@@ -181,7 +203,7 @@ public class OrderServiceImpl implements OrderService {
                 BigDecimal lineDiscount = li.getLineDiscount() == null ? BigDecimal.ZERO : li.getLineDiscount();
                 BigDecimal perUnitDiscount = (qty <= 0) ? BigDecimal.ZERO : lineDiscount.divide(BigDecimal.valueOf(qty), 0, BigDecimal.ROUND_HALF_UP);
 
-                // ✅ Vì Prescription_Order_Detail của bạn KHÔNG có Quantity
+                // Vì Prescription_Order_Detail KHÔNG có Quantity
                 // => insert N dòng tương ứng qty (MVP)
                 for (int i = 0; i < qty; i++) {
                     PrescriptionOrderDetail pod = new PrescriptionOrderDetail();
@@ -298,27 +320,54 @@ public class OrderServiceImpl implements OrderService {
         }
 
         // 13) Load managed cart items rồi xóa bằng JPA remove (cascade/orphanRemoval sẽ chạy)
+            //Cách 1 (chưa hoàn thiện): Lúc người dùng chuyển qua paymentUrl lúc chưa thanh toán thì Item vẫn còn trong Cart_Item
+            //  Nhưng khi đặt hàng thành công rồi thì phải xóa Item trong Cart_Item --> Chưa xóa --> Cần fix
+//        boolean hasPendingOnlinePayment = createdPayment != null
+//                && createdPayment.getPaymentMethod() != null
+//                && !"COD".equalsIgnoreCase(createdPayment.getPaymentMethod());
+//
+//        if (!hasPendingOnlinePayment) {
+//            var managedCartItems = cartItemRepo.findByCartItemIdIn(ids);
+//            if (managedCartItems.size() != ids.size()) {
+//                throw new AppException(ErrorCode.INVALID_REQUEST);
+//            }
+//            cartItemRepo.deleteAll(managedCartItems);
+//        }
+            //Cách 2: Lúc người dùng chuyển qua paymentUrl lúc chưa thanh toán thì Item đã bị xóa khỏi Cart_Item
+            // --> Nên fix cách 1 và sử dụng cách 1 (hiện tại dùng đỡ cách 2)
         var managedCartItems = cartItemRepo.findByCartItemIdIn(ids);
         if (managedCartItems.size() != ids.size()) {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
         cartItemRepo.deleteAll(managedCartItems);
 
-        // 14) nếu cần online redirect => tạo paymentUrl (hiện tại stub)
+        // 14) nếu cần online redirect => tạo paymentUrl theo paymentMethod
         String paymentUrl = null;
         boolean redirect = false;
         Long paymentId = null;
 
-        if (createdPayment != null && !"COD".equalsIgnoreCase(createdPayment.getPaymentMethod())) {
-            redirect = true;
-            paymentId = createdPayment.getPaymentID();
-            long payosAmount = createdPayment.getAmount().longValue();
+        if (createdPayment != null) {
+            String method = createdPayment.getPaymentMethod();
+            if (method != null && !"COD".equalsIgnoreCase(method)) {
+                redirect = true;
+                paymentId = createdPayment.getPaymentID();
 
-            paymentUrl = paymentService.createPayOSPaymentUrl(
-                    paymentId,
-                    payosAmount,
-                    savedOrder.getOrderCode()
-            );
+                // amount dùng để tạo link (BigDecimal)
+                BigDecimal payAmount = createdPayment.getAmount();
+
+                // tạo đúng URL theo method: VNPAY / PAYOS / MOMO
+                paymentUrl = paymentGatewayService.createPaymentUrl(
+                        method,
+                        savedOrder.getOrderID(),
+                        paymentId,
+                        payAmount
+                );
+
+                // nếu method MOMO chưa hỗ trợ, bạn có thể trả null hoặc throw lỗi
+                if (paymentUrl == null) {
+                    throw new AppException(ErrorCode.PAYMENT_METHOD_NOT_SUPPORTED);
+                }
+            }
         }
 
         return CreateOrderResponse.builder()
@@ -470,7 +519,7 @@ public class OrderServiceImpl implements OrderService {
     private PaymentPlan buildPaymentPlan(CheckoutPreviewResponse preview, CreateOrderRequest req) {
         boolean depositRequired = preview.isDepositRequired();
 
-        String method = req.getPaymentMethod(); // COD/VNPAY/MOMO
+        String method = req.getPaymentMethod(); // COD/VNPAY/MOMO/PAYOS
         String payStrategy = req.getPayStrategy(); // FULL/DEPOSIT
 
         if (!depositRequired) {
