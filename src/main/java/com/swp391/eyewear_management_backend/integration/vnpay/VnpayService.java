@@ -25,17 +25,17 @@ public class VnpayService {
     private static final DateTimeFormatter VNP_TIME = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
     private static final ZoneId VN_TZ = ZoneId.of("Asia/Ho_Chi_Minh");
 
-    public String createPaymentUrl(Long orderId, Long paymentId, BigDecimal amount) {
+    public String createVnpayPaymentUrl(Long orderId, Long paymentId, BigDecimal amount) {
         // VNPAY amount = VND * 100 (integer)  :contentReference[oaicite:3]{index=3}
-        BigDecimal vnd = (amount == null ? BigDecimal.ZERO : amount).setScale(0, RoundingMode.HALF_UP);
-        long vnpAmount = vnd.multiply(new BigDecimal("100")).longValue();
+        BigDecimal vnd = (amount == null ? BigDecimal.ZERO : amount).setScale(0, RoundingMode.HALF_UP); //Làm tròn số tiền
+        long vnpAmount = vnd.multiply(new BigDecimal("100")).longValue(); //VNPAY ko chấp nhận dấu phẩy nên * 100
 
         String txnRef = String.valueOf(paymentId); // không trùng trong ngày :contentReference[oaicite:4]{index=4}
         String orderInfo = sanitizeOrderInfo("Thanh toan don hang " + orderId + " payment " + paymentId);
 
         ZonedDateTime now = ZonedDateTime.now(VN_TZ);
-        String createDate = now.format(VNP_TIME);
-        String expireDate = now.plusMinutes(props.getExpireMinutes()).format(VNP_TIME);
+        String createDate = now.format(VNP_TIME);                                           //Thời điểm tạo giao dịch
+        String expireDate = now.plusMinutes(props.getExpireMinutes()).format(VNP_TIME);     //Thời gian hết hạn link thanh toán = 15p
 
         Map<String, String> params = new HashMap<>();
         params.put("vnp_Version", props.getVersion());
@@ -52,7 +52,7 @@ public class VnpayService {
         params.put("vnp_CreateDate", createDate);
         params.put("vnp_ExpireDate", expireDate);
 
-        // ❌ KHÔNG gửi vnp_IpnUrl trong params (hay gây gateway reject).
+        // KHÔNG gửi vnp_IpnUrl trong params (hay gây gateway reject).
         // IPN URL hãy cấu hình trong portal VNPAY sandbox + dùng ngrok khi dev local.
 
         // sort + sign

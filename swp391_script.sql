@@ -41,10 +41,6 @@ CREATE TABLE [User] (
         (District_Code IS NULL AND District_Name IS NULL)
     OR (District_Code IS NOT NULL AND District_Name IS NOT NULL)
     ),
-    CONSTRAINT CK_User_District_Pair CHECK (
-        (District_Code IS NULL AND District_Name IS NULL)
-    OR (District_Code IS NOT NULL AND District_Name IS NOT NULL)
-    ),
     CONSTRAINT CK_User_Ward_Pair CHECK (
         (Ward_Code IS NULL AND Ward_Name IS NULL)
     OR (Ward_Code IS NOT NULL AND Ward_Name IS NOT NULL)
@@ -423,7 +419,7 @@ CREATE TABLE Payment (
                              )),
                          CONSTRAINT CK_Payment_Amount CHECK (Amount > 0),
                          CONSTRAINT CK_Payment_Method CHECK (Payment_Method IN (
-                                                                                N'COD', N'MOMO', N'VNPAY'
+                                                                                N'COD', N'MOMO', N'VNPAY', N'PAYOS'
                              )),
                          CONSTRAINT CK_Payment_Purpose CHECK (Payment_Purpose IN (
                                                                                   N'DEPOSIT', N'FULL', N'REMAINING'

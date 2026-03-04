@@ -7,6 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "app.frontend")
 public class FrontendProperties {
     private String baseUrl;
-    private String successPath = "/order-success";
+    private String successPath = "/success";
+    private String cancelPath = "/cancel";
     private String failPath = "/payment-result";
 }

@@ -29,7 +29,7 @@ public class CreateOrderRequest {
     // optional: nếu null => dùng địa chỉ mặc định của User (có codes)
     private ShippingAddressRequest address;
 
-    // COD / VNPAY / MOMO
+    // COD / VNPAY / MOMO / PAYOS
     @NotNull(message = "Payment Method is required!")
     private String paymentMethod;
 

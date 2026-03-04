@@ -31,6 +31,35 @@ public class PaymentServiceImpl implements PaymentService {
     private final UserRepo userRepo;
 
     @Override
+    public String createPayOSPaymentUrl(Long paymentId, long amount, String orderCodeStr) {
+        try {
+            // PayOS giới hạn description tối đa 25 ký tự
+            String description = "Thanh toan " + orderCodeStr;
+            if (description.length() > 25) {
+                description = description.substring(0, 25);
+            }
+
+            String returnUrl = "http://localhost:5173/success";
+            String cancelUrl = "http://localhost:5173/cancel";
+
+            CreatePaymentLinkRequest paymentRequest = CreatePaymentLinkRequest.builder()
+                    // Dùng paymentId làm mã đơn của PayOS vì nó là kiểu Long hợp lệ
+                    .orderCode(paymentId)
+                    .amount(amount)
+                    .description(description)
+                    .returnUrl(returnUrl)
+                    .cancelUrl(cancelUrl)
+                    .build();
+
+            CreatePaymentLinkResponse checkoutResponse = payOS.paymentRequests().create(paymentRequest);
+
+            return checkoutResponse.getCheckoutUrl();
+        } catch (Exception e) {
+            throw new RuntimeException("Lỗi khi tạo link thanh toán PayOS: " + e.getMessage());
+        }
+    }
+
+    @Override
     @Transactional
     public PaymentResponse createPaymentLink(PaymentRequest request) {
         try {
@@ -55,8 +84,8 @@ public class PaymentServiceImpl implements PaymentService {
             orderRepository.save(newOrder);
 
             String description = "Kinh mat " + payosOrderCode;
-            String returnUrl = "http://localhost:3000/success";
-            String cancelUrl = "http://localhost:3000/cancel";
+            String returnUrl = "http://localhost:5173/success";
+            String cancelUrl = "http://localhost:5173/cancel";
 
             CreatePaymentLinkRequest paymentRequest = CreatePaymentLinkRequest.builder()
                     .orderCode(payosOrderCode)

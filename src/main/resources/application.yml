@@ -70,7 +70,8 @@ app:
       - "http://localhost:5175"
   frontend:
     base-url: ${FRONTEND_BASE_URL:http://localhost:5173}
-    success-path: /order-success
+    success-path: /success
+    cancel-path: /cancel
     fail-path: /payment-result
 
 payos:

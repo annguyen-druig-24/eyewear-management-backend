@@ -26,6 +26,9 @@ public enum ErrorCode {
     // Order
     ORDER_NOT_FOUND(1026, "Order not found", HttpStatus.NOT_FOUND), // 404
 
+    PAYMENT_METHOD_NOT_SUPPORTED(1027, "Payment is not applicable for this checkout", HttpStatus.BAD_REQUEST),
+    PAYMENT_IN_PROGRESS(1028, "These cart items already have a pending online payment", HttpStatus.CONFLICT),
+
     USERNAME_REQUIRED(1012, "Username is required", HttpStatus.BAD_REQUEST),
     USERNAME_INVALID(1004, "Username must be at least 8 characters!", HttpStatus.BAD_REQUEST),
 
