@@ -68,6 +68,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers(HttpMethod.GET, PUBLIC_GET_ENDPOINTS).permitAll()
                 .requestMatchers(HttpMethod.POST, PUBLIC_POST_ENDPOINTS).permitAll()
+                .requestMatchers("/api/staff/orders/**").hasAnyAuthority("ROLE_SALES STAFF", "ROLE_ADMIN", "ROLE_MANAGER")
                 .anyRequest().authenticated()
         );
 
@@ -77,6 +78,10 @@ public class SecurityConfig {
                                 jwtConfigurer.decoder(customJwtDecoder)
                                         .jwtAuthenticationConverter(jwtAuthenticationConverter()))
                         .authenticationEntryPoint(new JwtAuthenticationEntryPoint())    //Dùng để handle Error 401
+        );
+
+        httpSecurity.exceptionHandling(ex -> ex
+                .accessDeniedHandler(new JwtAccessDeniedHandler())
         );
 
         httpSecurity.csrf(AbstractHttpConfigurer::disable);     //disable csrf
@@ -136,6 +141,7 @@ public class SecurityConfig {
     JwtAuthenticationConverter jwtAuthenticationConverter() {
         JwtGrantedAuthoritiesConverter jwtGrantedAuthoritiesConverter = new JwtGrantedAuthoritiesConverter();
         jwtGrantedAuthoritiesConverter.setAuthorityPrefix("");
+        jwtGrantedAuthoritiesConverter.setAuthoritiesClaimDelimiter(",");
 
         JwtAuthenticationConverter jwtAuthenticationConverter = new JwtAuthenticationConverter();
         jwtAuthenticationConverter.setJwtGrantedAuthoritiesConverter(jwtGrantedAuthoritiesConverter);

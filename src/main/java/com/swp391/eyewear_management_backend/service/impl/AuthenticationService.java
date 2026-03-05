@@ -195,7 +195,7 @@ public class AuthenticationService {
     }
 
     private String buildScope(User user) {
-        StringJoiner joiner = new StringJoiner(" ");
+        StringJoiner joiner = new StringJoiner(",");
 
         if (user != null && user.getRole() != null) {
             String roleType = user.getRole().getTypeName();
