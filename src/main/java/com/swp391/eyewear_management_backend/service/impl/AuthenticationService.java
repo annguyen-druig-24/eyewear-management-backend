@@ -42,7 +42,7 @@ public class AuthenticationService {
     UserRepo userRepo;
 
     InvalidatedTokenRepo invalidatedTokenRepo;
-
+//
     @NonFinal
     @Value("${jwt.signerKey}")  //Đọc biến signerKey từ application.yaml để lưu trữ kí, khi DevOps DEPLOY sẽ dùng signerKey khác
     protected String SIGNER_KEY;

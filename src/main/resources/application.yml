@@ -68,6 +68,7 @@ app:
       - "http://localhost:5173"
       - "http://localhost:5174"
       - "http://localhost:5175"
+      - "https://api-eyewear.purintech.id.vn"
   frontend:
     base-url: ${FRONTEND_BASE_URL:http://localhost:5173}
     success-path: /success
