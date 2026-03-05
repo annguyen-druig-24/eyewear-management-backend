@@ -81,6 +81,15 @@ public class VnpayCallbackServiceImpl implements VnpayCallbackService {
                         invoiceRepo.save(inv);
                     }
                 }
+            } else {
+                order.setOrderStatus("CANCELED");
+                orderRepo.save(order);
+
+                Invoice inv = invoiceRepo.findByOrderOrderID(order.getOrderID()).orElse(null);
+                if (inv != null) {
+                    inv.setStatus("UNPAID");
+                    invoiceRepo.save(inv);
+                }
             }
         }
 

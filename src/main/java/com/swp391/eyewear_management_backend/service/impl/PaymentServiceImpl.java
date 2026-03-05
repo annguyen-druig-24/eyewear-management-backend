@@ -19,6 +19,7 @@ import vn.payos.model.v2.paymentRequests.CreatePaymentLinkRequest;
 import vn.payos.model.v2.paymentRequests.CreatePaymentLinkResponse;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
@@ -63,6 +64,10 @@ public class PaymentServiceImpl implements PaymentService {
     @Transactional
     public PaymentResponse createPaymentLink(PaymentRequest request) {
         try {
+            if (request.getTotalAmount() == null || request.getTotalAmount().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new RuntimeException("Số tiền thanh toán không hợp lệ");
+            }
+
             long payosOrderCode = System.currentTimeMillis() / 1000;
             String dbOrderCode = String.valueOf(payosOrderCode);
 
@@ -72,7 +77,7 @@ public class PaymentServiceImpl implements PaymentService {
             Order newOrder = Order.builder()
                     .orderCode(dbOrderCode)
                     .user(currentUser)
-                    .subTotal(BigDecimal.valueOf(request.getTotalAmount()))
+                    .subTotal(request.getTotalAmount())
                     .taxAmount(BigDecimal.ZERO)
                     .discountAmount(BigDecimal.ZERO)
                     .shippingFee(BigDecimal.ZERO)
@@ -89,7 +94,7 @@ public class PaymentServiceImpl implements PaymentService {
 
             CreatePaymentLinkRequest paymentRequest = CreatePaymentLinkRequest.builder()
                     .orderCode(payosOrderCode)
-                    .amount((long) request.getTotalAmount())
+                    .amount(request.getTotalAmount().setScale(0, RoundingMode.HALF_UP).longValue())
                     .description(description)
                     .returnUrl(returnUrl)
                     .cancelUrl(cancelUrl)
