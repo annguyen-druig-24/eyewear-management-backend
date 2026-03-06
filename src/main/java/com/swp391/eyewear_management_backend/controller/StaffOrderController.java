@@ -37,7 +37,7 @@ public class StaffOrderController {
     }
 
     @GetMapping("/status-options")
-    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+//    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
     public ApiResponse<List<OrderStatusGroupResponse>> getStatusOptions() {
         List<OrderStatusGroupResponse> result = staffOrderService.getSalesStaffOrderStatuses();
         return ApiResponse.<List<OrderStatusGroupResponse>>builder()

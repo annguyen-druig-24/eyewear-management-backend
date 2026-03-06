@@ -22,7 +22,7 @@ public class OperationStaffOrderController {
     private final StaffOrderService staffOrderService;
 
     @PostMapping("/search")
-    @PreAuthorize("hasAnyAuthority('ROLE_OPERATIONS STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+//    @PreAuthorize("hasAnyAuthority('ROLE_OPERATIONS STAFF','ROLE_ADMIN','ROLE_MANAGER')")
     public ApiResponse<Page<StaffOrderListResponse>> searchOrders(
             @RequestBody(required = false) @Valid StaffOrderSearchRequest request
     ) {
@@ -36,7 +36,7 @@ public class OperationStaffOrderController {
     }
 
     @GetMapping("/status-options")
-    @PreAuthorize("hasAnyAuthority('ROLE_OPERATIONS STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+//    @PreAuthorize("hasAnyAuthority('ROLE_OPERATIONS STAFF','ROLE_ADMIN','ROLE_MANAGER')")
     public ApiResponse<List<OrderStatusGroupResponse>> getStatusOptions() {
         List<OrderStatusGroupResponse> result = staffOrderService.getOperationStaffOrderStatuses();
         return ApiResponse.<List<OrderStatusGroupResponse>>builder()
