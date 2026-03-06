@@ -60,10 +60,9 @@ public class StaffOrderServiceImpl implements StaffOrderService {
             OrderConstants.ORDER_STATUS_CANCELED
     );
     private static final Set<String> OPERATION_ALLOWED_ORDER_STATUSES = Set.of(
-            OrderConstants.ORDER_STATUS_PARTIALLY_PAID,
+            OrderConstants.ORDER_STATUS_CONFIRMED,
             OrderConstants.ORDER_STATUS_PROCESSING,
             OrderConstants.ORDER_STATUS_READY,
-            OrderConstants.ORDER_STATUS_PAID,
             OrderConstants.ORDER_STATUS_COMPLETED,
             OrderConstants.ORDER_STATUS_CANCELED
     );
@@ -122,10 +121,9 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                         .groupName("PRESCRIPTION WORKFLOW")
                         .orderTypes(List.of(OrderConstants.ORDER_TYPE_PRESCRIPTION, OrderConstants.ORDER_TYPE_MIX))
                         .statuses(List.of(
-                                statusOption(OrderConstants.ORDER_STATUS_PARTIALLY_PAID, "Đã trả cọc 1 phần"),
+                                statusOption(OrderConstants.ORDER_STATUS_CONFIRMED, "Đã xác nhận và đang chuẩn bị hàng"),
                                 statusOption(OrderConstants.ORDER_STATUS_PROCESSING, "Đang gia công"),
                                 statusOption(OrderConstants.ORDER_STATUS_READY, "Đã chuyển cho đơn vị vận chuyển"),
-                                statusOption(OrderConstants.ORDER_STATUS_PAID, "Đã trả"),
                                 statusOption(OrderConstants.ORDER_STATUS_COMPLETED, "Hoàn thành"),
                                 statusOption(OrderConstants.ORDER_STATUS_CANCELED, "Đã hủy")
                         ))
