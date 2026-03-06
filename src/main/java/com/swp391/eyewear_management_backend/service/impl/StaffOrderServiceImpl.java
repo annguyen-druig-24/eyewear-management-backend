@@ -39,6 +39,34 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     private static final Set<String> ALLOWED_SORT_FIELDS = Set.of(
             "orderDate", "orderCode", "orderType", "orderStatus", "totalAmount"
     );
+    private static final Set<String> SALES_ALLOWED_ORDER_TYPES = Set.of(
+            OrderConstants.ORDER_TYPE_DIRECT,
+            OrderConstants.ORDER_TYPE_PRE,
+            OrderConstants.ORDER_TYPE_PRESCRIPTION,
+            OrderConstants.ORDER_TYPE_MIX
+    );
+    private static final Set<String> OPERATION_ALLOWED_ORDER_TYPES = Set.of(
+            OrderConstants.ORDER_TYPE_PRESCRIPTION,
+            OrderConstants.ORDER_TYPE_MIX
+    );
+    private static final Set<String> SALES_ALLOWED_ORDER_STATUSES = Set.of(
+            OrderConstants.ORDER_STATUS_PENDING,
+            OrderConstants.ORDER_STATUS_CONFIRMED,
+            OrderConstants.ORDER_STATUS_PARTIALLY_PAID,
+            OrderConstants.ORDER_STATUS_PAID,
+            OrderConstants.ORDER_STATUS_PROCESSING,
+            OrderConstants.ORDER_STATUS_READY,
+            OrderConstants.ORDER_STATUS_COMPLETED,
+            OrderConstants.ORDER_STATUS_CANCELED
+    );
+    private static final Set<String> OPERATION_ALLOWED_ORDER_STATUSES = Set.of(
+            OrderConstants.ORDER_STATUS_PARTIALLY_PAID,
+            OrderConstants.ORDER_STATUS_PROCESSING,
+            OrderConstants.ORDER_STATUS_READY,
+            OrderConstants.ORDER_STATUS_PAID,
+            OrderConstants.ORDER_STATUS_COMPLETED,
+            OrderConstants.ORDER_STATUS_CANCELED
+    );
 
     @Override
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
@@ -65,30 +93,18 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     public List<OrderStatusGroupResponse> getSalesStaffOrderStatuses() {
         return List.of(
                 OrderStatusGroupResponse.builder()
-                        .groupName("DIRECT/PRE ORDER")
-                        .orderTypes(List.of(OrderConstants.ORDER_TYPE_DIRECT, OrderConstants.ORDER_TYPE_PRE))
-                        .statuses(List.of(
-                                statusOption(OrderConstants.ORDER_STATUS_CONFIRMED, "Đã xác nhận và đang chuẩn bị hàng"),
-                                statusOption(OrderConstants.ORDER_STATUS_COMPLETED, "Hoàn thành"),
-                                statusOption(OrderConstants.ORDER_STATUS_CANCELED, "Đã hủy"),
-                                statusOption(OrderConstants.ORDER_STATUS_READY, "Đã chuyển cho đơn vị vận chuyển")
+                        .groupName("ORDER WORKFLOW")
+                        .orderTypes(List.of(
+                                OrderConstants.ORDER_TYPE_DIRECT,
+                                OrderConstants.ORDER_TYPE_PRE,
+                                OrderConstants.ORDER_TYPE_PRESCRIPTION,
+                                OrderConstants.ORDER_TYPE_MIX
                         ))
-                        .build(),
-                OrderStatusGroupResponse.builder()
-                        .groupName("PRESCRIPTION ORDER")
-                        .orderTypes(List.of(OrderConstants.ORDER_TYPE_PRESCRIPTION))
                         .statuses(List.of(
+                                statusOption(OrderConstants.ORDER_STATUS_PENDING, "Đang chờ"),
                                 statusOption(OrderConstants.ORDER_STATUS_CONFIRMED, "Đã xác nhận và đang chuẩn bị hàng"),
-                                statusOption(OrderConstants.ORDER_STATUS_PROCESSING, "Đang gia công"),
-                                statusOption(OrderConstants.ORDER_STATUS_COMPLETED, "Hoàn thành"),
-                                statusOption(OrderConstants.ORDER_STATUS_CANCELED, "Đã hủy")
-                        ))
-                        .build(),
-                OrderStatusGroupResponse.builder()
-                        .groupName("MIX_ORDER")
-                        .orderTypes(List.of(OrderConstants.ORDER_TYPE_MIX))
-                        .statuses(List.of(
-                                statusOption(OrderConstants.ORDER_STATUS_CONFIRMED, "Đã xác nhận và đang chuẩn bị hàng"),
+                                statusOption(OrderConstants.ORDER_STATUS_PARTIALLY_PAID, "Đã trả cọc 1 phần"),
+                                statusOption(OrderConstants.ORDER_STATUS_PAID, "Đã trả"),
                                 statusOption(OrderConstants.ORDER_STATUS_PROCESSING, "Đang gia công"),
                                 statusOption(OrderConstants.ORDER_STATUS_READY, "Đã chuyển cho đơn vị vận chuyển"),
                                 statusOption(OrderConstants.ORDER_STATUS_COMPLETED, "Hoàn thành"),
@@ -106,8 +122,10 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                         .groupName("PRESCRIPTION WORKFLOW")
                         .orderTypes(List.of(OrderConstants.ORDER_TYPE_PRESCRIPTION, OrderConstants.ORDER_TYPE_MIX))
                         .statuses(List.of(
+                                statusOption(OrderConstants.ORDER_STATUS_PARTIALLY_PAID, "Đã trả cọc 1 phần"),
                                 statusOption(OrderConstants.ORDER_STATUS_PROCESSING, "Đang gia công"),
                                 statusOption(OrderConstants.ORDER_STATUS_READY, "Đã chuyển cho đơn vị vận chuyển"),
+                                statusOption(OrderConstants.ORDER_STATUS_PAID, "Đã trả"),
                                 statusOption(OrderConstants.ORDER_STATUS_COMPLETED, "Hoàn thành"),
                                 statusOption(OrderConstants.ORDER_STATUS_CANCELED, "Đã hủy")
                         ))
@@ -135,6 +153,12 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     private Specification<Order> buildSpecification(StaffOrderSearchRequest request, boolean operationStaffScope) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
+            Set<String> allowedOrderTypes = operationStaffScope
+                    ? OPERATION_ALLOWED_ORDER_TYPES
+                    : SALES_ALLOWED_ORDER_TYPES;
+            Set<String> allowedOrderStatuses = operationStaffScope
+                    ? OPERATION_ALLOWED_ORDER_STATUSES
+                    : SALES_ALLOWED_ORDER_STATUSES;
 
             if (StringUtils.hasText(request.getOrderCode())) {
                 String keyword = "%" + request.getOrderCode().trim().toUpperCase() + "%";
@@ -150,20 +174,34 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 
             if (StringUtils.hasText(request.getOrderType())) {
                 String normalizedType = request.getOrderType().trim().toUpperCase();
+                if (!allowedOrderTypes.contains(normalizedType)) {
+                    return cb.disjunction();
+                }
                 predicates.add(cb.equal(cb.upper(root.get("orderType")), normalizedType));
             }
 
             boolean hasOrderStatusFilter = StringUtils.hasText(request.getOrderStatus());
             if (hasOrderStatusFilter) {
                 String normalizedStatus = normalizeStatus(request.getOrderStatus());
+                if (!allowedOrderStatuses.contains(normalizedStatus)) {
+                    return cb.disjunction();
+                }
                 predicates.add(cb.equal(cb.upper(root.get("orderStatus")), normalizedStatus));
             }
 
-            if (operationStaffScope) {  //khối if này chỉ dành cho hàm searchOrdersForOperationStaff vì nó đang truyền vào true --> Dành cho OPERATIONS STAFF
+            /*
+                * Giới hạn phạm vi dữ liệu được phép xem
+                * Ví dụ role chỉ được thấy PRESCRIPTION, MIX thì dù không truyền filter, query vẫn chỉ trả về 2 loại này
+                * Dòng 1 chặn theo orderType
+                * Dòng 2 chặn theo orderStatus
+                * equal(...): filter “người dùng yêu cầu gì thì lọc đúng cái đó”.
+                * in(...): filter “hệ thống cho phép gì thì chỉ được thấy cái đó”.
+             */
+            predicates.add(cb.upper(root.get("orderType")).in(allowedOrderTypes));
+            predicates.add(cb.upper(root.get("orderStatus")).in(allowedOrderStatuses));
+
+            if (operationStaffScope) {
                 predicates.add(buildHasPrescriptionPredicate(root, query, cb));
-                if (!hasOrderStatusFilter) {
-                    predicates.add(cb.equal(cb.upper(root.get("orderStatus")), OrderConstants.ORDER_STATUS_PROCESSING));
-                }
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));
@@ -190,6 +228,15 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         }
         if ("DA HUY".equals(alias)) {
             return OrderConstants.ORDER_STATUS_CANCELED;
+        }
+        if ("DANG CHO".equals(alias) || "CHO XAC NHAN".equals(alias)) {
+            return OrderConstants.ORDER_STATUS_PENDING;
+        }
+        if ("DA TRA COC 1 PHAN".equals(alias) || "DA TRA COC MOT PHAN".equals(alias)) {
+            return OrderConstants.ORDER_STATUS_PARTIALLY_PAID;
+        }
+        if ("DA TRA".equals(alias) || "THANH TOAN THANH CONG".equals(alias)) {
+            return OrderConstants.ORDER_STATUS_PAID;
         }
         return normalized;
     }
