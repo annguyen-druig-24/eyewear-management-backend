@@ -164,7 +164,6 @@ public class OrderServiceImpl implements OrderService {
             rxOrder.setOrder(savedOrder);
             rxOrder.setUser(user);
             rxOrder.setPrescriptionDate(LocalDateTime.now());
-            rxOrder.setNote(request.getNote());
             savedRxOrder = prescriptionOrderRepo.save(rxOrder);
         }
 
@@ -188,7 +187,6 @@ public class OrderServiceImpl implements OrderService {
                 od.setProduct(product);
                 od.setUnitPrice(li.getUnitPrice());
                 od.setQuantity(li.getQuantity() == null ? 1 : li.getQuantity());
-                od.setNote(request.getNote());
 
                 normalDetails.add(od);
             } else {
@@ -244,6 +242,7 @@ public class OrderServiceImpl implements OrderService {
         ship.setRecipientName(request.getRecipientName());
         ship.setRecipientPhone(request.getRecipientPhone());
         ship.setRecipientEmail(request.getRecipientEmail());
+        ship.setNote(request.getNote());
 
         ship.setRecipientAddress(buildFullAddress(address, user));
         ship.setProvinceCode(address != null ? address.getProvinceCode() : null);

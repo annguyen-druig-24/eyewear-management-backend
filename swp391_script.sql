@@ -1,4 +1,4 @@
-﻿CREATE DATABASE EyewearManagement
+CREATE DATABASE EyewearManagement
 GO
 USE EyewearManagement
 GO
@@ -356,6 +356,7 @@ CREATE TABLE Shipping_Info (
                                Recipient_Email VARCHAR(100) NULL,
 
                                Recipient_Address NVARCHAR(255) NOT NULL,
+                               Note NVARCHAR(MAX) NULL,
 
                                Province_Code INT NULL,
                                Province_Name NVARCHAR(100) NULL,

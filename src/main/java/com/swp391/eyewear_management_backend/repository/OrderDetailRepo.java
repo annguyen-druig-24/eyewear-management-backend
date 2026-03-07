@@ -2,6 +2,8 @@ package com.swp391.eyewear_management_backend.repository;
 
 import com.swp391.eyewear_management_backend.entity.OrderDetail;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -9,8 +11,12 @@ import java.util.List;
 @Repository
 public interface OrderDetailRepo extends JpaRepository<OrderDetail, Long> {
     
-    /**
-     * Lấy tất cả OrderDetail của một Order
-     */
-    List<OrderDetail> findByOrder_OrderID(Long orderId);
+    @Query("""
+        select distinct od
+        from OrderDetail od
+        join fetch od.product p
+        left join fetch p.images pi
+        where od.order.orderID = :orderId
+    """)
+    List<OrderDetail> findByOrderIdFetchProduct(@Param("orderId") Long orderId);
 }
