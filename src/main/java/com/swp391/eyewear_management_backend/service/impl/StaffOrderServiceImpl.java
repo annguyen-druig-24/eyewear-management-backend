@@ -4,11 +4,17 @@ import com.swp391.eyewear_management_backend.config.OrderConstants;
 import com.swp391.eyewear_management_backend.dto.request.StaffOrderSearchRequest;
 import com.swp391.eyewear_management_backend.dto.response.OrderStatusGroupResponse;
 import com.swp391.eyewear_management_backend.dto.response.OrderStatusOptionResponse;
+import com.swp391.eyewear_management_backend.dto.response.StaffOrderDetailResponse;
+import com.swp391.eyewear_management_backend.dto.response.StaffOrderItemResponse;
 import com.swp391.eyewear_management_backend.dto.response.StaffOrderListResponse;
-import com.swp391.eyewear_management_backend.entity.Order;
-import com.swp391.eyewear_management_backend.entity.PrescriptionOrder;
+import com.swp391.eyewear_management_backend.dto.response.StaffPrescriptionOrderItemResponse;
+import com.swp391.eyewear_management_backend.entity.*;
+import com.swp391.eyewear_management_backend.exception.AppException;
+import com.swp391.eyewear_management_backend.exception.ErrorCode;
 import com.swp391.eyewear_management_backend.mapper.StaffOrderMapper;
+import com.swp391.eyewear_management_backend.repository.OrderDetailRepo;
 import com.swp391.eyewear_management_backend.repository.OrderRepo;
+import com.swp391.eyewear_management_backend.repository.PrescriptionOrderRepo;
 import com.swp391.eyewear_management_backend.service.StaffOrderService;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -21,11 +27,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
 import java.text.Normalizer;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 @Service
@@ -34,6 +44,8 @@ import java.util.Set;
 public class StaffOrderServiceImpl implements StaffOrderService {
 
     private final OrderRepo orderRepo;
+    private final OrderDetailRepo orderDetailRepo;
+    private final PrescriptionOrderRepo prescriptionOrderRepo;
     private final StaffOrderMapper staffOrderMapper;
 
     private static final Set<String> ALLOWED_SORT_FIELDS = Set.of(
@@ -98,6 +110,39 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 
     @Override
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public StaffOrderDetailResponse getOrderDetailForSalesStaff(Long orderId) {
+        Order order = orderRepo.findByIdFetchStatus(orderId)
+                .orElseThrow(() -> new AppException(ErrorCode.ORDER_NOT_FOUND));
+        ShippingInfo shippingInfo = order.getShippingInfo();
+
+        List<StaffOrderItemResponse> orderItems = orderDetailRepo.findByOrderIdFetchProduct(orderId).stream()
+                .map(this::toOrderItemResponse)
+                .toList();
+
+        List<StaffPrescriptionOrderItemResponse> prescriptionItems = mapPrescriptionItems(orderId);
+
+        return StaffOrderDetailResponse.builder()
+                .orderId(order.getOrderID())
+                .orderCode(order.getOrderCode())
+                .orderStatus(order.getOrderStatus())
+                .orderType(order.getOrderType())
+                .orderDate(order.getOrderDate())
+                .totalAmount(order.getTotalAmount())
+                .customerName(order.getUser() != null ? order.getUser().getName() : null)
+                .customerPhone(order.getUser() != null ? order.getUser().getPhone() : null)
+                .customerEmail(order.getUser() != null ? order.getUser().getEmail() : null)
+                .orderDetail(orderItems)
+                .prescriptionOrderDetail(prescriptionItems)
+                .recipientName(shippingInfo != null ? shippingInfo.getRecipientName() : null)
+                .recipientPhone(shippingInfo != null ? shippingInfo.getRecipientPhone() : null)
+                .recipientEmail(shippingInfo != null ? shippingInfo.getRecipientEmail() : null)
+                .recipientAddress(shippingInfo != null ? shippingInfo.getRecipientAddress() : null)
+                .note(shippingInfo != null ? shippingInfo.getNote() : null)
+                .build();
+    }
+
+    @Override
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
     public List<OrderStatusGroupResponse> getSalesStaffOrderStatuses() {
         return List.of(
                 OrderStatusGroupResponse.builder()
@@ -138,6 +183,127 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                         ))
                         .build()
         );
+    }
+
+    private StaffOrderItemResponse toOrderItemResponse(OrderDetail detail) {
+        Product product = detail.getProduct();
+        Integer quantity = detail.getQuantity() == null ? 0 : detail.getQuantity();
+        BigDecimal unitPrice = detail.getUnitPrice() == null ? BigDecimal.ZERO : detail.getUnitPrice();
+        return StaffOrderItemResponse.builder()
+                .productId(product != null ? product.getProductID() : null)
+                .productName(product != null ? product.getProductName() : null)
+                .quantity(quantity)
+                .unitPrice(unitPrice)
+                .totalPrice(unitPrice.multiply(BigDecimal.valueOf(quantity)))
+                .imageUrl(pickPrimaryImage(product))
+                .build();
+    }
+
+    private List<StaffPrescriptionOrderItemResponse> mapPrescriptionItems(Long orderId) {
+        PrescriptionOrder prescriptionOrder = prescriptionOrderRepo.findByOrder_OrderID(orderId).orElse(null);
+        if (prescriptionOrder == null || prescriptionOrder.getPrescriptionOrderDetails() == null) {
+            return List.of();
+        }
+
+        Map<PrescriptionGroupKey, RxAggregate> aggregates = new LinkedHashMap<>();
+        for (PrescriptionOrderDetail detail : prescriptionOrder.getPrescriptionOrderDetails()) {
+            String rightSph = bdToText(detail.getRightEyeSph());
+            String rightCyl = bdToText(detail.getRightEyeCyl());
+            String rightAxis = detail.getRightEyeAxis() == null ? null : String.valueOf(detail.getRightEyeAxis());
+            String leftSph = bdToText(detail.getLeftEyeSph());
+            String leftCyl = bdToText(detail.getLeftEyeCyl());
+            String leftAxis = detail.getLeftEyeAxis() == null ? null : String.valueOf(detail.getLeftEyeAxis());
+
+            Long frameId = detail.getFrame() != null ? detail.getFrame().getFrameID() : null;
+            Long lensId = detail.getLens() != null ? detail.getLens().getLensID() : null;
+            Product frameProduct = detail.getFrame() != null ? detail.getFrame().getProduct() : null;
+            Product lensProduct = detail.getLens() != null ? detail.getLens().getProduct() : null;
+            String frameName = frameProduct != null ? frameProduct.getProductName() : null;
+            String lensName = lensProduct != null ? lensProduct.getProductName() : null;
+
+            BigDecimal framePrice = productPrice(frameProduct);
+            BigDecimal lensPrice = productPrice(lensProduct);
+            BigDecimal lineTotal = detail.getSubTotal() == null ? BigDecimal.ZERO : detail.getSubTotal();
+
+            PrescriptionGroupKey key = new PrescriptionGroupKey(
+                    frameId,
+                    lensId,
+                    rightSph,
+                    rightCyl,
+                    rightAxis,
+                    leftSph,
+                    leftCyl,
+                    leftAxis,
+                    bdToText(lineTotal)
+            );
+
+            RxAggregate aggregate = aggregates.computeIfAbsent(key, k -> new RxAggregate(
+                    StaffPrescriptionOrderItemResponse.builder()
+                            .frameId(frameId)
+                            .frameName(frameName)
+                            .framePrice(framePrice)
+                            .frameImg(pickPrimaryImage(frameProduct))
+                            .lensId(lensId)
+                            .lensName(lensName)
+                            .lensPrice(lensPrice)
+                            .lensImg(pickPrimaryImage(lensProduct))
+                            .contactLensId(null)
+                            .contactLensName(null)
+                            .contactLensPrice(BigDecimal.ZERO)
+                            .contactLensImg(null)
+                            .rightEyeSph(rightSph)
+                            .rightEyeCyl(rightCyl)
+                            .rightEyeAxis(rightAxis)
+                            .leftEyeSph(leftSph)
+                            .leftEyeCyl(leftCyl)
+                            .leftEyeAxis(leftAxis)
+                            .quantity(0)
+                            .totalPrice(BigDecimal.ZERO)
+                            .build()
+            ));
+
+            aggregate.response.setQuantity(aggregate.response.getQuantity() + 1);
+            aggregate.response.setTotalPrice(aggregate.response.getTotalPrice().add(lineTotal));
+        }
+        return aggregates.values().stream().map(a -> a.response).toList();
+    }
+
+    private BigDecimal productPrice(Product product) {
+        return product != null && product.getPrice() != null ? product.getPrice() : BigDecimal.ZERO;
+    }
+
+    private String pickPrimaryImage(Product... products) {
+        if (products == null) {
+            return null;
+        }
+        for (Product product : products) {
+            String image = pickPrimaryImage(product);
+            if (image != null) {
+                return image;
+            }
+        }
+        return null;
+    }
+
+    private String pickPrimaryImage(Product product) {
+        if (product == null || product.getImages() == null || product.getImages().isEmpty()) {
+            return null;
+        }
+        return product.getImages().stream()
+                .filter(Objects::nonNull)
+                .filter(i -> Boolean.TRUE.equals(i.getAvatar()))
+                .findFirst()
+                .map(ProductImage::getImageUrl)
+                .orElseGet(() -> product.getImages().stream()
+                        .filter(Objects::nonNull)
+                        .map(ProductImage::getImageUrl)
+                        .filter(StringUtils::hasText)
+                        .findFirst()
+                        .orElse(null));
+    }
+
+    private String bdToText(BigDecimal value) {
+        return value == null ? null : value.stripTrailingZeros().toPlainString();
     }
 
     private Pageable buildPageable(StaffOrderSearchRequest request) {
@@ -277,5 +443,26 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                 .code(code)
                 .displayName(displayName)
                 .build();
+    }
+
+    private static class RxAggregate {
+        private final StaffPrescriptionOrderItemResponse response;
+
+        private RxAggregate(StaffPrescriptionOrderItemResponse response) {
+            this.response = response;
+        }
+    }
+
+    private record PrescriptionGroupKey(
+            Long frameId,
+            Long lensId,
+            String rightEyeSph,
+            String rightEyeCyl,
+            String rightEyeAxis,
+            String leftEyeSph,
+            String leftEyeCyl,
+            String leftEyeAxis,
+            String lineSubTotal
+    ) {
     }
 }
