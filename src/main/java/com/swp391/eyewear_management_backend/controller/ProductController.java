@@ -1,5 +1,6 @@
 package com.swp391.eyewear_management_backend.controller;
 
+import com.swp391.eyewear_management_backend.dto.request.ProductUpdateRequest;
 import com.swp391.eyewear_management_backend.dto.response.ProductDetailResponse;
 import com.swp391.eyewear_management_backend.dto.response.ProductResponse;
 import com.swp391.eyewear_management_backend.service.ProductService;
@@ -29,5 +30,18 @@ public class ProductController {
     @GetMapping("/{id}")
     public ResponseEntity<ProductDetailResponse> getProduct(@PathVariable Long id) {
         return ResponseEntity.ok(productService.getProductById(id));
+    }
+
+    @PutMapping()
+    public ResponseEntity<ProductResponse> updateProduct(
+            @RequestBody ProductUpdateRequest request) {
+        return ResponseEntity.ok(productService.updateProduct(request));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
+        productService.deleteProduct(id);
+        // Trả về 204 No Content là chuẩn RESTful cho hành động xóa thành công
+        return ResponseEntity.noContent().build();
     }
 }

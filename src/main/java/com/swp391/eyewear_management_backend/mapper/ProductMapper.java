@@ -21,6 +21,8 @@ public interface ProductMapper {
 
     @Mapping(source = "productID", target = "id")
     @Mapping(source = "productName", target = "name")
+    @Mapping(source = "SKU", target = "sku")
+    @Mapping(source = "description", target = "description")
     @Mapping(source = "brand.brandName", target = "brand")
     @Mapping(source = "productType.typeName", target = "product_Type")
     @Mapping(source = "images", target = "image_URL", qualifiedByName = "getAvatarUrl")

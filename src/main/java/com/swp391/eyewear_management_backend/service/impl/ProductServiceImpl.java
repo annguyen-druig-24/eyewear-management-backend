@@ -1,17 +1,24 @@
 package com.swp391.eyewear_management_backend.service.impl;
 
+import com.swp391.eyewear_management_backend.dto.request.ProductUpdateRequest;
 import com.swp391.eyewear_management_backend.dto.response.ProductDetailResponse;
 import com.swp391.eyewear_management_backend.dto.response.ProductResponse;
 import com.swp391.eyewear_management_backend.dto.response.extend.ContactLensResponse;
 import com.swp391.eyewear_management_backend.dto.response.extend.FrameResponse;
 import com.swp391.eyewear_management_backend.dto.response.extend.LensResponse;
+import com.swp391.eyewear_management_backend.entity.Brand;
 import com.swp391.eyewear_management_backend.entity.Product;
+import com.swp391.eyewear_management_backend.entity.ProductType;
 import com.swp391.eyewear_management_backend.mapper.ProductMapper;
+import com.swp391.eyewear_management_backend.repository.BrandRepo;
 import com.swp391.eyewear_management_backend.repository.ProductRepo;
+import com.swp391.eyewear_management_backend.repository.ProductTypeRepo;
 import com.swp391.eyewear_management_backend.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -20,6 +27,12 @@ public class ProductServiceImpl implements ProductService {
 
     @Autowired
     private ProductRepo productRepository;
+
+    @Autowired
+    private BrandRepo brandRepository;
+
+    @Autowired
+    private ProductTypeRepo productTypeRepository;
 
     @Autowired
     private ProductMapper productMapper;
@@ -97,6 +110,66 @@ public class ProductServiceImpl implements ProductService {
         response.setRelatedContactLenses(relatedContactLenses.stream()
                 .map(productMapper::toProductResponse)
                 .collect(Collectors.toList()));
+    }
+
+    @Override
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public ProductResponse updateProduct(ProductUpdateRequest request) {
+        // 1. Tìm sản phẩm hiện tại
+        Product product = productRepository.findById(request.getId())
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm với ID: " + request.getId()));
+
+        // 2. Cập nhật thông tin cơ bản
+        if (request.getName() != null) product.setProductName(request.getName());
+        if (request.getSku() != null) product.setSKU(request.getSku());
+        if (request.getPrice() != null) product.setPrice(BigDecimal.valueOf(request.getPrice()));
+        if (request.getDescription() != null) product.setDescription(request.getDescription());
+
+        // 3. Xử lý Brand (Thương hiệu)
+        if (request.getBrandName() != null && !request.getBrandName().trim().isEmpty()) {
+            String brandNameInput = request.getBrandName().trim();
+            Brand brand = brandRepository.findByBrandName(brandNameInput)
+                    .orElseGet(() -> {
+                        // Nếu chưa có thì tạo mới
+                        Brand newBrand = new Brand();
+                        newBrand.setBrandName(brandNameInput);
+                        newBrand.setStatus(true); // Set status mặc định là 1 (Active) dựa theo hình ảnh DB của bạn
+                        return brandRepository.save(newBrand);
+                    });
+            product.setBrand(brand);
+        }
+
+        // 4. Xử lý Product Type (Loại sản phẩm)
+        if (request.getTypeName() != null && !request.getTypeName().trim().isEmpty()) {
+            String typeNameInput = request.getTypeName().trim();
+            ProductType type = productTypeRepository.findByTypeName(typeNameInput)
+                    .orElseGet(() -> {
+                        // Nếu chưa có thì tạo mới
+                        ProductType newType = new ProductType();
+                        newType.setTypeName(typeNameInput);
+                        // Có thể thêm description mặc định nếu cần
+                        return productTypeRepository.save(newType);
+                    });
+            product.setProductType(type);
+        }
+
+        // 5. Lưu sản phẩm và trả về
+        Product updatedProduct = productRepository.save(product);
+        return productMapper.toProductResponse(updatedProduct);
+    }
+
+    @Override
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public void deleteProduct(Long id) {
+        // 1. Tìm sản phẩm
+        Product product = productRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm với ID: " + id));
+
+        // 2. Thực hiện xóa
+        // LƯU Ý: Với hệ thống thực tế (đặc biệt có liên quan đến hóa đơn/đơn hàng),
+        // bạn nên dùng Soft Delete (đổi trạng thái isDeleted = true) thay vì Hard Delete.
+        // Dưới đây là ví dụ Hard Delete:
+        productRepository.delete(product);
     }
 
 }

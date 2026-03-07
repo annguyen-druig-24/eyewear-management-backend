@@ -12,6 +12,8 @@ import lombok.NoArgsConstructor;
 public class ProductResponse {
     private Long id;
     private String name;
+    private String sku;
+    private String description;
     private Double price;
     private Boolean allowPreorder;
     private String Image_URL;
