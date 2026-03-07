@@ -1,5 +1,6 @@
 package com.swp391.eyewear_management_backend.service.impl;
 
+import com.swp391.eyewear_management_backend.dto.request.AdminUpdateUserRequest;
 import com.swp391.eyewear_management_backend.dto.request.UpdateDefaultAddressRequest;
 import com.swp391.eyewear_management_backend.dto.request.UserCreationRequest;
 import com.swp391.eyewear_management_backend.dto.request.UserUpdateRequest;
@@ -163,5 +164,37 @@ public class UserServiceImpl implements UserService {
         String province = request.getProvinceName().trim();
 
         return String.format("%s, %s, %s, %s", street, ward, district, province);
+    }
+
+    // ... các import cũ
+
+    @Override
+    @PreAuthorize("hasRole('ADMIN')") // Bắt buộc phải là ADMIN mới chạy được hàm này
+    public UserRespone updateUserByAdmin(AdminUpdateUserRequest request) {
+        log.info("Admin is updating user with ID: {}", request.getId());
+
+        // 1. Tìm user cần update
+        User user = userRepo.findById(request.getId())
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
+
+        // 2. Cập nhật các trường cơ bản (nếu admin có truyền vào)
+        if(request.getName() != null) user.setName(request.getName().trim());
+        if(request.getPhone() != null) user.setPhone(request.getPhone().trim());
+        if(request.getAddress() != null) user.setAddress(request.getAddress().trim());
+
+        // 3. Cập nhật Status (Trạng thái làm việc)
+        if(request.getStatus() != null) {
+            user.setStatus(request.getStatus());
+        }
+
+        // 4. Cập nhật Role (Vai trò)
+        if (request.getRoleName() != null && !request.getRoleName().trim().isEmpty()) {
+            Role role = roleRepo.findByTypeName(request.getRoleName().trim().toUpperCase())
+                    .orElseThrow(() -> new AppException(ErrorCode.ROLE_NOT_FOUND));
+            user.setRole(role);
+        }
+
+        // 5. Lưu xuống DB và trả về response
+        return userMapper.toUserRespone(userRepo.save(user));
     }
 }

@@ -21,6 +21,7 @@ public class UserRespone {
     String address;
     String idNumber;
     RoleResponse role;
+    Boolean status;
     Integer provinceCode;
     String provinceName;
     Integer districtCode;

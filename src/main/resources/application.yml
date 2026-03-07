@@ -79,3 +79,5 @@ payos:
   api-key: 4f3f8b40-0afb-4ffc-8a7d-c74dea4230af
   checksum-key: db796b0590d5779b8b5bac09a915fe58a533c9f24d1c3057b0c16f334b2a44c6
 
+springdoc:
+  packages-to-scan: com.swp391.eyewear_management_backend.controller

@@ -1,5 +1,6 @@
 package com.swp391.eyewear_management_backend.service;
 
+import com.swp391.eyewear_management_backend.dto.request.AdminUpdateUserRequest;
 import com.swp391.eyewear_management_backend.dto.request.UpdateDefaultAddressRequest;
 import com.swp391.eyewear_management_backend.dto.request.UserCreationRequest;
 import com.swp391.eyewear_management_backend.dto.request.UserUpdateRequest;
@@ -32,4 +33,6 @@ public interface UserService {
     User findByName(String userName);
 
     UserRespone updateMyDefaultAddress(UpdateDefaultAddressRequest request);
+
+    public UserRespone updateUserByAdmin(AdminUpdateUserRequest request);
 }
