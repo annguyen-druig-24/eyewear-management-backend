@@ -173,7 +173,7 @@ public class UserServiceImpl implements UserService {
     }
 
     //Phân quyền dựa trên Method
-    @PreAuthorize("hasRole('ADMIN')")   //@PreAuthorize("hasRole('X')") sẽ chặn các user mà có role ko trùng với role X     --> Thỏa Method mới đc vào method
+//    @PreAuthorize("hasRole('ADMIN')")   //@PreAuthorize("hasRole('X')") sẽ chặn các user mà có role ko trùng với role X     --> Thỏa Method mới đc vào method
     //@PreAuthorize("hasAuthority('UPDATE_POST')")
     public List<UserRespone> getUsers() {
         log.info("In method getUsers");

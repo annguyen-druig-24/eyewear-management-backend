@@ -40,7 +40,7 @@ public class UserController {
 
         return apiRespone;
     }
-
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
     @GetMapping
     ApiResponse<List<UserRespone>> getUsers() {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
