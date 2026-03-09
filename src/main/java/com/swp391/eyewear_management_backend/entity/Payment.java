@@ -5,6 +5,7 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 @Entity
 @Table(name = "Payment")
@@ -15,6 +16,7 @@ import java.time.LocalDateTime;
 @Builder
 @ToString(exclude = "order")
 public class Payment {
+    private static final ZoneId APP_ZONE_ID = ZoneId.of("Asia/Ho_Chi_Minh");
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -45,6 +47,18 @@ public class Payment {
 
     @PrePersist
     public void prePersist() {
-        if (createdAt == null) createdAt = LocalDateTime.now();
+        if (createdAt == null) createdAt = LocalDateTime.now(APP_ZONE_ID);
+        normalizePaymentDateByStatus();
+    }
+
+    @PreUpdate
+    public void preUpdate() {
+        normalizePaymentDateByStatus();
+    }
+
+    private void normalizePaymentDateByStatus() {
+        if (status != null && "PENDING".equalsIgnoreCase(status)) {
+            paymentDate = null;
+        }
     }
 }

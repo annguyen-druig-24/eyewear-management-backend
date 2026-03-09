@@ -35,11 +35,13 @@ public class CartItemRequest {
     Double rightEyeSph;
     Double rightEyeCyl;
     Integer rightEyeAxis;
+    @JsonAlias({"rightADD", "rightAdd", "RIGHT_ADD", "right_add"})
     Double rightEyeAdd;
 
     Double leftEyeSph;
     Double leftEyeCyl;
     Integer leftEyeAxis;
+    @JsonAlias({"leftADD", "leftAdd", "LEFT_ADD", "left_add"})
     Double leftEyeAdd;
 
     // Pupillary Distance

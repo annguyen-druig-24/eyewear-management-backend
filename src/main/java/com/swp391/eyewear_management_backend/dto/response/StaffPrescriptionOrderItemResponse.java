@@ -31,10 +31,12 @@ public class StaffPrescriptionOrderItemResponse {
     private String rightEyeSph;
     private String rightEyeCyl;
     private String rightEyeAxis;
+    private String rightEyeAdd;
     private String rightPD;
     private String leftEyeSph;
     private String leftEyeCyl;
     private String leftEyeAxis;
+    private String leftEyeAdd;
     private String leftPD;
     private Integer quantity;
     private BigDecimal totalPrice;

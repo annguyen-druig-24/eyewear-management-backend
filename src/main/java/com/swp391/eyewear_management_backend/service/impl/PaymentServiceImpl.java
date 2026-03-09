@@ -2,6 +2,7 @@ package com.swp391.eyewear_management_backend.service.impl;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.swp391.eyewear_management_backend.config.FrontendProperties;
 import com.swp391.eyewear_management_backend.dto.request.PaymentRequest;
 import com.swp391.eyewear_management_backend.dto.response.PaymentResponse;
 import com.swp391.eyewear_management_backend.entity.Order;
@@ -30,6 +31,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final PayOS payOS;
     private final OrderRepo orderRepository;
     private final UserRepo userRepo;
+    private final FrontendProperties frontendProperties;
 
     @Override
     public String createPayOSPaymentUrl(Long paymentId, long amount, String orderCodeStr) {
@@ -40,8 +42,8 @@ public class PaymentServiceImpl implements PaymentService {
                 description = description.substring(0, 25);
             }
 
-            String returnUrl = "http://localhost:5173/success";
-            String cancelUrl = "http://localhost:5173/cancel";
+            String returnUrl = buildFrontendUrl(frontendProperties.getSuccessPath());
+            String cancelUrl = buildFrontendUrl(frontendProperties.getCancelPath());
 
             CreatePaymentLinkRequest paymentRequest = CreatePaymentLinkRequest.builder()
                     // Dùng paymentId làm mã đơn của PayOS vì nó là kiểu Long hợp lệ
@@ -89,8 +91,8 @@ public class PaymentServiceImpl implements PaymentService {
             orderRepository.save(newOrder);
 
             String description = "Kinh mat " + payosOrderCode;
-            String returnUrl = "http://localhost:5173/success";
-            String cancelUrl = "http://localhost:5173/cancel";
+            String returnUrl = buildFrontendUrl(frontendProperties.getSuccessPath());
+            String cancelUrl = buildFrontendUrl(frontendProperties.getCancelPath());
 
             CreatePaymentLinkRequest paymentRequest = CreatePaymentLinkRequest.builder()
                     .orderCode(payosOrderCode)
@@ -147,5 +149,18 @@ public class PaymentServiceImpl implements PaymentService {
         } catch (Exception e) {
             System.err.println("❌ Lỗi xác thực Webhook: " + e.getMessage());
         }
+    }
+
+    private String buildFrontendUrl(String path) {
+        String base = frontendProperties.getBaseUrl();
+        String safePath = (path == null || path.isBlank()) ? "/" : path;
+
+        if (base.endsWith("/") && safePath.startsWith("/")) {
+            return base.substring(0, base.length() - 1) + safePath;
+        }
+        if (!base.endsWith("/") && !safePath.startsWith("/")) {
+            return base + "/" + safePath;
+        }
+        return base + safePath;
     }
 }

@@ -11,7 +11,6 @@ import java.math.BigDecimal;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(exclude = {"prescriptionOrder", "frame", "lens"})
 public class PrescriptionOrderDetail {
 
     @Id
@@ -37,32 +36,40 @@ public class PrescriptionOrderDetail {
     @JoinColumn(name = "Lens_ID")
     private Lens lens;
 
-    @Column(name = "Right_Eye_Sph", precision = 5, scale = 2)
-    private BigDecimal rightEyeSph;
+    // Right Eye Prescription
+    @Column(name = "Right_Eye_Sph", columnDefinition = "DECIMAL(5,2)")
+    private Double rightEyeSph;
 
-    @Column(name = "Right_Eye_Cyl", precision = 5, scale = 2)
-    private BigDecimal rightEyeCyl;
+    @Column(name = "Right_Eye_Cyl", columnDefinition = "DECIMAL(5,2)")
+    private Double rightEyeCyl;
 
     @Column(name = "Right_Eye_Axis")
     private Integer rightEyeAxis;
 
-    @Column(name = "Left_Eye_Sph", precision = 5, scale = 2)
-    private BigDecimal leftEyeSph;
+    @Column(name = "Right_Eye_Add", columnDefinition = "DECIMAL(5,2)")
+    private Double rightEyeAdd;
 
-    @Column(name = "Left_Eye_Cyl", precision = 5, scale = 2)
-    private BigDecimal leftEyeCyl;
+    // Left Eye Prescription
+    @Column(name = "Left_Eye_Sph", columnDefinition = "DECIMAL(5,2)")
+    private Double leftEyeSph;
+
+    @Column(name = "Left_Eye_Cyl", columnDefinition = "DECIMAL(5,2)")
+    private Double leftEyeCyl;
 
     @Column(name = "Left_Eye_Axis")
     private Integer leftEyeAxis;
 
+    @Column(name = "Left_Eye_Add", columnDefinition = "DECIMAL(5,2)")
+    private Double leftEyeAdd;
+
     @Column(name = "PD", columnDefinition = "DECIMAL(4,1)")
-    private BigDecimal pd;
+    private Double pd;
 
     @Column(name = "PD_Right", columnDefinition = "DECIMAL(4,1)")
-    private BigDecimal pdRight;
+    private Double pdRight;
 
     @Column(name = "PD_Left", columnDefinition = "DECIMAL(4,1)")
-    private BigDecimal pdLeft;
+    private Double pdLeft;
 
     @Column(name = "Sub_Total", nullable = false, precision = 15, scale = 2)
     private BigDecimal subTotal;

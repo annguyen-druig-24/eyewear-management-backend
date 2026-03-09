@@ -210,10 +210,12 @@ public class StaffOrderServiceImpl implements StaffOrderService {
             String rightSph = bdToText(detail.getRightEyeSph());
             String rightCyl = bdToText(detail.getRightEyeCyl());
             String rightAxis = detail.getRightEyeAxis() == null ? null : String.valueOf(detail.getRightEyeAxis());
+            String rightAdd = detail.getRightEyeAdd() == null ? null : String.valueOf(detail.getRightEyeAdd());
             String rightPD = bdToText(detail.getPdRight());
             String leftSph = bdToText(detail.getLeftEyeSph());
             String leftCyl = bdToText(detail.getLeftEyeCyl());
             String leftAxis = detail.getLeftEyeAxis() == null ? null : String.valueOf(detail.getLeftEyeAxis());
+            String leftAdd = detail.getLeftEyeAdd() == null ? null : String.valueOf(detail.getLeftEyeAdd());
             String leftPD = bdToText(detail.getPdLeft());
 
             Long frameId = detail.getFrame() != null ? detail.getFrame().getFrameID() : null;
@@ -232,11 +234,13 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                     lensId,
                     rightSph,
                     rightCyl,
+                    rightAdd,
                     rightAxis,
                     rightPD,
                     leftSph,
                     leftCyl,
                     leftAxis,
+                    leftAdd,
                     leftPD,
                     bdToText(lineTotal)
             );
@@ -258,10 +262,12 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                             .rightEyeSph(rightSph)
                             .rightEyeCyl(rightCyl)
                             .rightEyeAxis(rightAxis)
+                            .rightEyeAdd(rightAdd)
                             .rightPD(rightPD)
                             .leftEyeSph(leftSph)
                             .leftEyeCyl(leftCyl)
                             .leftEyeAxis(leftAxis)
+                            .rightEyeAdd(leftAdd)
                             .leftPD(leftPD)
                             .quantity(0)
                             .totalPrice(BigDecimal.ZERO)
@@ -310,6 +316,10 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 
     private String bdToText(BigDecimal value) {
         return value == null ? null : value.stripTrailingZeros().toPlainString();
+    }
+
+    private String bdToText(Double value) {
+        return value == null ? null : BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
     }
 
     private Pageable buildPageable(StaffOrderSearchRequest request) {
@@ -465,10 +475,12 @@ public class StaffOrderServiceImpl implements StaffOrderService {
             String rightEyeSph,
             String rightEyeCyl,
             String rightEyeAxis,
+            String rightEyeAdd,
             String rightPD,
             String leftEyeSph,
             String leftEyeCyl,
             String leftEyeAxis,
+            String leftEyeAdd,
             String leftPD,
             String lineSubTotal
     ) {

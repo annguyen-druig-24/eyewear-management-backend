@@ -215,16 +215,19 @@ public class OrderServiceImpl implements OrderService {
                     pod.setLens(ci.getLens());
 
                     if (rx != null) {
-                        pod.setRightEyeSph(toBd(rx.getRightEyeSph()));
-                        pod.setRightEyeCyl(toBd(rx.getRightEyeCyl()));
+                        pod.setRightEyeSph(rx.getRightEyeSph());
+                        pod.setRightEyeCyl(rx.getRightEyeCyl());
                         pod.setRightEyeAxis(rx.getRightEyeAxis());
+                        pod.setRightEyeAdd(rx.getRightEyeAdd());
 
-                        pod.setLeftEyeSph(toBd(rx.getLeftEyeSph()));
-                        pod.setLeftEyeCyl(toBd(rx.getLeftEyeCyl()));
+                        pod.setLeftEyeSph(rx.getLeftEyeSph());
+                        pod.setLeftEyeCyl(rx.getLeftEyeCyl());
                         pod.setLeftEyeAxis(rx.getLeftEyeAxis());
-                        pod.setPd(toBd(rx.getPd()));
-                        pod.setPdRight(toBd(rx.getPdRight()));
-                        pod.setPdLeft(toBd(rx.getPdLeft()));
+                        pod.setLeftEyeAdd(rx.getLeftEyeAdd());
+
+                        pod.setPd(rx.getPd());
+                        pod.setPdRight(rx.getPdRight());
+                        pod.setPdLeft(rx.getPdLeft());
                     }
 
                     // Sub_Total = unitPrice - perUnitDiscount (net per unit)
@@ -283,7 +286,7 @@ public class OrderServiceImpl implements OrderService {
                     .order(savedOrder)
                     .paymentPurpose("DEPOSIT")
                     .createdAt(now())
-                    .paymentDate(now())
+                    .paymentDate(null)
                     .paymentMethod(plan.depositMethod)
                     .amount(plan.depositAmount)
                     .status("PENDING")
