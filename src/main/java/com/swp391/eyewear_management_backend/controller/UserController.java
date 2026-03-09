@@ -1,5 +1,6 @@
 package com.swp391.eyewear_management_backend.controller;
 
+import com.swp391.eyewear_management_backend.dto.request.AdminCreateUserRequest;
 import com.swp391.eyewear_management_backend.dto.request.AdminUpdateUserRequest;
 import com.swp391.eyewear_management_backend.dto.request.UpdateDefaultAddressRequest;
 import com.swp391.eyewear_management_backend.dto.request.UserCreationRequest;
@@ -77,7 +78,7 @@ public class UserController {
 //    UserRespone updateUser(@PathVariable Long userId, @RequestBody @Valid UserUpdateRequest request) {
 //        return userServiceImpl.updateUser(userId, request);
 //    }
-    @PreAuthorize("hasRole('ADMIN')") // Chặn ngay từ Controller cho an toàn
+@PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')") // Chặn ngay từ Controller cho an toàn
     @DeleteMapping("/{userId}")
     public String deleteUserById(@PathVariable Long userId) {
         userService.deleteUserById(userId);
@@ -93,13 +94,24 @@ public class UserController {
     }
 
     @PutMapping("/admin/update")
-    @PreAuthorize("hasRole('ADMIN')") // Chặn ngay từ Controller cho an toàn
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")// Chặn ngay từ Controller cho an toàn
     public ApiResponse<UserRespone> updateUserByAdmin(
             @RequestBody @Valid AdminUpdateUserRequest request) {
 
         return ApiResponse.<UserRespone>builder()
                 .message("Updated user successfully")
                 .result(userService.updateUserByAdmin(request))
+                .build();
+    }
+
+    @PostMapping("/admin/create")
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public ApiResponse<UserRespone> createUserByAdmin(
+            @RequestBody @Valid AdminCreateUserRequest request) {
+
+        return ApiResponse.<UserRespone>builder()
+                .message("User created successfully by admin")
+                .result(userService.createUserByAdmin(request))
                 .build();
     }
 

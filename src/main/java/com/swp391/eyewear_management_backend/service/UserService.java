@@ -1,5 +1,6 @@
 package com.swp391.eyewear_management_backend.service;
 
+import com.swp391.eyewear_management_backend.dto.request.AdminCreateUserRequest;
 import com.swp391.eyewear_management_backend.dto.request.AdminUpdateUserRequest;
 import com.swp391.eyewear_management_backend.dto.request.UpdateDefaultAddressRequest;
 import com.swp391.eyewear_management_backend.dto.request.UserCreationRequest;
@@ -13,6 +14,9 @@ public interface UserService {
 
     // CREATE
     UserRespone createRequest(UserCreationRequest request);
+
+    // ADMIN - CREATE user (với tất cả các thông tin)
+    UserRespone createUserByAdmin(AdminCreateUserRequest request);
 
     // READ - thông tin user đang đăng nhập
     UserRespone getMyInfo();
