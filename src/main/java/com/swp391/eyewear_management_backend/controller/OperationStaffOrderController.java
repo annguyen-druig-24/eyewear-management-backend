@@ -3,6 +3,7 @@ package com.swp391.eyewear_management_backend.controller;
 import com.swp391.eyewear_management_backend.dto.request.StaffOrderSearchRequest;
 import com.swp391.eyewear_management_backend.dto.response.ApiResponse;
 import com.swp391.eyewear_management_backend.dto.response.OrderStatusGroupResponse;
+import com.swp391.eyewear_management_backend.dto.response.StaffOrderDetailResponse;
 import com.swp391.eyewear_management_backend.dto.response.StaffOrderListResponse;
 import com.swp391.eyewear_management_backend.service.StaffOrderService;
 import jakarta.validation.Valid;
@@ -40,6 +41,15 @@ public class OperationStaffOrderController {
     public ApiResponse<List<OrderStatusGroupResponse>> getStatusOptions() {
         List<OrderStatusGroupResponse> result = staffOrderService.getOperationStaffOrderStatuses();
         return ApiResponse.<List<OrderStatusGroupResponse>>builder()
+                .message("OK")
+                .result(result)
+                .build();
+    }
+
+    @GetMapping("/{orderId}")
+    public ApiResponse<StaffOrderDetailResponse> getOrderDetail(@PathVariable Long orderId) {
+        StaffOrderDetailResponse result = staffOrderService.getOrderDetailForOperationStaff(orderId);
+        return ApiResponse.<StaffOrderDetailResponse>builder()
                 .message("OK")
                 .result(result)
                 .build();

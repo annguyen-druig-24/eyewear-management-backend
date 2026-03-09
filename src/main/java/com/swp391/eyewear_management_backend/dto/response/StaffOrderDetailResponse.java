@@ -25,6 +25,10 @@ public class StaffOrderDetailResponse {
     private String orderType;
     private LocalDateTime orderDate;
     private BigDecimal totalAmount;
+    private String shippingStatus;
+    private Boolean hasPrescriptionItem;
+    private Boolean requiresFinalPayment;
+    private List<String> availableActions;
 
     //Thông tin người đặt hàng
     private String customerName;

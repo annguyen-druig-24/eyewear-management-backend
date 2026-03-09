@@ -28,7 +28,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
-import java.text.Normalizer;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -78,6 +77,11 @@ public class StaffOrderServiceImpl implements StaffOrderService {
             OrderConstants.ORDER_STATUS_COMPLETED,
             OrderConstants.ORDER_STATUS_CANCELED
     );
+    private static final Set<String> SALES_CONFIRMABLE_STATUSES = Set.of(
+            OrderConstants.ORDER_STATUS_PENDING,
+            OrderConstants.ORDER_STATUS_PARTIALLY_PAID,
+            OrderConstants.ORDER_STATUS_PAID
+    );
 
     @Override
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
@@ -113,13 +117,48 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     public StaffOrderDetailResponse getOrderDetailForSalesStaff(Long orderId) {
         Order order = orderRepo.findByIdFetchStatus(orderId)
                 .orElseThrow(() -> new AppException(ErrorCode.ORDER_NOT_FOUND));
+        return buildOrderDetailResponse(order, false);
+    }
+
+    //Hàm này dùng để cập nhật Order_Status cho trang OrderDetail của SALES STAFF
+    @Override
+    @Transactional
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public StaffOrderDetailResponse confirmOrderForSalesStaff(Long orderId) {
+        Order order = orderRepo.findByIdFetchStatus(orderId)
+                .orElseThrow(() -> new AppException(ErrorCode.ORDER_NOT_FOUND));
+        String currentStatus = order.getOrderStatus() == null
+                ? ""
+                : order.getOrderStatus().trim().toUpperCase(Locale.ROOT);
+        if (!SALES_CONFIRMABLE_STATUSES.contains(currentStatus)) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+        order.setOrderStatus(OrderConstants.ORDER_STATUS_CONFIRMED);
+        return buildOrderDetailResponse(order, false);
+    }
+
+    @Override
+    @PreAuthorize("hasAnyAuthority('ROLE_OPERATIONS STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public StaffOrderDetailResponse getOrderDetailForOperationStaff(Long orderId) {
+        Order order = orderRepo.findByIdFetchStatus(orderId)
+                .orElseThrow(() -> new AppException(ErrorCode.ORDER_NOT_FOUND));
+        return buildOrderDetailResponse(order, true);
+    }
+
+    private StaffOrderDetailResponse buildOrderDetailResponse(Order order, boolean operationStaffView) {
+        Long orderId = order.getOrderID();
         ShippingInfo shippingInfo = order.getShippingInfo();
+        String shippingStatus = shippingInfo != null ? shippingInfo.getShippingStatus() : null;
 
         List<StaffOrderItemResponse> orderItems = orderDetailRepo.findByOrderIdFetchProduct(orderId).stream()
                 .map(this::toOrderItemResponse)
                 .toList();
 
         List<StaffPrescriptionOrderItemResponse> prescriptionItems = mapPrescriptionItems(orderId);
+        boolean hasPrescriptionItem = !prescriptionItems.isEmpty();
+        List<String> availableActions = operationStaffView
+                ? resolveOperationActions(order.getOrderStatus(), shippingStatus, hasPrescriptionItem)
+                : resolveSalesActions(order.getOrderStatus());
 
         return StaffOrderDetailResponse.builder()
                 .orderId(order.getOrderID())
@@ -128,6 +167,10 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                 .orderType(order.getOrderType())
                 .orderDate(order.getOrderDate())
                 .totalAmount(order.getTotalAmount())
+                .shippingStatus(shippingStatus)
+                .hasPrescriptionItem(hasPrescriptionItem)
+                .requiresFinalPayment(isStatus(order.getOrderStatus(), OrderConstants.ORDER_STATUS_PARTIALLY_PAID))
+                .availableActions(availableActions)
                 .customerName(order.getUser() != null ? order.getUser().getName() : null)
                 .customerPhone(order.getUser() != null ? order.getUser().getPhone() : null)
                 .customerEmail(order.getUser() != null ? order.getUser().getEmail() : null)
@@ -139,6 +182,58 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                 .recipientAddress(shippingInfo != null ? shippingInfo.getRecipientAddress() : null)
                 .note(shippingInfo != null ? shippingInfo.getNote() : null)
                 .build();
+    }
+
+    private List<String> resolveSalesActions(String orderStatus) {
+        String currentStatus = orderStatus == null ? "" : orderStatus.trim().toUpperCase(Locale.ROOT);
+        if (SALES_CONFIRMABLE_STATUSES.contains(currentStatus)) {
+            return List.of("CONFIRM_ORDER");
+        }
+        return List.of();
+    }
+
+    private List<String> resolveOperationActions(String orderStatus, String shippingStatus, boolean hasPrescriptionItem) {
+        if (isStatus(orderStatus, OrderConstants.ORDER_STATUS_CANCELED)
+                || isStatus(orderStatus, OrderConstants.ORDER_STATUS_COMPLETED)
+                || isStatus(shippingStatus, OrderConstants.ORDER_STATUS_CANCELED)) {
+            return List.of();
+        }
+
+        List<String> actions = new ArrayList<>();
+        if (isStatus(orderStatus, OrderConstants.ORDER_STATUS_CONFIRMED)) {
+            if (hasPrescriptionItem) {
+                actions.add("START_PROCESSING");
+            } else if (isStatus(shippingStatus, OrderConstants.ORDER_STATUS_PENDING)) {
+                actions.add("START_PACKING");
+            }
+        }
+
+        if (isStatus(orderStatus, OrderConstants.ORDER_STATUS_PROCESSING) && hasPrescriptionItem) {
+            actions.add("MOVE_TO_PACKING");
+        }
+
+        if (isStatus(shippingStatus, "PACKING")) {
+            actions.add("HANDOVER_TO_GHN");
+        }
+
+        if (isStatus(shippingStatus, "SHIPPING")) {
+            actions.add("SYNC_GHN");
+        }
+
+        if (isStatus(shippingStatus, "DELIVERED")) {
+            if (isStatus(orderStatus, OrderConstants.ORDER_STATUS_PARTIALLY_PAID)) {
+                actions.add("CONFIRM_FULL_PAYMENT");
+            }
+            if (!isStatus(orderStatus, OrderConstants.ORDER_STATUS_PARTIALLY_PAID)) {
+                actions.add("COMPLETE_ORDER");
+            }
+        }
+
+        return actions;
+    }
+
+    private boolean isStatus(String value, String expected) {
+        return value != null && expected != null && expected.equalsIgnoreCase(value);
     }
 
     @Override
@@ -371,7 +466,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 
             boolean hasOrderStatusFilter = StringUtils.hasText(request.getOrderStatus());
             if (hasOrderStatusFilter) {
-                String normalizedStatus = normalizeStatus(request.getOrderStatus());
+                String normalizedStatus = request.getOrderStatus().trim().toUpperCase(Locale.ROOT);
                 if (!allowedOrderStatuses.contains(normalizedStatus)) {
                     return cb.disjunction();
                 }
@@ -397,39 +492,6 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         };
     }
 
-    private String normalizeStatus(String input) {
-        String normalized = input.trim().toUpperCase();
-        if ("CANCELLED".equals(normalized)) {
-            return OrderConstants.ORDER_STATUS_CANCELED;
-        }
-        String alias = normalizeAlias(normalized);
-        if ("DANG GIA CONG".equals(alias)) {
-            return OrderConstants.ORDER_STATUS_PROCESSING;
-        }
-        if ("DA XAC NHAN VA DANG CHUAN BI HANG".equals(alias)) {
-            return OrderConstants.ORDER_STATUS_CONFIRMED;
-        }
-        if ("DA CHUYEN CHO DON VI VAN CHUYEN".equals(alias)) {
-            return OrderConstants.ORDER_STATUS_READY;
-        }
-        if ("HOAN THANH".equals(alias)) {
-            return OrderConstants.ORDER_STATUS_COMPLETED;
-        }
-        if ("DA HUY".equals(alias)) {
-            return OrderConstants.ORDER_STATUS_CANCELED;
-        }
-        if ("DANG CHO".equals(alias) || "CHO XAC NHAN".equals(alias)) {
-            return OrderConstants.ORDER_STATUS_PENDING;
-        }
-        if ("DA TRA COC 1 PHAN".equals(alias) || "DA TRA COC MOT PHAN".equals(alias)) {
-            return OrderConstants.ORDER_STATUS_PARTIALLY_PAID;
-        }
-        if ("DA TRA".equals(alias) || "THANH TOAN THANH CONG".equals(alias)) {
-            return OrderConstants.ORDER_STATUS_PAID;
-        }
-        return normalized;
-    }
-
     /*
         * Hàm này dùng để từ 1 dòng dữ liệu trong table Order và kiểm tra xem đơn hàng đó có bao gồm: PRESCRIPTION_ORDER hay không?
      */
@@ -441,17 +503,6 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         subquery.select(prescriptionRoot.get("prescriptionOrderID"));
         subquery.where(cb.equal(prescriptionRoot.get("order"), root));
         return cb.exists(subquery);
-    }
-
-    private String normalizeAlias(String input) {
-        String withoutAccent = Normalizer.normalize(input, Normalizer.Form.NFD)
-                .replaceAll("\\p{M}+", "");
-        return withoutAccent
-                .replace('Đ', 'D')
-                .replaceAll("[^A-Z0-9 ]", " ")
-                .replaceAll("\\s+", " ")
-                .trim()
-                .toUpperCase(Locale.ROOT);
     }
 
     private OrderStatusOptionResponse statusOption(String code, String displayName) {

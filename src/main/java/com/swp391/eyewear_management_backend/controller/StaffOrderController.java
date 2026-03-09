@@ -69,4 +69,13 @@ public class StaffOrderController {
                 .result(result)
                 .build();
     }
+
+    @PutMapping("/{orderId}/confirm")
+    public ApiResponse<StaffOrderDetailResponse> confirmOrder(@PathVariable Long orderId) {
+        StaffOrderDetailResponse result = staffOrderService.confirmOrderForSalesStaff(orderId);
+        return ApiResponse.<StaffOrderDetailResponse>builder()
+                .message("OK")
+                .result(result)
+                .build();
+    }
 }
