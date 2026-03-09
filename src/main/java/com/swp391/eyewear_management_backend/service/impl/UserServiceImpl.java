@@ -124,7 +124,10 @@ public class UserServiceImpl implements UserService {
 //    }
 
     public void deleteUserById(Long id) {
-        userRepo.deleteById(id);
+        User user = userRepo.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
+        user.setStatus(false);
+        userRepo.save(user);
     }
 
     @Override
