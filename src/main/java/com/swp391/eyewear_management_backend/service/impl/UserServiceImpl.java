@@ -68,7 +68,6 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    @PreAuthorize("hasRole('ADMIN')")
     public UserRespone createUserByAdmin(AdminCreateUserRequest request) {
         log.info("Admin is creating a new user with username: {}", request.getUsername());
 
