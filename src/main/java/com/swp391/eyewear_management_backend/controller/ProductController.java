@@ -32,6 +32,7 @@ public class ProductController {
     }
 
     @GetMapping("/admin/search")
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
     public ResponseEntity<List<ProductResponse>> searchProductsAdmin(
             @RequestParam(required = false) String name,
             @RequestParam(required = false) Double minPrice,
