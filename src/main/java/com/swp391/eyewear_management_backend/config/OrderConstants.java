@@ -17,6 +17,7 @@ public final class OrderConstants {
     public static final String ORDER_STATUS_READY = "READY";
     public static final String ORDER_STATUS_COMPLETED = "COMPLETED";
     public static final String ORDER_STATUS_CANCELED = "CANCELED";
+    public static final String ORDER_STATUS_RETURNED = "RETURNED";
 
     public static final String SHIPPING_STATUS_PENDING = "PENDING";
     public static final String SHIPPING_STATUS_PACKING = "PACKING";

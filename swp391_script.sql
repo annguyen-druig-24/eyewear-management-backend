@@ -1,4 +1,4 @@
-CREATE DATABASE EyewearManagement
+﻿CREATE DATABASE EyewearManagement
 GO
 USE EyewearManagement
 GO
@@ -338,7 +338,7 @@ CREATE TABLE [Order] (
 
     CONSTRAINT CK_Order_Status CHECK (Order_Status IN (
                                       N'PENDING', N'CONFIRMED', N'PARTIALLY_PAID', N'PAID',
-                                      N'PROCESSING', N'READY', N'COMPLETED', N'CANCELED'
+                                      N'PROCESSING', N'READY', N'COMPLETED', N'CANCELED', N'RETURNED'
                                                       )),
 
     CONSTRAINT CK_Order_Type CHECK (Order_Type IN (
@@ -493,6 +493,7 @@ CREATE TABLE Return_Exchange (
                                  Approved_Date DATETIME NULL,
                                  Reject_Reason NVARCHAR(500) NULL,
                                  Image_URL NVARCHAR(500) NULL,
+                                 Return_Type NVARCHAR(20) NOT NULL,
 
                                  CONSTRAINT FK_Return_OrderDetail FOREIGN KEY (Order_Detail_ID) REFERENCES Order_Detail(Order_Detail_ID),
                                  CONSTRAINT FK_Return_User FOREIGN KEY (User_ID) REFERENCES [User](User_ID),
@@ -508,7 +509,10 @@ CREATE TABLE Return_Exchange (
                                      )),
                                  CONSTRAINT CK_Return_Product_Condition CHECK (Product_Condition IS NULL OR Product_Condition IN (
                                                                                                                                   N'NEW', N'USED', N'DAMAGED'
-                                     ))
+                                     )),
+                                 CONSTRAINT CK_Return_Type CHECK (Return_Type IN (
+                                                                               N'WARRANTY', N'RETURN'
+                                     )),
 );
 GO
 

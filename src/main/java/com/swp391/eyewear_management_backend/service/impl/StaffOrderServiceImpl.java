@@ -249,6 +249,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                     throw new AppException(ErrorCode.INVALID_REQUEST);
                 }
                 shippingInfo.setShippingStatus(OrderConstants.SHIPPING_STATUS_FAILED);
+                order.setOrderStatus(OrderConstants.ORDER_STATUS_CANCELED);
             }
             case OrderConstants.OPERATION_ACTION_MARK_RETURNED -> {
                 if (!isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_SHIPPING)
@@ -256,6 +257,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                     throw new AppException(ErrorCode.INVALID_REQUEST);
                 }
                 shippingInfo.setShippingStatus(OrderConstants.SHIPPING_STATUS_RETURNED);
+                order.setOrderStatus(OrderConstants.ORDER_STATUS_RETURNED);
             }
             case OrderConstants.OPERATION_ACTION_COMPLETE_ORDER -> {    //Dành cho đơn trả full
                 if (!isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_DELIVERED)
