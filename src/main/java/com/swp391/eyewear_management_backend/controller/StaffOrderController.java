@@ -1,5 +1,6 @@
 package com.swp391.eyewear_management_backend.controller;
 
+import com.swp391.eyewear_management_backend.dto.request.ReturnExchangeDecisionRequest;
 import com.swp391.eyewear_management_backend.dto.request.StaffOrderSearchRequest;
 import com.swp391.eyewear_management_backend.dto.response.*;
 import com.swp391.eyewear_management_backend.service.StaffOrderService;
@@ -112,6 +113,19 @@ public class StaffOrderController {
         return ResponseEntity.ok(ApiResponse.<ReturnExchangeResponse>builder()
                 .code(1000)
                 .message("Return exchange retrieved successfully")
+                .result(response)
+                .build());
+    }
+
+    //Hàm này dùng để cập nhật Return_Exchange.Status = "APPROVED" hoặc "REJECTED", và "COMPLETED"
+    @PutMapping("/return-exchange/{returnExchangeId}/status")
+    public ResponseEntity<ApiResponse<ReturnExchangeResponse>> updateReturnExchangeStatus(
+            @PathVariable Long returnExchangeId,
+            @RequestBody ReturnExchangeDecisionRequest request) {
+        ReturnExchangeResponse response = staffOrderService.updateReturnExchangeStatusForSalesStaff(returnExchangeId, request);
+        return ResponseEntity.ok(ApiResponse.<ReturnExchangeResponse>builder()
+                .code(1000)
+                .message("Return exchange status updated successfully")
                 .result(response)
                 .build());
     }

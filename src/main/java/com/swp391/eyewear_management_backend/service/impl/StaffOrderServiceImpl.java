@@ -2,6 +2,7 @@ package com.swp391.eyewear_management_backend.service.impl;
 
 import com.swp391.eyewear_management_backend.config.OrderConstants;
 import com.swp391.eyewear_management_backend.config.ghn.GhnProperties;
+import com.swp391.eyewear_management_backend.dto.request.ReturnExchangeDecisionRequest;
 import com.swp391.eyewear_management_backend.dto.request.StaffOrderSearchRequest;
 import com.swp391.eyewear_management_backend.dto.response.*;
 import com.swp391.eyewear_management_backend.entity.*;
@@ -10,10 +11,7 @@ import com.swp391.eyewear_management_backend.exception.ErrorCode;
 import com.swp391.eyewear_management_backend.integration.ghn.GhnShippingClient;
 import com.swp391.eyewear_management_backend.mapper.ReturnExchangeMapper;
 import com.swp391.eyewear_management_backend.mapper.StaffOrderMapper;
-import com.swp391.eyewear_management_backend.repository.OrderDetailRepo;
-import com.swp391.eyewear_management_backend.repository.OrderRepo;
-import com.swp391.eyewear_management_backend.repository.PrescriptionOrderRepo;
-import com.swp391.eyewear_management_backend.repository.ReturnExchangeRepo;
+import com.swp391.eyewear_management_backend.repository.*;
 import com.swp391.eyewear_management_backend.service.StaffOrderService;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -22,6 +20,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -52,6 +52,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     private final StaffOrderMapper staffOrderMapper;
     private final ReturnExchangeRepo returnExchangeRepo;
     private final ReturnExchangeMapper returnExchangeMapper;
+    private final UserRepo userRepo;
     private final GhnShippingClient ghnShippingClient;
     private final GhnProperties ghnProperties;
 
@@ -90,6 +91,27 @@ public class StaffOrderServiceImpl implements StaffOrderService {
             OrderConstants.ORDER_STATUS_PARTIALLY_PAID,
             OrderConstants.ORDER_STATUS_PAID
     );
+
+    private static final String RETURN_STATUS_PENDING = "PENDING";
+    private static final String RETURN_STATUS_APPROVED = "APPROVED";
+    private static final String RETURN_STATUS_REJECTED = "REJECTED";
+    private static final String RETURN_STATUS_COMPLETED = "COMPLETED";
+
+    private static final String RETURN_ACTION_APPROVE = "APPROVE";
+    private static final String RETURN_ACTION_REJECT = "REJECT";
+    private static final String RETURN_ACTION_COMPLETE = "COMPLETE";
+
+    //Hàm này dùng để xác minh/ktra ai là người đang thao tác
+    private User getCurrentUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+
+        String username = auth.getName();
+        return userRepo.findByUsername(username)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
+    }
 
     @Override
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
@@ -1136,5 +1158,51 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         ReturnExchange returnExchange = returnExchangeRepo.findById(returnExchangeId)
                 .orElseThrow(() -> new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FOUND));
         return returnExchangeMapper.toReturnExchangeResponse(returnExchange);
+    }
+
+    @Override
+    @Transactional
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public ReturnExchangeResponse updateReturnExchangeStatusForSalesStaff(Long returnExchangeId, ReturnExchangeDecisionRequest request) {
+        ReturnExchange returnExchange = returnExchangeRepo.findById(returnExchangeId)
+                .orElseThrow(() -> new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FOUND));
+
+        String action = request == null ? "" : normalize(request.getAction());
+        String currentStatus = normalize(returnExchange.getStatus());
+
+        switch (action) {
+            case RETURN_ACTION_APPROVE -> {
+                if (!RETURN_STATUS_PENDING.equals(currentStatus)) {
+                    throw new AppException(ErrorCode.INVALID_REQUEST);
+                }
+                returnExchange.setStatus(RETURN_STATUS_APPROVED);
+                returnExchange.setApprovedBy(getCurrentUser());
+                returnExchange.setApprovedDate(LocalDateTime.now());
+                returnExchange.setRejectReason(null);
+            }
+            case RETURN_ACTION_REJECT -> {
+                if (!RETURN_STATUS_PENDING.equals(currentStatus)) {
+                    throw new AppException(ErrorCode.INVALID_REQUEST);
+                }
+                String rejectReason = request == null ? "" : request.getRejectReason();
+                if (!StringUtils.hasText(rejectReason)) {
+                    throw new AppException(ErrorCode.INVALID_REQUEST);
+                }
+                returnExchange.setStatus(RETURN_STATUS_REJECTED);
+                returnExchange.setApprovedBy(getCurrentUser());
+                returnExchange.setApprovedDate(LocalDateTime.now());
+                returnExchange.setRejectReason(rejectReason.trim());
+            }
+            case RETURN_ACTION_COMPLETE -> {
+                if (!RETURN_STATUS_APPROVED.equals(currentStatus)) {
+                    throw new AppException(ErrorCode.INVALID_REQUEST);
+                }
+                returnExchange.setStatus(RETURN_STATUS_COMPLETED);
+            }
+            default -> throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
+        ReturnExchange savedReturnExchange = returnExchangeRepo.save(returnExchange);
+        return returnExchangeMapper.toReturnExchangeResponse(savedReturnExchange);
     }
 }
