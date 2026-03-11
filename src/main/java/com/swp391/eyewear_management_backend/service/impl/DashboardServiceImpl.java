@@ -1,5 +1,6 @@
 package com.swp391.eyewear_management_backend.service.impl;
 
+import com.swp391.eyewear_management_backend.dto.projection.RevenueChartProjection;
 import com.swp391.eyewear_management_backend.dto.response.*;
 import com.swp391.eyewear_management_backend.mapper.DashboardMapper;
 import com.swp391.eyewear_management_backend.repository.OrderDetailRepo;
@@ -14,8 +15,10 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -30,70 +33,102 @@ public class DashboardServiceImpl implements DashboardService {
     public DashboardResponse getDashboardStatistics(LocalDate startDateInput, LocalDate endDateInput) {
 
         // =========================================================================
-        // 1. XỬ LÝ 2 NGÀY INPUT TỪ FRONTEND
+        // 1. VALIDATE: NGÀY BẮT ĐẦU PHẢI TRƯỚC HOẶC BẰNG NGÀY KẾT THÚC
         // =========================================================================
-        // Ngày kết thúc (Nếu FE truyền thì lấy 23:59:59 của ngày đó, nếu không thì lấy Now)
+        if (startDateInput != null && endDateInput != null && startDateInput.isAfter(endDateInput)) {
+            // Ném ra Exception (Bạn có thể dùng Custom Exception của dự án nếu có)
+            throw new IllegalArgumentException("Ngày bắt đầu không được lớn hơn ngày kết thúc!");
+        }
+
+        // =========================================================================
+        // 2. CHUẨN HÓA THỜI GIAN
+        // =========================================================================
         LocalDateTime endDateTime = (endDateInput != null)
                 ? endDateInput.atTime(LocalTime.MAX)
                 : LocalDateTime.now();
 
-        // Ngày bắt đầu (Nếu FE truyền thì lấy 00:00:00 của ngày đó, nếu không thì lấy lùi 7 ngày)
         LocalDateTime startDateTime = (startDateInput != null)
                 ? startDateInput.atStartOfDay()
-                : endDateTime.minusDays(6).with(LocalTime.MIN);
+                : endDateTime.minusDays(6).with(LocalTime.MIN); // Mặc định lùi 7 ngày
 
         // =========================================================================
-        // 2. TÍNH CÁC MỐC THỜI GIAN CHO Ô SUMMARY
-        // (Tính lùi lại từ endDateTime để các số liệu luôn chuẩn xác với ngày FE chọn)
+        // 3. TÍNH TOÁN Ô SUMMARY (TỔNG QUAN) TỪ NGÀY A -> B
         // =========================================================================
-        LocalDateTime startOfDay = endDateTime.with(LocalTime.MIN);
-        LocalDateTime startOfWeek = endDateTime.with(DayOfWeek.MONDAY).with(LocalTime.MIN);
-        LocalDateTime startOfMonth = endDateTime.withDayOfMonth(1).with(LocalTime.MIN);
 
-        // 3. Tính toán Summary thực tế
-        BigDecimal revDay = orderRepository.calculateRevenueBetween(startOfDay, endDateTime);
-        BigDecimal revWeek = orderRepository.calculateRevenueBetween(startOfWeek, endDateTime);
-        BigDecimal revMonth = orderRepository.calculateRevenueBetween(startOfMonth, endDateTime);
+        // 1. Tính tổng doanh thu ĐÚNG trong khoảng startDateTime đến endDateTime
+        BigDecimal totalRev = orderRepository.calculateRevenueBetween(startDateTime, endDateTime);
 
-        // Trạng thái PENDING thì đếm tổng hiện có, không phụ thuộc ngày
-        int pendingOrders = orderRepository.countByOrderStatus("PENDING");
-        // Đơn hoàn thành thì đếm trong khoảng tháng đó
-        int completedOrdersMonth = orderRepository.countByOrderStatusAndOrderDateBetween("COMPLETED", startOfMonth, endDateTime);
+        // 2. Đếm số đơn Pending trong khoảng start -> end
+        int pendingOrders = orderRepository.countByOrderStatusAndOrderDateBetween("PENDING", startDateTime, endDateTime);
 
+        // 3. Đếm số đơn Completed trong khoảng start -> end
+        int completedOrders = orderRepository.countByOrderStatusAndOrderDateBetween("COMPLETED", startDateTime, endDateTime);
+
+        // 4. Đóng gói lại
         SummaryResponse summary = SummaryResponse.builder()
-                .revenueDay(revDay != null ? revDay.longValue() : 0L)
-                .revenueWeek(revWeek != null ? revWeek.longValue() : 0L)
-                .revenueMonth(revMonth != null ? revMonth.longValue() : 0L)
+                .totalRevenue(totalRev != null ? totalRev.longValue() : 0L)
                 .pendingOrders(pendingOrders)
-                .completedOrders(completedOrdersMonth)
+                .completedOrders(completedOrders)
                 .build();
 
         // =========================================================================
-        // 4. LẤY DỮ LIỆU CÁC BIỂU ĐỒ VÀ TOP SẢN PHẨM
+        // 4. LẤY DỮ LIỆU BIỂU ĐỒ & TOP SẢN PHẨM TRONG KHOẢNG A -> B
         // =========================================================================
 
-        // Biểu đồ doanh thu bắt đầu chạy từ startDateTime (Ngày FE truyền vào)
-        List<RevenueChartResponse> revenueChart = orderRepository.getRevenueChartNative(startDateTime)
-                .stream()
-                .map(dashboardMapper::toRevenueDto)
-                .collect(Collectors.toList());
+        // --- 4.1. Biểu đồ doanh thu (Có xử lý trám ngày trống bằng 0) ---
+        // Lấy dữ liệu thô từ Database (Chỉ chứa những ngày có đơn hàng)
+        List<RevenueChartProjection> rawRevenueData = orderRepository.getRevenueChartNative(startDateTime, endDateTime);
 
-        // Biểu đồ trạng thái đơn hàng
-        List<OrderStatusChartResponse> orderStatusChart = orderRepository.getOrderStatusChart()
+        // Chuyển dữ liệu thô thành một Map để tra cứu nhanh (Key: "dd/MM", Value: Doanh thu)
+        Map<String, BigDecimal> revenueMap = rawRevenueData.stream()
+                .collect(Collectors.toMap(
+                        RevenueChartProjection::getLabel,
+                        RevenueChartProjection::getRevenue,
+                        (existing, replacement) -> existing // Nếu trùng khóa thì giữ nguyên giá trị cũ
+                ));
+
+        // Tạo danh sách kết quả chứa TẤT CẢ các ngày từ start đến end
+        List<RevenueChartResponse> revenueChart = new ArrayList<>();
+        java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM");
+
+        LocalDate currentDate = startDateTime.toLocalDate();
+        LocalDate endDateLocal = endDateTime.toLocalDate();
+
+        // Chạy vòng lặp từ ngày bắt đầu đến ngày kết thúc
+        while (!currentDate.isAfter(endDateLocal)) {
+            String label = currentDate.format(formatter);
+
+            // Lấy doanh thu từ Map, nếu ngày đó "ế" (không có trong Map) thì gán = 0
+            BigDecimal revenue = revenueMap.getOrDefault(label, BigDecimal.ZERO);
+
+            RevenueChartResponse chartItem = new RevenueChartResponse();
+            chartItem.setLabel(label);
+            chartItem.setRevenue(revenue.longValue());
+
+            revenueChart.add(chartItem);
+
+            // Tăng thêm 1 ngày để tiếp tục vòng lặp
+            currentDate = currentDate.plusDays(1);
+        }
+
+        // --- 4.2. Biểu đồ trạng thái đơn hàng từ start -> end ---
+        List<OrderStatusChartResponse> orderStatusChart = orderRepository.getOrderStatusChart(startDateTime, endDateTime)
                 .stream()
                 .map(dashboardMapper::toOrderStatusDto)
                 .collect(Collectors.toList());
 
-        // Top 3 Sản phẩm bán chạy
-        List<TopProductResponse> topProducts = orderDetailRepository.getTopSellingProducts(PageRequest.of(0, 3))
+        // --- 4.3. Top 3 Sản phẩm bán chạy từ start -> end ---
+        List<TopProductResponse> topProducts = orderDetailRepository.getTopSellingProducts(startDateTime, endDateTime, PageRequest.of(0, 5))
                 .stream()
                 .map(dashboardMapper::toTopProductDto)
                 .collect(Collectors.toList());
 
-        // Đóng gói DTO tổng
+        // =========================================================================
+        // 5. ĐÓNG GÓI KẾT QUẢ TRẢ VỀ
+        // =========================================================================
         return DashboardResponse.builder()
                 .summary(summary)
-                .revenueChart(revenueChart)
+                .revenueChart(revenueChart) // Đã được trám số 0 đầy đủ các ngày
                 .orderStatusChart(orderStatusChart)
                 .topProducts(topProducts)
                 .build();

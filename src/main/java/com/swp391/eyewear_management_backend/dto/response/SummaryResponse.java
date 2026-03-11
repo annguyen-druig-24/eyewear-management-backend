@@ -9,9 +9,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class SummaryResponse {
-    private long revenueDay;
-    private long revenueWeek;
-    private long revenueMonth;
-    private int pendingOrders;
-    private int completedOrders;
+    // Chỉ cần 1 biến tổng doanh thu cho khoảng thời gian A -> B
+    private Long totalRevenue;
+
+    private Integer pendingOrders;
+    private Integer completedOrders;
 }

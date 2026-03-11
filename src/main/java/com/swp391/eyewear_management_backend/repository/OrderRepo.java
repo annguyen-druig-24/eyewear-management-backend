@@ -84,18 +84,21 @@ public interface OrderRepo extends JpaRepository<Order, Long>, JpaSpecificationE
     /**
      * Thống kê số lượng đơn hàng theo từng trạng thái cho Biểu đồ tròn (Pie Chart)
      */
-    @Query("SELECT o.orderStatus AS status, CAST(COUNT(o) AS int) AS count FROM Order o GROUP BY o.orderStatus")
-    List<OrderStatusProjection> getOrderStatusChart();
+    // 1. Thêm startDate và endDate cho Chart trạng thái
+    @Query("SELECT o.orderStatus AS status, CAST(COUNT(o) AS int) AS count " +
+            "FROM Order o " +
+            "WHERE o.orderDate >= :startDate AND o.orderDate <= :endDate " +
+            "GROUP BY o.orderStatus")
+    List<OrderStatusProjection> getOrderStatusChart(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
 
-    /**
-     * Biểu đồ doanh thu 7 ngày gần nhất (Native Query với SQL Server)
-     */
+    // 2. Thêm endDate cho Chart doanh thu
     @Query(value = "SELECT FORMAT(Order_Date, 'dd/MM') AS label, COALESCE(SUM(Total_Amount), 0) AS revenue " +
             "FROM [Order] " +
-            "WHERE Order_Status IN ('COMPLETED', 'PAID') AND Order_Date >= :startDate " +
+            "WHERE Order_Status IN ('COMPLETED', 'PAID') " +
+            "AND Order_Date >= :startDate AND Order_Date <= :endDate " +
             "GROUP BY FORMAT(Order_Date, 'dd/MM'), CAST(Order_Date AS date) " +
             "ORDER BY CAST(Order_Date AS date)", nativeQuery = true)
-    List<RevenueChartProjection> getRevenueChartNative(@Param("startDate") LocalDateTime startDate);
+    List<RevenueChartProjection> getRevenueChartNative(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
 
 
 }
