@@ -244,16 +244,15 @@ public class UserServiceImpl implements UserService {
     // ... các import cũ
 
     @Override
-    @PreAuthorize("hasRole('ADMIN')") // Bắt buộc phải là ADMIN mới chạy được hàm này
+
     public UserRespone updateUserByAdmin(AdminUpdateUserRequest request) {
-        log.info("Admin is updating user with username: {}", request.getName());
+        log.info("Admin is updating user with username: {}", request.getUsername());
 
         // 1. Tìm user cần update
-        User user = userRepo.findByUsername(request.getName())
+        User user = userRepo.findByUsername(request.getUsername())
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
 
         // 2. Cập nhật các trường cơ bản (nếu admin có truyền vào)
-        if(request.getName() != null) user.setName(request.getName().trim());
         if(request.getPhone() != null) user.setPhone(request.getPhone().trim());
         if(request.getAddress() != null) user.setAddress(request.getAddress().trim());
 
