@@ -1,6 +1,11 @@
 spring:
   application:
     name: eyewear_management_backend
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 50MB       # Giới hạn tối đa cho 1 file (ví dụ 1 hình max 50MB)
+      max-request-size: 100MB   # Giới hạn tổng dung lượng của 1 lần gửi (ví dụ gửi 2 hình, mỗi hình 40MB thì tổng là 80MB < 100MB -> OK)
 
   datasource:
     url: jdbc:sqlserver://database.purintech.id.vn:1433;databaseName=EyewearManagement;encrypt=true;trustServerCertificate=true
@@ -20,6 +25,12 @@ spring:
           time_zone: Asia/Ho_Chi_Minh
   jackson:
     time-zone: Asia/Ho_Chi_Minh
+
+# Phần cấu hình Server (cho Tomcat)
+server:
+  port: 8080 # (Hoặc port bạn đang dùng)
+  tomcat:
+    max-part-count: 100 # Chống lỗi giới hạn 10 file lúc nãy
 
 jwt:
   signerKey: 56235e27daf8f8e68ce33febf5400cf93dbd5f6ec40a14531754168ea0d32486
@@ -93,3 +104,5 @@ payos:
   api-key: 4f3f8b40-0afb-4ffc-8a7d-c74dea4230af
   checksum-key: db796b0590d5779b8b5bac09a915fe58a533c9f24d1c3057b0c16f334b2a44c6
 
+springdoc:
+  packages-to-scan: com.swp391.eyewear_management_backend.controller

@@ -17,7 +17,7 @@ public class OrderController {
 
     private final OrderService orderService;
 
-    @PostMapping
+    @PostMapping()
     public ApiResponse<CreateOrderResponse> create(@RequestBody @Valid CreateOrderRequest request) {
         return ApiResponse.<CreateOrderResponse>builder()
                 .message("OK")

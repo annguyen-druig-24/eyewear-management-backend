@@ -1,5 +1,7 @@
 package com.swp391.eyewear_management_backend.controller;
 
+import com.swp391.eyewear_management_backend.dto.request.AdminCreateUserRequest;
+import com.swp391.eyewear_management_backend.dto.request.AdminUpdateUserRequest;
 import com.swp391.eyewear_management_backend.dto.request.UpdateDefaultAddressRequest;
 import com.swp391.eyewear_management_backend.dto.request.UserCreationRequest;
 import com.swp391.eyewear_management_backend.dto.request.UserUpdateRequest;
@@ -14,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
@@ -37,7 +40,7 @@ public class UserController {
 
         return apiRespone;
     }
-
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
     @GetMapping
     ApiResponse<List<UserRespone>> getUsers() {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -75,10 +78,10 @@ public class UserController {
 //    UserRespone updateUser(@PathVariable Long userId, @RequestBody @Valid UserUpdateRequest request) {
 //        return userServiceImpl.updateUser(userId, request);
 //    }
-
-    @DeleteMapping("/{userId}")
-    public String deleteUserById(@PathVariable Long userId) {
-        userService.deleteUserById(userId);
+@PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')") // Chặn ngay từ Controller cho an toàn
+    @DeleteMapping("/{username}")
+    public String deleteUserByName(@PathVariable String username) {
+        userService.deleteUserByName(username);
         return "User has been deleted";
     }
 
@@ -87,6 +90,28 @@ public class UserController {
         return ApiResponse.<UserRespone>builder()
                 .message("Update default address successfully")
                 .result(userService.updateMyDefaultAddress(request))
+                .build();
+    }
+
+    @PutMapping("/admin/update")
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")// Chặn ngay từ Controller cho an toàn
+    public ApiResponse<UserRespone> updateUserByAdmin(
+            @RequestBody @Valid AdminUpdateUserRequest request) {
+
+        return ApiResponse.<UserRespone>builder()
+                .message("Updated user successfully")
+                .result(userService.updateUserByAdmin(request))
+                .build();
+    }
+
+    @PostMapping("/admin/create")
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public ApiResponse<UserRespone> createUserByAdmin(
+            @RequestBody @Valid AdminCreateUserRequest request) {
+
+        return ApiResponse.<UserRespone>builder()
+                .message("User created successfully by admin")
+                .result(userService.createUserByAdmin(request))
                 .build();
     }
 

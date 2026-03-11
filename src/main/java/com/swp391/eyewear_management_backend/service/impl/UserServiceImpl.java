@@ -1,5 +1,7 @@
 package com.swp391.eyewear_management_backend.service.impl;
 
+import com.swp391.eyewear_management_backend.dto.request.AdminCreateUserRequest;
+import com.swp391.eyewear_management_backend.dto.request.AdminUpdateUserRequest;
 import com.swp391.eyewear_management_backend.dto.request.UpdateDefaultAddressRequest;
 import com.swp391.eyewear_management_backend.dto.request.UserCreationRequest;
 import com.swp391.eyewear_management_backend.dto.request.UserUpdateRequest;
@@ -65,6 +67,77 @@ public class UserServiceImpl implements UserService {
         return userMapper.toUserRespone(userRepo.save(user));
     }
 
+    @Override
+    public UserRespone createUserByAdmin(AdminCreateUserRequest request) {
+        log.info("Admin is creating a new user with username: {}", request.getUsername());
+
+        // Normalize và validate các trường bắt buộc
+        String username = request.getUsername().trim();
+        String email = request.getEmail().trim();
+        String idNumber = request.getIdNumber() != null ? request.getIdNumber().trim() : null;
+
+        // Kiểm tra trùng lặp
+        if(userRepo.existsByUsername(username)) {
+            throw new AppException(ErrorCode.USER_EXISTED);
+        }
+        if(userRepo.existsByEmail(email)) {
+            throw new AppException(ErrorCode.EMAIL_EXISTED);
+        }
+        if (idNumber != null && userRepo.existsByIdNumber(idNumber)) {
+            throw new AppException(ErrorCode.IDNUMBER_EXISTED);
+        }
+
+        // Tạo user mới
+        User user = new User();
+        user.setUsername(username);
+        user.setEmail(email);
+        user.setPassword(passwordEncoder.encode(request.getPassword()));
+        user.setPhone(request.getPhone().trim());
+        user.setName(request.getName().trim());
+        
+        // Các trường optional
+        if (request.getDob() != null) {
+            user.setDateOfBirth(request.getDob());
+        }
+        if (request.getAddress() != null) {
+            user.setAddress(request.getAddress().trim());
+        }
+        if (idNumber != null) {
+            user.setIdNumber(idNumber);
+        }
+
+        // Set status (mặc định là true nếu không truyền)
+        user.setStatus(request.getStatus() != null ? request.getStatus() : true);
+
+        // Set role
+        String roleName = request.getRoleName().trim().toUpperCase();
+        Role role = roleRepo.findByTypeName(roleName)
+                .orElseThrow(() -> new AppException(ErrorCode.ROLE_NOT_FOUND));
+        user.setRole(role);
+
+        // GHN Address fields (optional)
+        if (request.getProvinceCode() != null) {
+            user.setProvinceCode(request.getProvinceCode());
+        }
+        if (request.getProvinceName() != null) {
+            user.setProvinceName(request.getProvinceName().trim());
+        }
+        if (request.getDistrictCode() != null) {
+            user.setDistrictCode(request.getDistrictCode());
+        }
+        if (request.getDistrictName() != null) {
+            user.setDistrictName(request.getDistrictName().trim());
+        }
+        if (request.getWardCode() != null) {
+            user.setWardCode(request.getWardCode().trim());
+        }
+        if (request.getWardName() != null) {
+            user.setWardName(request.getWardName().trim());
+        }
+
+        return userMapper.toUserRespone(userRepo.save(user));
+    }
+
     public UserRespone getMyInfo() {
         var context = SecurityContextHolder.getContext();       //get User hiện tại
         String name = context.getAuthentication().getName();    //lấy ra name của user đang request
@@ -99,7 +172,7 @@ public class UserServiceImpl implements UserService {
     }
 
     //Phân quyền dựa trên Method
-    @PreAuthorize("hasRole('ADMIN')")   //@PreAuthorize("hasRole('X')") sẽ chặn các user mà có role ko trùng với role X     --> Thỏa Method mới đc vào method
+//    @PreAuthorize("hasRole('ADMIN')")   //@PreAuthorize("hasRole('X')") sẽ chặn các user mà có role ko trùng với role X     --> Thỏa Method mới đc vào method
     //@PreAuthorize("hasAuthority('UPDATE_POST')")
     public List<UserRespone> getUsers() {
         log.info("In method getUsers");
@@ -122,8 +195,11 @@ public class UserServiceImpl implements UserService {
 //        return userMapper.toUserRespone(userRepo.save(user));
 //    }
 
-    public void deleteUserById(Long id) {
-        userRepo.deleteById(id);
+    public void deleteUserByName(String username) {
+        User user = userRepo.findByUsername(username)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
+        user.setStatus(false);
+        userRepo.save(user);
     }
 
     @Override
@@ -163,5 +239,37 @@ public class UserServiceImpl implements UserService {
         String province = request.getProvinceName().trim();
 
         return String.format("%s, %s, %s, %s", street, ward, district, province);
+    }
+
+    // ... các import cũ
+
+    @Override
+    @PreAuthorize("hasRole('ADMIN')") // Bắt buộc phải là ADMIN mới chạy được hàm này
+    public UserRespone updateUserByAdmin(AdminUpdateUserRequest request) {
+        log.info("Admin is updating user with ID: {}", request.getId());
+
+        // 1. Tìm user cần update
+        User user = userRepo.findById(request.getId())
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
+
+        // 2. Cập nhật các trường cơ bản (nếu admin có truyền vào)
+        if(request.getName() != null) user.setName(request.getName().trim());
+        if(request.getPhone() != null) user.setPhone(request.getPhone().trim());
+        if(request.getAddress() != null) user.setAddress(request.getAddress().trim());
+
+        // 3. Cập nhật Status (Trạng thái làm việc)
+        if(request.getStatus() != null) {
+            user.setStatus(request.getStatus());
+        }
+
+        // 4. Cập nhật Role (Vai trò)
+        if (request.getRoleName() != null && !request.getRoleName().trim().isEmpty()) {
+            Role role = roleRepo.findByTypeName(request.getRoleName().trim().toUpperCase())
+                    .orElseThrow(() -> new AppException(ErrorCode.ROLE_NOT_FOUND));
+            user.setRole(role);
+        }
+
+        // 5. Lưu xuống DB và trả về response
+        return userMapper.toUserRespone(userRepo.save(user));
     }
 }

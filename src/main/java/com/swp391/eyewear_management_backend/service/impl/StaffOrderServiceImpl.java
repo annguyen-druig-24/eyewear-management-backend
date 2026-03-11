@@ -103,6 +103,16 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 
     @Override
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public List<StaffOrderListResponse> getReturnExchangeOrders() {
+        List<Order> orders = orderRepo.findAllOrdersWithReturnExchange();
+        return orders.stream()
+                .sorted((o1, o2) -> o2.getOrderDate().compareTo(o1.getOrderDate()))
+                .map(staffOrderMapper::toStaffOrderListResponse)
+                .toList();
+    }
+
+    @Override
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
     public Page<StaffOrderListResponse> searchOrdersForStaff(StaffOrderSearchRequest request) {
         Pageable pageable = buildPageable(request);
         Specification<Order> specification = buildSpecification(request, false);

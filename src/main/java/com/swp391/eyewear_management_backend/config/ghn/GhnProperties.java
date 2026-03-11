@@ -20,7 +20,7 @@ public class GhnProperties {
     private String requiredNote = "CHOPHEPXEMHANG";
     private Integer codMaxAmount = 300000;
 
-    // ===== NEW: package config =====
+    // ===== NEW: package config =========
     private PackageConfig pkg = new PackageConfig();
 
     @Data

@@ -68,6 +68,8 @@ public enum ErrorCode {
     PRESCRIPTION_OCR_NOT_CONFIGURED(2006, "Prescription OCR is not configured", HttpStatus.SERVICE_UNAVAILABLE),
     PRESCRIPTION_OCR_FAILED(2007, "Prescription OCR failed", HttpStatus.BAD_GATEWAY),
     PRESCRIPTION_OCR_EMPTY_TEXT(2008, "No readable prescription text found", HttpStatus.BAD_REQUEST),
+    SKU_ALREADY_EXISTS(2009, "SKU already exists", HttpStatus.CONFLICT),
+    SKU_REQUIRED(2010, "SKU is required", HttpStatus.BAD_REQUEST),
     ;
 
     private final int code;

@@ -6,11 +6,36 @@ import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.servers.Server;
+import org.springdoc.core.models.GroupedOpenApi;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
 public class OpenApiConfig {
+
+//     BỘ LỌC ĐỂ ẨN CÁC API RÁC CỦA HATEOAS
+    @Bean
+    public GroupedOpenApi publicApi() {
+        return GroupedOpenApi.builder()
+                .group("public-apis")
+                .pathsToMatch(
+                        "/auth/**",
+                        "/checkout/**",
+                        "/ghn/**",
+                        "/api/operation-staff/orders/**",
+                        "/api/cart/**",
+                        "/orders/**",
+                        "/payments/vnpay/**",
+                        "/users/**",
+                        "/api/staff/orders/**",
+                        "/api/products/**",
+                        "/api/returns/**",
+                        "/api/return-exchanges/**",
+                        "/api/payment/**"
+                )
+                .packagesToScan("com.swp391.eyewear_management_backend.controller")
+                .build();
+    }
 
     @Bean
     public OpenAPI openAPI() {

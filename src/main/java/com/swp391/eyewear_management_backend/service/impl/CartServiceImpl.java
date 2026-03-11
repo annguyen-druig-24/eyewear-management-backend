@@ -204,7 +204,9 @@ public class CartServiceImpl implements CartService {
             prescription.setPd(request.getPd());
             prescription.setPdRight(request.getPdRight());
             prescription.setPdLeft(request.getPdLeft());
-            cartItemPrescriptionRepository.save(prescription);
+
+                cartItemPrescriptionRepository.save(prescription);
+
         }
 
 

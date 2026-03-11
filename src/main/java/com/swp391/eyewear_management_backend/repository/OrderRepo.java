@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.lang.Nullable;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface OrderRepo extends JpaRepository<Order, Long>, JpaSpecificationExecutor<Order> {
@@ -40,4 +41,16 @@ public interface OrderRepo extends JpaRepository<Order, Long>, JpaSpecificationE
     @Override
     @EntityGraph(attributePaths = {"user"})
     Page<Order> findAll(@Nullable Specification<Order> spec, Pageable pageable);
+
+    /**
+     * Lấy tất cả orders có return/exchange request
+     */
+    @Query("""
+        SELECT DISTINCT o
+        FROM Order o
+        JOIN FETCH o.user u
+        JOIN o.orderDetails od
+        WHERE od.returnExchange IS NOT NULL
+    """)
+    List<Order> findAllOrdersWithReturnExchange();
 }
