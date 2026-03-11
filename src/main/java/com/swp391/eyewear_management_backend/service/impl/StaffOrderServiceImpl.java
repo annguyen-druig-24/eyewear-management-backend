@@ -956,7 +956,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 
     private Pageable buildPageable(StaffOrderSearchRequest request) {
         int page = request.getPage() == null ? 0 : Math.max(request.getPage(), 0);
-        int size = request.getSize() == null ? 10 : Math.min(Math.max(request.getSize(), 1), 100);
+        int size = request.getSize() == null ? 50 : Math.min(Math.max(request.getSize(), 1), 100);
 
         String sortBy = request.getSortBy();
         if (!StringUtils.hasText(sortBy) || !ALLOWED_SORT_FIELDS.contains(sortBy)) {

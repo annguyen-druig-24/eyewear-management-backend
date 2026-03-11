@@ -9,5 +9,6 @@ import org.mapstruct.Mapping;
 public interface StaffOrderMapper {
     @Mapping(source = "orderID", target = "orderId")
     @Mapping(source = "user.name", target = "customerName")
+    @Mapping(source = "shippingInfo.shippingStatus", target = "shippingStatus")
     StaffOrderListResponse toStaffOrderListResponse(Order order);
 }
