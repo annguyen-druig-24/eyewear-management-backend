@@ -3,20 +3,17 @@ package com.swp391.eyewear_management_backend.service.impl;
 import com.swp391.eyewear_management_backend.config.OrderConstants;
 import com.swp391.eyewear_management_backend.config.ghn.GhnProperties;
 import com.swp391.eyewear_management_backend.dto.request.StaffOrderSearchRequest;
-import com.swp391.eyewear_management_backend.dto.response.OrderStatusGroupResponse;
-import com.swp391.eyewear_management_backend.dto.response.OrderStatusOptionResponse;
-import com.swp391.eyewear_management_backend.dto.response.StaffOrderDetailResponse;
-import com.swp391.eyewear_management_backend.dto.response.StaffOrderItemResponse;
-import com.swp391.eyewear_management_backend.dto.response.StaffOrderListResponse;
-import com.swp391.eyewear_management_backend.dto.response.StaffPrescriptionOrderItemResponse;
+import com.swp391.eyewear_management_backend.dto.response.*;
 import com.swp391.eyewear_management_backend.entity.*;
 import com.swp391.eyewear_management_backend.exception.AppException;
 import com.swp391.eyewear_management_backend.exception.ErrorCode;
 import com.swp391.eyewear_management_backend.integration.ghn.GhnShippingClient;
+import com.swp391.eyewear_management_backend.mapper.ReturnExchangeMapper;
 import com.swp391.eyewear_management_backend.mapper.StaffOrderMapper;
 import com.swp391.eyewear_management_backend.repository.OrderDetailRepo;
 import com.swp391.eyewear_management_backend.repository.OrderRepo;
 import com.swp391.eyewear_management_backend.repository.PrescriptionOrderRepo;
+import com.swp391.eyewear_management_backend.repository.ReturnExchangeRepo;
 import com.swp391.eyewear_management_backend.service.StaffOrderService;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -53,6 +50,8 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     private final OrderDetailRepo orderDetailRepo;
     private final PrescriptionOrderRepo prescriptionOrderRepo;
     private final StaffOrderMapper staffOrderMapper;
+    private final ReturnExchangeRepo returnExchangeRepo;
+    private final ReturnExchangeMapper returnExchangeMapper;
     private final GhnShippingClient ghnShippingClient;
     private final GhnProperties ghnProperties;
 
@@ -105,10 +104,31 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
     public List<StaffOrderListResponse> getReturnExchangeOrders() {
         List<Order> orders = orderRepo.findAllOrdersWithReturnExchange();
-        return orders.stream()
-                .sorted((o1, o2) -> o2.getOrderDate().compareTo(o1.getOrderDate()))
-                .map(staffOrderMapper::toStaffOrderListResponse)
-                .toList();
+        orders.sort((o1, o2) -> o2.getOrderDate().compareTo(o1.getOrderDate()));
+
+        List<StaffOrderListResponse> responses = new ArrayList<>();
+        for (Order entityOrder : orders) {
+            StaffOrderListResponse response = staffOrderMapper.toStaffOrderListResponse(entityOrder);
+            ReturnExchange returnExchange = entityOrder.getOrderDetails().stream()
+                    .map(OrderDetail::getReturnExchange)
+                    .filter(Objects::nonNull)
+                    .findFirst()
+                    .orElse(null);
+
+            if (returnExchange != null) {
+                response.setReturnExchangeId(returnExchange.getReturnExchangeID());
+                response.setReturnType(resolveReturnType(returnExchange));
+            }
+            responses.add(response);
+        }
+        return responses;
+    }
+
+    private String resolveReturnType(ReturnExchange returnExchange) {
+        if (returnExchange.getRefundAmount() != null || StringUtils.hasText(returnExchange.getRefundMethod())) {
+            return "RETURN";
+        }
+        return "EXCHANGE";
     }
 
     @Override
@@ -134,6 +154,10 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     @Override
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
     public StaffOrderDetailResponse getOrderDetailForSalesStaff(Long orderId) {
+        return getOrderDetailForSalesStaffInternal(orderId);
+    }
+
+    private StaffOrderDetailResponse getOrderDetailForSalesStaffInternal(Long orderId) {
         Order order = orderRepo.findByIdFetchStatus(orderId)
                 .orElseThrow(() -> new AppException(ErrorCode.ORDER_NOT_FOUND));
         return buildOrderDetailResponse(order, false);
@@ -1045,5 +1069,69 @@ public class StaffOrderServiceImpl implements StaffOrderService {
             String leftPD,
             String lineSubTotal
     ) {
+    }
+
+    @Override
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public StaffReturnExchangeDetailResponse getReturnExchangeDetailForSalesStaff(Long returnExchangeId) {
+        ReturnExchange returnExchange = returnExchangeRepo.findById(returnExchangeId)
+                .orElseThrow(() -> new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FOUND));
+
+        OrderDetail orderDetail = returnExchange.getOrderDetail();
+        Long orderId = orderDetail != null && orderDetail.getOrder() != null
+                ? orderDetail.getOrder().getOrderID()
+                : null;
+        if (orderId == null) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
+        StaffOrderDetailResponse orderDetailResponse = getOrderDetailForSalesStaff(orderId);
+
+        return StaffReturnExchangeDetailResponse.builder()
+                .orderId(orderDetailResponse.getOrderId())
+                .orderCode(orderDetailResponse.getOrderCode())
+                .orderStatus(orderDetailResponse.getOrderStatus())
+                .orderType(orderDetailResponse.getOrderType())
+                .orderDate(orderDetailResponse.getOrderDate())
+                .totalAmount(orderDetailResponse.getTotalAmount())
+                .shippingStatus(orderDetailResponse.getShippingStatus())
+                .shippingFee(orderDetailResponse.getShippingFee())
+                .expectedDeliveryAt(orderDetailResponse.getExpectedDeliveryAt())
+                .isPastExpectedDeliveryAt(orderDetailResponse.getIsPastExpectedDeliveryAt())
+                .hasPrescriptionItem(orderDetailResponse.getHasPrescriptionItem())
+                .requiresFinalPayment(orderDetailResponse.getRequiresFinalPayment())
+                .availableActions(orderDetailResponse.getAvailableActions())
+                .customerName(orderDetailResponse.getCustomerName())
+                .customerPhone(orderDetailResponse.getCustomerPhone())
+                .customerEmail(orderDetailResponse.getCustomerEmail())
+                .orderDetail(orderDetailResponse.getOrderDetail())
+                .prescriptionOrderDetail(orderDetailResponse.getPrescriptionOrderDetail())
+                .recipientName(orderDetailResponse.getRecipientName())
+                .recipientPhone(orderDetailResponse.getRecipientPhone())
+                .recipientEmail(orderDetailResponse.getRecipientEmail())
+                .recipientAddress(orderDetailResponse.getRecipientAddress())
+                .note(orderDetailResponse.getNote())
+                .returnExchangeId(returnExchange.getReturnExchangeID())
+                .returnOrderDetailId(orderDetail.getOrderDetailID())
+                .returnCode(returnExchange.getReturnCode())
+                .requestDate(returnExchange.getRequestDate())
+                .returnExchangeStatus(returnExchange.getStatus())
+                .returnQuantity(returnExchange.getQuantity())
+                .returnReason(returnExchange.getReturnReason())
+                .returnImgUrl(returnExchange.getImageUrl())
+                .productCondition(returnExchange.getProductCondition())
+                .refundAmount(returnExchange.getRefundAmount())
+                .refundMethod(returnExchange.getRefundMethod())
+                .refundAccountNumber(returnExchange.getRefundAccountNumber())
+                .approvedDate(returnExchange.getApprovedDate())
+                .rejectReason(returnExchange.getRejectReason())
+                .build();
+    }
+
+    @Override
+    public ReturnExchangeResponse getReturnExchangeById(Long returnExchangeId) {
+        ReturnExchange returnExchange = returnExchangeRepo.findById(returnExchangeId)
+                .orElseThrow(() -> new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FOUND));
+        return returnExchangeMapper.toReturnExchangeResponse(returnExchange);
     }
 }

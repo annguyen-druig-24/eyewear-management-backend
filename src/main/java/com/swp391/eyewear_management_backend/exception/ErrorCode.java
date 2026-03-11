@@ -26,6 +26,9 @@ public enum ErrorCode {
     // Order
     ORDER_NOT_FOUND(1026, "Order not found", HttpStatus.NOT_FOUND), // 404
 
+    //Return-Exchange
+    RETURN_EXCHANGE_NOT_FOUND(1032, "Return Exchange not found", HttpStatus.NOT_FOUND),
+
     PAYMENT_METHOD_NOT_SUPPORTED(1027, "Payment is not applicable for this checkout", HttpStatus.BAD_REQUEST),
     PAYMENT_IN_PROGRESS(1028, "These cart items already have a pending online payment", HttpStatus.CONFLICT),
     GHN_COD_OVER_LIMIT(1029, "COD amount exceeds GHN limit", HttpStatus.BAD_REQUEST),
