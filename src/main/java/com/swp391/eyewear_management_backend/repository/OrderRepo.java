@@ -1,5 +1,7 @@
 package com.swp391.eyewear_management_backend.repository;
 
+import com.swp391.eyewear_management_backend.dto.projection.OrderStatusProjection;
+import com.swp391.eyewear_management_backend.dto.projection.RevenueChartProjection;
 import com.swp391.eyewear_management_backend.entity.Order;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -8,8 +10,11 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.lang.Nullable;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -53,4 +58,44 @@ public interface OrderRepo extends JpaRepository<Order, Long>, JpaSpecificationE
         WHERE od.returnExchange IS NOT NULL
     """)
     List<Order> findAllOrdersWithReturnExchange();
+
+
+
+    // =========================================================================
+    // 2. CÁC METHOD MỚI THÊM VÀO CHO TÍNH NĂNG DASHBOARD
+    // =========================================================================
+
+    /**
+     * Lấy doanh thu trong một khoảng thời gian (Chỉ tính đơn đã hoàn thành hoặc đã thanh toán)
+     */
+    @Query("SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.orderStatus IN ('COMPLETED', 'PAID') AND o.orderDate >= :startDate AND o.orderDate <= :endDate")
+    BigDecimal calculateRevenueBetween(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
+
+    /**
+     * Đếm số lượng đơn hàng theo trạng thái cụ thể (Ví dụ: PENDING)
+     */
+    int countByOrderStatus(String orderStatus);
+
+    /**
+     * Đếm số lượng đơn hàng theo trạng thái trong một khoảng thời gian (Ví dụ: Hoàn thành trong tháng)
+     */
+    int countByOrderStatusAndOrderDateBetween(String orderStatus, LocalDateTime startDate, LocalDateTime endDate);
+
+    /**
+     * Thống kê số lượng đơn hàng theo từng trạng thái cho Biểu đồ tròn (Pie Chart)
+     */
+    @Query("SELECT o.orderStatus AS status, CAST(COUNT(o) AS int) AS count FROM Order o GROUP BY o.orderStatus")
+    List<OrderStatusProjection> getOrderStatusChart();
+
+    /**
+     * Biểu đồ doanh thu 7 ngày gần nhất (Native Query với SQL Server)
+     */
+    @Query(value = "SELECT FORMAT(Order_Date, 'dd/MM') AS label, COALESCE(SUM(Total_Amount), 0) AS revenue " +
+            "FROM [Order] " +
+            "WHERE Order_Status IN ('COMPLETED', 'PAID') AND Order_Date >= :startDate " +
+            "GROUP BY FORMAT(Order_Date, 'dd/MM'), CAST(Order_Date AS date) " +
+            "ORDER BY CAST(Order_Date AS date)", nativeQuery = true)
+    List<RevenueChartProjection> getRevenueChartNative(@Param("startDate") LocalDateTime startDate);
+
+
 }
