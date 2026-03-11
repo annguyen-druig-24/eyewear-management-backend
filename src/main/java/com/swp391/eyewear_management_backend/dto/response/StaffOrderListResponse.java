@@ -22,4 +22,5 @@ public class StaffOrderListResponse {
     private BigDecimal totalAmount;
     private Long returnExchangeId;
     private String returnType;
+    private String returnExchangeStatus;
 }

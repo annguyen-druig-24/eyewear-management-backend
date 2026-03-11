@@ -118,6 +118,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
             if (returnExchange != null) {
                 response.setReturnExchangeId(returnExchange.getReturnExchangeID());
                 response.setReturnType(resolveReturnType(returnExchange));
+                response.setReturnExchangeStatus(returnExchange.getStatus());
             }
             responses.add(response);
         }
