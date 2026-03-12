@@ -4,8 +4,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
-import java.math.BigDecimal;
-
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -13,27 +11,17 @@ import java.math.BigDecimal;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ReturnExchangeRequest {
     
-    @JsonProperty("order_detail_id")
+
     Long orderDetailId;
     
-    @JsonProperty("quantity")
+
     Integer quantity;
     
-    @JsonProperty("return_reason")
     String returnReason;
     
-    @JsonProperty("product_condition")
-    String productCondition;
+    String returnType;
     
-    @JsonProperty("refund_amount")
-    BigDecimal refundAmount;
-    
-    @JsonProperty("refund_method")
     String refundMethod;
     
-    @JsonProperty("refund_account_number")
     String refundAccountNumber;
-    
-    @JsonProperty("image_url")
-    String imageUrl;
 }

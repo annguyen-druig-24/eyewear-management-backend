@@ -1,13 +1,16 @@
 package com.swp391.eyewear_management_backend.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.swp391.eyewear_management_backend.dto.request.ReturnExchangeRequest;
 import com.swp391.eyewear_management_backend.dto.response.ApiResponse;
 import com.swp391.eyewear_management_backend.dto.response.ReturnExchangeResponse;
 import com.swp391.eyewear_management_backend.service.ReturnExchangeService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -22,16 +25,21 @@ public class ReturnExchangeController {
     /**
      * Tạo yêu cầu đổi trả
      */
-    @PostMapping
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<ReturnExchangeResponse>> createReturnExchange(
-            @RequestBody ReturnExchangeRequest request) {
-        ReturnExchangeResponse response = returnExchangeService.createReturnExchange(request);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.<ReturnExchangeResponse>builder()
-                        .code(1000)
-                        .message("Return exchange request created successfully")
-                        .result(response)
-                        .build());
+            @ModelAttribute ReturnExchangeRequest request,
+            @RequestParam(value = "image", required = false) MultipartFile imageFile) {
+        try {
+            ReturnExchangeResponse response = returnExchangeService.createReturnExchange(request, imageFile);
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(ApiResponse.<ReturnExchangeResponse>builder()
+                            .code(1000)
+                            .message("Return exchange request created successfully")
+                            .result(response)
+                            .build());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to process return exchange request: " + e.getMessage(), e);
+        }
     }
 
     /**
@@ -131,20 +139,20 @@ public class ReturnExchangeController {
                 .build());
     }
 
-    /**
-     * Cập nhật yêu cầu đổi trả
-     */
-    @PutMapping("/{returnExchangeId}")
-    public ResponseEntity<ApiResponse<ReturnExchangeResponse>> updateReturnExchange(
-            @PathVariable Long returnExchangeId,
-            @RequestBody ReturnExchangeRequest request) {
-        ReturnExchangeResponse response = returnExchangeService.updateReturnExchange(returnExchangeId, request);
-        return ResponseEntity.ok(ApiResponse.<ReturnExchangeResponse>builder()
-                .code(1000)
-                .message("Return exchange updated successfully")
-                .result(response)
-                .build());
-    }
+//    /**
+//     * Cập nhật yêu cầu đổi trả
+//     */
+//    @PutMapping("/{returnExchangeId}")
+//    public ResponseEntity<ApiResponse<ReturnExchangeResponse>> updateReturnExchange(
+//            @PathVariable Long returnExchangeId,
+//            @RequestBody ReturnExchangeRequest request) {
+//        ReturnExchangeResponse response = returnExchangeService.updateReturnExchange(returnExchangeId, request);
+//        return ResponseEntity.ok(ApiResponse.<ReturnExchangeResponse>builder()
+//                .code(1000)
+//                .message("Return exchange updated successfully")
+//                .result(response)
+//                .build());
+//    }
 
     /**
      * Xóa yêu cầu đổi trả

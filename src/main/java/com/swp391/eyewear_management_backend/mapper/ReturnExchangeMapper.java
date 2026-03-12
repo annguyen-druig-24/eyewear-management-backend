@@ -14,6 +14,7 @@ public interface ReturnExchangeMapper {
     @Mapping(source = "user.userId", target = "userId")
     @Mapping(source = "quantity", target = "quantity")
     @Mapping(source = "returnReason", target = "returnReason")
+    @Mapping(source = "returnType", target = "returnType")
     @Mapping(source = "productCondition", target = "productCondition")
     @Mapping(source = "refundAmount", target = "refundAmount")
     @Mapping(source = "refundMethod", target = "refundMethod")

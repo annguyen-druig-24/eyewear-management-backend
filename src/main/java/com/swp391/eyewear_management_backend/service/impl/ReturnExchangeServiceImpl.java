@@ -9,13 +9,16 @@ import com.swp391.eyewear_management_backend.mapper.ReturnExchangeMapper;
 import com.swp391.eyewear_management_backend.repository.OrderDetailRepo;
 import com.swp391.eyewear_management_backend.repository.ReturnExchangeRepo;
 import com.swp391.eyewear_management_backend.repository.UserRepo;
+import com.swp391.eyewear_management_backend.service.ImageUploadService;
 import com.swp391.eyewear_management_backend.service.ReturnExchangeService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -36,6 +39,9 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
 
     @Autowired
     private ReturnExchangeMapper returnExchangeMapper;
+
+    @Autowired
+    private ImageUploadService imageUploadService;
 
     /**
      * Lấy user hiện tại từ security context
@@ -63,7 +69,7 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
     }
 
     @Override
-    public ReturnExchangeResponse createReturnExchange(ReturnExchangeRequest request) {
+    public ReturnExchangeResponse createReturnExchange(ReturnExchangeRequest request, MultipartFile imageFile) {
         // Lấy user hiện tại
         User currentUser = getCurrentUser();
 
@@ -76,6 +82,25 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION); // Thay bằng lỗi phù hợp
         }
 
+        // Kiểm tra số lượng hợp lệ
+        if (request.getQuantity() == null || request.getQuantity() <= 0 || request.getQuantity() > orderDetail.getQuantity()) {
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION); // Thay bằng lỗi phù hợp
+        }
+
+        // Tự động tính refund amount dựa trên unitPrice và quantity
+        java.math.BigDecimal refundAmount = orderDetail.getUnitPrice()
+                .multiply(java.math.BigDecimal.valueOf(request.getQuantity()));
+
+        // Upload ảnh lên Cloudinary nếu có
+        String imageUrl = null;
+        if (imageFile != null && !imageFile.isEmpty()) {
+            try {
+                imageUrl = imageUploadService.uploadImage(imageFile);
+            } catch (IOException e) {
+                throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION); // Thay bằng lỗi phù hợp về upload ảnh
+            }
+        }
+
         // Tạo ReturnExchange mới
         ReturnExchange returnExchange = new ReturnExchange();
         returnExchange.setOrderDetail(orderDetail);
@@ -84,12 +109,14 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
         returnExchange.setRequestDate(LocalDateTime.now());
         returnExchange.setQuantity(request.getQuantity());
         returnExchange.setReturnReason(request.getReturnReason());
-        returnExchange.setProductCondition(request.getProductCondition());
-        returnExchange.setRefundAmount(request.getRefundAmount());
+        returnExchange.setReturnType(request.getReturnType()); // RETURN/REFUND/WARRANTY
+        returnExchange.setProductCondition(null); // Không cần quan tâm, để null
+        returnExchange.setRefundAmount(refundAmount); // Tự động tính
         returnExchange.setRefundMethod(request.getRefundMethod());
         returnExchange.setRefundAccountNumber(request.getRefundAccountNumber());
         returnExchange.setStatus("PENDING"); // Trạng thái mặc định
-        returnExchange.setImageUrl(request.getImageUrl());
+        returnExchange.setImageUrl(imageUrl); // URL từ Cloudinary
+        // approvedBy, approvedDate, rejectReason để null (chưa xử lý)
 
         ReturnExchange savedReturnExchange = returnExchangeRepository.save(returnExchange);
         return returnExchangeMapper.toReturnExchangeResponse(savedReturnExchange);
@@ -163,42 +190,42 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
         return returnExchangeMapper.toReturnExchangeResponse(updatedReturnExchange);
     }
 
-    @Override
-    public ReturnExchangeResponse updateReturnExchange(Long returnExchangeId, ReturnExchangeRequest request) {
-        ReturnExchange returnExchange = returnExchangeRepository.findById(returnExchangeId)
-                .orElseThrow(() -> new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION)); // Thay bằng lỗi phù hợp
-
-        // Chỉ có thể cập nhật nếu status là PENDING
-        if (!returnExchange.getStatus().equals("PENDING")) {
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION); // Thay bằng lỗi phù hợp
-        }
-
-        // Cập nhật các trường cho phép
-        if (request.getQuantity() != null) {
-            returnExchange.setQuantity(request.getQuantity());
-        }
-        if (request.getReturnReason() != null) {
-            returnExchange.setReturnReason(request.getReturnReason());
-        }
-        if (request.getProductCondition() != null) {
-            returnExchange.setProductCondition(request.getProductCondition());
-        }
-        if (request.getRefundAmount() != null) {
-            returnExchange.setRefundAmount(request.getRefundAmount());
-        }
-        if (request.getRefundMethod() != null) {
-            returnExchange.setRefundMethod(request.getRefundMethod());
-        }
-        if (request.getRefundAccountNumber() != null) {
-            returnExchange.setRefundAccountNumber(request.getRefundAccountNumber());
-        }
-        if (request.getImageUrl() != null) {
-            returnExchange.setImageUrl(request.getImageUrl());
-        }
-
-        ReturnExchange updatedReturnExchange = returnExchangeRepository.save(returnExchange);
-        return returnExchangeMapper.toReturnExchangeResponse(updatedReturnExchange);
-    }
+//    @Override
+//    public ReturnExchangeResponse updateReturnExchange(Long returnExchangeId, ReturnExchangeRequest request) {
+//        ReturnExchange returnExchange = returnExchangeRepository.findById(returnExchangeId)
+//                .orElseThrow(() -> new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION)); // Thay bằng lỗi phù hợp
+//
+//        // Chỉ có thể cập nhật nếu status là PENDING
+//        if (!returnExchange.getStatus().equals("PENDING")) {
+//            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION); // Thay bằng lỗi phù hợp
+//        }
+//
+//        // Cập nhật các trường cho phép
+//        if (request.getQuantity() != null) {
+//            returnExchange.setQuantity(request.getQuantity());
+//        }
+//        if (request.getReturnReason() != null) {
+//            returnExchange.setReturnReason(request.getReturnReason());
+//        }
+//        if (request.getProductCondition() != null) {
+//            returnExchange.setProductCondition(request.getProductCondition());
+//        }
+//        if (request.getRefundAmount() != null) {
+//            returnExchange.setRefundAmount(request.getRefundAmount());
+//        }
+//        if (request.getRefundMethod() != null) {
+//            returnExchange.setRefundMethod(request.getRefundMethod());
+//        }
+//        if (request.getRefundAccountNumber() != null) {
+//            returnExchange.setRefundAccountNumber(request.getRefundAccountNumber());
+//        }
+//        if (request.getImageUrl() != null) {
+//            returnExchange.setImageUrl(request.getImageUrl());
+//        }
+//
+//        ReturnExchange updatedReturnExchange = returnExchangeRepository.save(returnExchange);
+//        return returnExchangeMapper.toReturnExchangeResponse(updatedReturnExchange);
+//    }
 
     @Override
     public void deleteReturnExchange(Long returnExchangeId) {

@@ -46,6 +46,9 @@ public class ReturnExchange {
     @Column(name = "Return_Reason", columnDefinition = "NVARCHAR(500)")
     private String returnReason;
 
+    @Column(name = "Return_Type", nullable = false, columnDefinition = "NVARCHAR(20)")
+    private String returnType;
+
     @Column(name = "Product_Condition", columnDefinition = "NVARCHAR(50)")
     private String productCondition;
 
@@ -77,15 +80,16 @@ public class ReturnExchange {
     private String imageUrl;
 
     public ReturnExchange(OrderDetail orderDetail, User user, String returnCode, LocalDateTime requestDate,
-                          Integer quantity, String returnReason, String productCondition, BigDecimal refundAmount,
-                          String refundMethod, String refundAccountNumber, String status, User approvedBy,
-                          LocalDateTime approvedDate, String rejectReason, String imageUrl) {
+                          Integer quantity, String returnReason, String returnType, String productCondition, 
+                          BigDecimal refundAmount, String refundMethod, String refundAccountNumber, String status, 
+                          User approvedBy, LocalDateTime approvedDate, String rejectReason, String imageUrl) {
         this.orderDetail = orderDetail;
         this.user = user;
         this.returnCode = returnCode;
         this.requestDate = requestDate;
         this.quantity = quantity;
         this.returnReason = returnReason;
+        this.returnType = returnType;
         this.productCondition = productCondition;
         this.refundAmount = refundAmount;
         this.refundMethod = refundMethod;

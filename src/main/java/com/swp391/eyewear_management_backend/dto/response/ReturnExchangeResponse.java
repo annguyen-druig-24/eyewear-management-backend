@@ -34,6 +34,9 @@ public class ReturnExchangeResponse {
     @JsonProperty("return_reason")
     String returnReason;
     
+    @JsonProperty("return_type")
+    String returnType;
+    
     @JsonProperty("product_condition")
     String productCondition;
     
