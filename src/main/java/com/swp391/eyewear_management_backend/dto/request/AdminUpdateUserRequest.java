@@ -9,7 +9,7 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AdminUpdateUserRequest {
-    Long id;
+    String username;
     String name;
     String phone;
     String address;
