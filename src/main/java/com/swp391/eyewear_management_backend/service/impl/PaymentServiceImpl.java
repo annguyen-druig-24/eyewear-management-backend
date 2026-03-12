@@ -41,6 +41,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentRepo paymentRepo;
     private final InvoiceRepo invoiceRepo;
     private final FrontendProperties frontendProperties;
+    private final CheckoutCartTrackingService checkoutCartTrackingService;
 
     @Override
     public String createPayOSPaymentUrl(Long paymentId, long amount, String orderCodeStr) {
@@ -170,12 +171,14 @@ public class PaymentServiceImpl implements PaymentService {
                         invoice.setStatus(OrderConstants.INVOICE_STATUS_PARTIALLY_PAID);
                         invoiceRepo.save(invoice);
                     }
+                    checkoutCartTrackingService.cleanupTrackedCartItems(order);
                 } else {
                     order.setOrderStatus(OrderConstants.ORDER_STATUS_PAID);
                     if (invoice != null) {
                         invoice.setStatus(OrderConstants.INVOICE_STATUS_PAID);
                         invoiceRepo.save(invoice);
                     }
+                    checkoutCartTrackingService.cleanupTrackedCartItems(order);
                 }
             } else {
                 order.setOrderStatus(OrderConstants.ORDER_STATUS_CANCELED);

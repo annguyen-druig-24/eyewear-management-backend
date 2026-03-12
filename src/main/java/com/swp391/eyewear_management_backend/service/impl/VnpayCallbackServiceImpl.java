@@ -24,6 +24,7 @@ public class VnpayCallbackServiceImpl implements VnpayCallbackService {
     private final PaymentRepo paymentRepo;
     private final OrderRepo orderRepo;
     private final InvoiceRepo invoiceRepo;
+    private final CheckoutCartTrackingService checkoutCartTrackingService;
 
     /*
         3 mục tiêu chính của hàm handleCallback:
@@ -33,7 +34,7 @@ public class VnpayCallbackServiceImpl implements VnpayCallbackService {
         - Và cuối cùng trả về IpResult để controller quyết định phản hồi/redirect.
      */
     @Transactional
-    public IpResult handleCallback(Long paymentId, long vnpAmount, String vnpResponseCode) {
+    public IpResult handleCallback(Long paymentId, long vnpAmount, String vnpResponseCode, String vnpTransactionStatus) {
         Payment payment = paymentRepo.findByIdForUpdate(paymentId).orElse(null);
         if (payment == null) return IpResult.ORDER_NOT_FOUND;
 
@@ -52,7 +53,8 @@ public class VnpayCallbackServiceImpl implements VnpayCallbackService {
             return IpResult.ALREADY_CONFIRMED;
         }
 
-        boolean success = "00".equals(vnpResponseCode); // VNPAY: 00 = success :contentReference[oaicite:3]{index=3}
+        //boolean success = "00".equals(vnpResponseCode); // VNPAY: 00 = success :contentReference[oaicite:3]{index=3}
+        boolean success = "00".equals(vnpResponseCode) && "00".equals(vnpTransactionStatus); // chỉ thành công khi cả responseCode và transactionStatus đều = 00
 
         payment.setPaymentDate(LocalDateTime.now(APP_ZONE_ID));
         payment.setStatus(success ? "SUCCESS" : "FAILED");
@@ -71,6 +73,7 @@ public class VnpayCallbackServiceImpl implements VnpayCallbackService {
                         inv.setStatus(OrderConstants.INVOICE_STATUS_PAID);
                         invoiceRepo.save(inv);
                     }
+                    checkoutCartTrackingService.cleanupTrackedCartItems(order);
                 } else if ("DEPOSIT".equalsIgnoreCase(payment.getPaymentPurpose())) {
                     order.setOrderStatus(OrderConstants.ORDER_STATUS_PARTIALLY_PAID);
                     orderRepo.save(order);
@@ -80,6 +83,7 @@ public class VnpayCallbackServiceImpl implements VnpayCallbackService {
                         inv.setStatus(OrderConstants.INVOICE_STATUS_PARTIALLY_PAID);
                         invoiceRepo.save(inv);
                     }
+                    checkoutCartTrackingService.cleanupTrackedCartItems(order);
                 }
             } else {
                 order.setOrderStatus(OrderConstants.ORDER_STATUS_CANCELED);

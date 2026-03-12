@@ -478,7 +478,8 @@ GO
 
 CREATE TABLE Return_Exchange (
                                  Return_Exchange_ID BIGINT IDENTITY(1,1) PRIMARY KEY,
-                                 Order_Detail_ID BIGINT NOT NULL,
+                                 --Order_Detail_ID BIGINT NOT NULL,
+                                 Order_ID BIGINT NOT NULL,
                                  User_ID BIGINT NOT NULL,
                                  Return_Code NVARCHAR(50) UNIQUE NOT NULL,
                                  Request_Date DATETIME NOT NULL DEFAULT GETDATE(),
@@ -494,8 +495,10 @@ CREATE TABLE Return_Exchange (
                                  Reject_Reason NVARCHAR(500) NULL,
                                  Image_URL NVARCHAR(500) NULL,
                                  Return_Type NVARCHAR(20) NOT NULL,
+                                 Request_Scope NVARCHAR(10) NOT NULL DEFAULT N'ITEM', -- ITEM / ORDER
 
-                                 CONSTRAINT FK_Return_OrderDetail FOREIGN KEY (Order_Detail_ID) REFERENCES Order_Detail(Order_Detail_ID),
+                                 --CONSTRAINT FK_Return_OrderDetail FOREIGN KEY (Order_Detail_ID) REFERENCES Order_Detail(Order_Detail_ID),
+                                 CONSTRAINT FK_Return_Order FOREIGN KEY (Order_ID) REFERENCES [Order](Order_ID),
                                  CONSTRAINT FK_Return_User FOREIGN KEY (User_ID) REFERENCES [User](User_ID),
                                  CONSTRAINT FK_Return_ApprovedBy FOREIGN KEY (Approved_By) REFERENCES [User](User_ID),
 
@@ -505,14 +508,40 @@ CREATE TABLE Return_Exchange (
                                  CONSTRAINT CK_Return_Quantity CHECK (Quantity > 0),
                                  CONSTRAINT CK_Return_Refund_Amount CHECK (Refund_Amount IS NULL OR Refund_Amount >= 0),
                                  CONSTRAINT CK_Return_Refund_Method CHECK (Refund_Method IS NULL OR Refund_Method IN (
-                                                                                                                      N'CASH', N'MOMO', N'VNPAY'
+                                                                                                                      N'CASH', N'MOMO', N'VNPAY', N'PAYOS', N'BANK_TRANSFER'
                                      )),
                                  CONSTRAINT CK_Return_Product_Condition CHECK (Product_Condition IS NULL OR Product_Condition IN (
                                                                                                                                   N'NEW', N'USED', N'DAMAGED'
                                      )),
                                  CONSTRAINT CK_Return_Type CHECK (Return_Type IN (
-                                                                               N'WARRANTY', N'RETURN'
+                                                                               N'WARRANTY', N'RETURN', N'REFUND'
                                      )),
+                                 CONSTRAINT CK_Return_Request_Scope CHECK (Request_Scope IN (N'ITEM', N'ORDER')),
+                                 CONSTRAINT CK_Return_Scope_By_Type CHECK (
+                                     (Return_Type = N'REFUND' AND Request_Scope = N'ORDER')
+                                         OR (Return_Type IN (N'WARRANTY', N'RETURN') AND Request_Scope = N'ITEM')
+                                     ),
+                                 CONSTRAINT CK_Return_Refund_Required_For_Refund CHECK (
+                                     Return_Type <> N'REFUND'
+                                         OR (Refund_Amount IS NOT NULL AND Refund_Amount > 0 AND Refund_Method IS NOT NULL)
+                                     )
+);
+GO
+
+CREATE TABLE Return_Exchange_Item (
+                                      Return_Exchange_Item_ID BIGINT IDENTITY(1,1) PRIMARY KEY,
+                                      Return_Exchange_ID BIGINT NOT NULL,
+                                      Order_Detail_ID BIGINT NOT NULL,
+                                      Quantity INT NOT NULL,
+                                      Note NVARCHAR(500) NULL,
+
+                                      CONSTRAINT FK_ReturnItem_ReturnExchange FOREIGN KEY (Return_Exchange_ID)
+                                          REFERENCES Return_Exchange(Return_Exchange_ID),
+                                      CONSTRAINT FK_ReturnItem_OrderDetail FOREIGN KEY (Order_Detail_ID)
+                                          REFERENCES Order_Detail(Order_Detail_ID),
+
+                                      CONSTRAINT CK_ReturnItem_Quantity CHECK (Quantity > 0),
+                                      CONSTRAINT UQ_ReturnItem_ReturnExchange_OrderDetail UNIQUE (Return_Exchange_ID, Order_Detail_ID)
 );
 GO
 

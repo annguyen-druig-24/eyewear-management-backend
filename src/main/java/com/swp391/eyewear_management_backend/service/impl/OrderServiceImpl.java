@@ -49,6 +49,7 @@ public class OrderServiceImpl implements OrderService {
     private final CheckoutService checkoutService; // reuse preview calculation
     private final PaymentService paymentService; // stub for now
     private final PaymentGatewayService paymentGatewayService;
+    private final CheckoutCartTrackingService checkoutCartTrackingService;
 
     /*
         Hàm này làm 6 nhóm việc chính trong 1 transaction:
@@ -78,7 +79,7 @@ public class OrderServiceImpl implements OrderService {
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();
-        if (ids.isEmpty()) throw new AppException(ErrorCode.INVALID_REQUEST);
+        if (ids.isEmpty()) throw new AppException(ErrorCode.CART_ITEM_ID_REQUIRED);
 
         // 3) Lấy và kiểm tra cart items của user (để insert detail + delete)
         /*
@@ -87,7 +88,7 @@ public class OrderServiceImpl implements OrderService {
             - Data integrity: phải đủ items thì order mới đúng.
          */
         List<CartItem> cartItems = cartItemRepo.findByUserIdAndIdsFetchAll(userId, ids);
-        if (cartItems.size() != ids.size()) throw new AppException(ErrorCode.INVALID_REQUEST);  // Kiểm tra số lượng items trong cart của user có bằng với số lượng trong cart đang được chọn hay ko
+        if (cartItems.size() != ids.size()) throw new AppException(ErrorCode.CART_ITEM_INVALID_FOR_CHECKOUT);  // Kiểm tra số lượng items trong cart của user có bằng với số lượng trong cart đang được chọn hay ko
 
         // 3.1) load prescription map
         /*
@@ -137,7 +138,8 @@ public class OrderServiceImpl implements OrderService {
         order.setDiscountAmount(preview.getDiscountAmount());
         order.setShippingFee(preview.getShippingFee());
 
-        order.setOrderType(preview.getOrderType());
+        String orderType = determineOrderTypeByBusinessRule(preview.getItems(), cartItems, rxMap);
+        order.setOrderType(orderType);
         order.setOrderStatus("PENDING");
 
         // FIX: không dùng setPromotionId (Order không có field promotionId)
@@ -150,6 +152,7 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Order savedOrder = orderRepo.save(order);
+        checkoutCartTrackingService.recordCheckoutCartItemIds(savedOrder, user, ids);
 
         // 8) INSERT Order_Detail + Prescription_Order(+Detail)
         Map<Long, CheckoutLineItemResponse> lineMap = new HashMap<>();
@@ -158,7 +161,8 @@ public class OrderServiceImpl implements OrderService {
         }
 
         // 8.1) create prescription header if needed
-        boolean hasPrescription = preview.getItems().stream().anyMatch(li -> "PRESCRIPTION".equals(li.getItemType()));
+        boolean hasPrescription = cartItems.stream()
+                .anyMatch(ci -> isPrescriptionItemByBusinessRule(ci, rxMap.get(ci.getCartItemId())));
         PrescriptionOrder savedRxOrder = null;
 
         if (hasPrescription) {
@@ -177,29 +181,16 @@ public class OrderServiceImpl implements OrderService {
             CheckoutLineItemResponse li = lineMap.get(ci.getCartItemId());
             if (li == null) continue;
 
-            if (!"PRESCRIPTION".equals(li.getItemType())) {
-                // === NORMAL (DIRECT / PRE_ORDER) -> Order_Detail
-                Product product = resolveOrderDetailProduct(ci);
-                if (product == null) {
-                    throw new AppException(ErrorCode.INVALID_REQUEST);
-                }
-
-                OrderDetail od = new OrderDetail();
-                od.setOrder(savedOrder);
-                od.setProduct(product);
-                od.setUnitPrice(li.getUnitPrice());
-                od.setQuantity(li.getQuantity() == null ? 1 : li.getQuantity());
-
-                normalDetails.add(od);
+            CartItemPrescription rx = rxMap.get(ci.getCartItemId());
+            boolean isPrescriptionItem = isPrescriptionItemByBusinessRule(ci, rx);
+            if (!isPrescriptionItem) {
+                normalDetails.add(buildNormalOrderDetail(savedOrder, ci, li));
+            } else if (ci.getContactLens() != null) {
+                normalDetails.add(buildNormalOrderDetail(savedOrder, ci, li));
             } else {
                 // === PRESCRIPTION -> Prescription_Order_Detail
                 if (savedRxOrder == null) {
-                    throw new AppException(ErrorCode.INVALID_REQUEST);
-                }
-
-                CartItemPrescription rx = rxMap.get(ci.getCartItemId());
-                if (rx == null || !hasPdData(rx)) {
-                    throw new AppException(ErrorCode.INVALID_REQUEST);
+                    throw new AppException(ErrorCode.CART_ITEM_INVALID_FOR_CHECKOUT);
                 }
 
                 int qty = li.getQuantity() == null ? 1 : li.getQuantity();
@@ -329,23 +320,12 @@ public class OrderServiceImpl implements OrderService {
             promotionRepo.incrementUsedCount(preview.getAppliedPromotionId());
         }
 
-        // 13) Load managed cart items rồi xóa bằng JPA remove (cascade/orphanRemoval sẽ chạy)
-            //Cách 1 (chưa hoàn thiện): Lúc người dùng chuyển qua paymentUrl lúc chưa thanh toán thì Item vẫn còn trong Cart_Item
-            //  Nhưng khi đặt hàng thành công rồi thì phải xóa Item trong Cart_Item --> Chưa xóa --> Cần fix
-//        boolean hasPendingOnlinePayment = createdPayment != null
-//                && createdPayment.getPaymentMethod() != null
-//                && !"COD".equalsIgnoreCase(createdPayment.getPaymentMethod());
-//
-//        if (!hasPendingOnlinePayment) {
-//            var managedCartItems = cartItemRepo.findByCartItemIdIn(ids);
-//            if (managedCartItems.size() != ids.size()) {
-//                throw new AppException(ErrorCode.INVALID_REQUEST);
-//            }
-//            cartItemRepo.deleteAll(managedCartItems);
-//        }
-            //Cách 2: Lúc người dùng chuyển qua paymentUrl lúc chưa thanh toán thì Item đã bị xóa khỏi Cart_Item
-            // --> Nên fix cách 1 và sử dụng cách 1 (hiện tại dùng đỡ cách 2)
-        cartItemRepo.deleteAll(cartItems);
+        boolean hasOnlinePendingPayment = createdPayment != null
+                && createdPayment.getPaymentMethod() != null
+                && !"COD".equalsIgnoreCase(createdPayment.getPaymentMethod());
+        if (!hasOnlinePendingPayment) {
+            cartItemRepo.deleteAll(cartItems);
+        }
 
         // 14) nếu cần online redirect => tạo paymentUrl theo paymentMethod
         String paymentUrl = null;
@@ -470,6 +450,19 @@ public class OrderServiceImpl implements OrderService {
         return null; // frame+lens => prescription, không vào Order_Detail
     }
 
+    private OrderDetail buildNormalOrderDetail(Order order, CartItem ci, CheckoutLineItemResponse li) {
+        Product product = resolveOrderDetailProduct(ci);
+        if (product == null) {
+            throw new AppException(ErrorCode.CART_ITEM_INVALID_FOR_CHECKOUT);
+        }
+        OrderDetail od = new OrderDetail();
+        od.setOrder(order);
+        od.setProduct(product);
+        od.setUnitPrice(li.getUnitPrice());
+        od.setQuantity(li.getQuantity() == null ? 1 : li.getQuantity());
+        return od;
+    }
+
     private ShippingAddressRequest resolveAddress(ShippingAddressRequest reqAddr, User user) {
         if (reqAddr != null && reqAddr.getDistrictCode() != null && reqAddr.getWardCode() != null) {
             return reqAddr;
@@ -533,7 +526,7 @@ public class OrderServiceImpl implements OrderService {
         if ("COD".equalsIgnoreCase(method)) {
             // COD main but deposit must be online
             if (req.getDepositPaymentMethod() == null) {
-                throw new AppException(ErrorCode.INVALID_REQUEST);
+                throw new AppException(ErrorCode.DEPOSIT_PAYMENT_METHOD_REQUIRED);
             }
             return PaymentPlan.deposit(req.getDepositPaymentMethod(), dep, rem);
         }
@@ -895,5 +888,62 @@ public class OrderServiceImpl implements OrderService {
             return Objects.hash(frameId, lensId, rightEyeSph, rightEyeCyl, rightEyeAxis, rightEyeAdd, rightPD,
                     leftEyeSph, leftEyeCyl, leftEyeAxis, leftEyeAdd, leftPD, lineSubTotal);
         }
+    }
+
+    private boolean isPdRequired(CartItem ci) {
+        return ci.getFrame() != null;
+    }
+
+    private boolean isPrescriptionItemByBusinessRule(CartItem ci, CartItemPrescription rx) {
+        if (ci.getFrame() != null && ci.getLens() != null) return true;
+        if (ci.getLens() != null && ci.getFrame() == null) return rx != null && hasPrescriptionData(rx);
+        if (ci.getContactLens() != null) return rx != null && hasPrescriptionData(rx);
+        return false;
+    }
+
+    private String determineOrderTypeByBusinessRule(List<CheckoutLineItemResponse> previewItems,
+                                                    List<CartItem> cartItems,
+                                                    Map<Long, CartItemPrescription> rxMap) {
+        Map<Long, CheckoutLineItemResponse> previewMap = new HashMap<>();
+        for (CheckoutLineItemResponse li : previewItems) {
+            previewMap.put(li.getCartItemId(), li);
+        }
+        boolean hasDirect = false;
+        boolean hasPre = false;
+        boolean hasPrescription = false;
+        for (CartItem ci : cartItems) {
+            CheckoutLineItemResponse li = previewMap.get(ci.getCartItemId());
+            boolean isPrescription = isPrescriptionItemByBusinessRule(ci, rxMap.get(ci.getCartItemId()));
+            boolean isPre = li != null && "PRE_ORDER".equals(li.getItemType());
+            if (isPrescription) {
+                hasPrescription = true;
+            } else if (isPre) {
+                hasPre = true;
+            } else {
+                hasDirect = true;
+            }
+        }
+        int types = 0;
+        if (hasDirect) types++;
+        if (hasPre) types++;
+        if (hasPrescription) types++;
+        if (types > 1) return "MIX_ORDER";
+        if (hasPrescription) return "PRESCRIPTION_ORDER";
+        if (hasPre) return "PRE_ORDER";
+        return "DIRECT_ORDER";
+    }
+
+    private boolean hasPrescriptionData(CartItemPrescription rx) {
+        return rx.getRightEyeSph() != null
+                || rx.getRightEyeCyl() != null
+                || rx.getRightEyeAxis() != null
+                || rx.getRightEyeAdd() != null
+                || rx.getLeftEyeSph() != null
+                || rx.getLeftEyeCyl() != null
+                || rx.getLeftEyeAxis() != null
+                || rx.getLeftEyeAdd() != null
+                || rx.getPd() != null
+                || rx.getPdRight() != null
+                || rx.getPdLeft() != null;
     }
 }

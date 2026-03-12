@@ -30,6 +30,7 @@ public enum ErrorCode {
     RETURN_EXCHANGE_NOT_FOUND(1032, "Return Exchange not found", HttpStatus.NOT_FOUND),
 
     PAYMENT_METHOD_NOT_SUPPORTED(1027, "Payment is not applicable for this checkout", HttpStatus.BAD_REQUEST),
+    DEPOSIT_PAYMENT_METHOD_REQUIRED(1033, "Deposit payment method is required when payment method is COD", HttpStatus.BAD_REQUEST),
     PAYMENT_IN_PROGRESS(1028, "These cart items already have a pending online payment", HttpStatus.CONFLICT),
     GHN_COD_OVER_LIMIT(1029, "COD amount exceeds GHN limit", HttpStatus.BAD_REQUEST),
     GHN_CREATE_ORDER_FAILED(1030, "Create GHN shipping order failed", HttpStatus.BAD_REQUEST),
@@ -68,6 +69,7 @@ public enum ErrorCode {
     LENS_NOT_FOUND(2003, "Lens not found", HttpStatus.NOT_FOUND),
     CART_ITEM_NOT_FOUND(2004, "Cart item not found", HttpStatus.NOT_FOUND),
     CART_ITEM_ID_REQUIRED(2005, "Cart item id is required", HttpStatus.BAD_REQUEST),
+    CART_ITEM_INVALID_FOR_CHECKOUT(2011, "Cart items are invalid for checkout", HttpStatus.BAD_REQUEST),
     PRESCRIPTION_OCR_NOT_CONFIGURED(2006, "Prescription OCR is not configured", HttpStatus.SERVICE_UNAVAILABLE),
     PRESCRIPTION_OCR_FAILED(2007, "Prescription OCR failed", HttpStatus.BAD_GATEWAY),
     PRESCRIPTION_OCR_EMPTY_TEXT(2008, "No readable prescription text found", HttpStatus.BAD_REQUEST),

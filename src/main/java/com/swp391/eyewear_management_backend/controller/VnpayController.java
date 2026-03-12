@@ -36,7 +36,9 @@ public class VnpayController {
 
         boolean valid = verifySignature(vnpParams);
 
-        String rspCode = vnpParams.get("vnp_ResponseCode");   // mã trạng thái giao dịch "00" = success
+        //String rspCode = vnpParams.get("vnp_ResponseCode");   // mã trạng thái giao dịch "00" = success
+        String rspCode = vnpParams.get("vnp_ResponseCode");   // mã phản hồi request (chỉ cho biết request hợp lệ)
+        String txnStatus = vnpParams.get("vnp_TransactionStatus"); // mã trạng thái thanh toán thực tế
         Long paymentId = parseLong(vnpParams.get("vnp_TxnRef"));    //paymentId (id Payment trong DB)
         long amount = parseLong0(vnpParams.get("vnp_Amount")); // amount * 100
 
@@ -53,7 +55,8 @@ public class VnpayController {
         }
 
         // 2) cập nhật DB (tạm thời chốt theo return; IPN là chuẩn nhất sau này)
-        VnpayCallbackService.IpResult ipResult = callbackService.handleCallback(paymentId, amount, rspCode);
+        //VnpayCallbackService.IpResult ipResult = callbackService.handleCallback(paymentId, amount, rspCode);
+        VnpayCallbackService.IpResult ipResult = callbackService.handleCallback(paymentId, amount, rspCode, txnStatus);
 
         // 3) lấy orderId chắc chắn từ DB theo paymentId
         // Mục tiêu: FE biết order nào vừa thanh toán
@@ -62,7 +65,8 @@ public class VnpayController {
                 .orElse(null);
 
         // 4) build redirect url về FE
-        boolean ok = "00".equals(rspCode) && ipResult == VnpayCallbackService.IpResult.CONFIRM_SUCCESS;
+        //boolean ok = "00".equals(rspCode) && ipResult == VnpayCallbackService.IpResult.CONFIRM_SUCCESS;
+        boolean ok = "00".equals(rspCode) && "00".equals(txnStatus) && ipResult == VnpayCallbackService.IpResult.CONFIRM_SUCCESS;
 
         String targetPath;
         String status;
@@ -70,7 +74,7 @@ public class VnpayController {
         if (ok) {
             targetPath = feProps.getSuccessPath();       // /success
             status = "SUCCESS";
-        } else if ("24".equals(rspCode)) {
+        } else if ("24".equals(rspCode) || "02".equals(txnStatus)) {
             targetPath = feProps.getCancelPath();        // /cancel
             status = "CANCELLED";
         } else {
@@ -82,7 +86,9 @@ public class VnpayController {
                 .fromUriString(feProps.getBaseUrl() + targetPath)
                 .queryParam("status", status)
                 .queryParam("paymentId", paymentId)
-                .queryParam("code", rspCode);
+                //.queryParam("code", rspCode);
+                .queryParam("code", rspCode)
+                .queryParam("txnStatus", txnStatus);
 
         if (orderId != null) {
             b.queryParam("orderId", orderId);
@@ -111,12 +117,14 @@ public class VnpayController {
         Long paymentId = parseLong(vnpParams.get("vnp_TxnRef"));
         long amount = parseLong0(vnpParams.get("vnp_Amount"));
         String rspCode = vnpParams.get("vnp_ResponseCode");
+        String txnStatus = vnpParams.get("vnp_TransactionStatus");
 
         if (paymentId == null) {
             return Map.of("RspCode", "01", "Message", "Order not found");
         }
 
-        var result = callbackService.handleCallback(paymentId, amount, rspCode);
+        //var result = callbackService.handleCallback(paymentId, amount, rspCode);
+        var result = callbackService.handleCallback(paymentId, amount, rspCode, txnStatus);
 
         return switch (result) {
             case CONFIRM_SUCCESS, CONFIRM_FAILED -> Map.of("RspCode", "00", "Message", "Confirm Success");
