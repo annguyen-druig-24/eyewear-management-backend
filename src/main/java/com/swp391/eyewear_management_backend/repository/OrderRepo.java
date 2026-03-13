@@ -59,7 +59,15 @@ public interface OrderRepo extends JpaRepository<Order, Long>, JpaSpecificationE
     """)
     List<Order> findAllOrdersWithReturnExchange();
 
-
+    @Query("""
+        SELECT o
+        FROM Order o
+        JOIN FETCH o.user u
+        LEFT JOIN FETCH o.shippingInfo s
+        WHERE u.userId = :userId
+        ORDER BY o.orderDate DESC
+    """)
+    List<Order> findAllByUserIdWithShippingInfo(Long userId);
 
     // =========================================================================
     // 2. CÁC METHOD MỚI THÊM VÀO CHO TÍNH NĂNG DASHBOARD

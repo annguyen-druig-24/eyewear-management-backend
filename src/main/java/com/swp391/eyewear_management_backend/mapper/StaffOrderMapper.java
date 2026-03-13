@@ -1,5 +1,6 @@
 package com.swp391.eyewear_management_backend.mapper;
 
+import com.swp391.eyewear_management_backend.dto.response.CustomerOrderHistoryResponse;
 import com.swp391.eyewear_management_backend.dto.response.StaffOrderListResponse;
 import com.swp391.eyewear_management_backend.entity.Order;
 import org.mapstruct.Mapper;

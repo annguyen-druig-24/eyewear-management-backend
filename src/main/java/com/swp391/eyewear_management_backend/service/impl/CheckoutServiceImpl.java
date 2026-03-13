@@ -50,12 +50,12 @@ public class CheckoutServiceImpl implements CheckoutService {
                 .filter(Objects::nonNull)   //Kiểm tra xem id có bị null hay ko
                 .distinct()     //Kiểm tra các id trùng
                 .toList();
-        if (ids.isEmpty()) throw new AppException(ErrorCode.INVALID_REQUEST);
+        if (ids.isEmpty()) throw new AppException(ErrorCode.CART_ITEM_ID_REQUIRED);
 
         // 3) load cart items of this user: (A) Load dữ liệu cart item chuẩn từ DB, (B) Validate quyền sở hữu + tính hợp lệ
         List<CartItem> cartItems = cartItemRepo.findByUserIdAndIdsFetchAll(userId, ids);
         if (cartItems.size() != ids.size()) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
+            throw new AppException(ErrorCode.CART_ITEM_INVALID_FOR_CHECKOUT);
         }
 
         // 3.1) load prescription info (Cart_Item_Prescription) theo cartItemIds

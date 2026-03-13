@@ -8,9 +8,11 @@ public interface VnpayCallbackService {
      * @param paymentId        id của Payment trong hệ thống
      * @param vnpAmount        số tiền VNPAY trả về (thường = amount * 100)
      * @param vnpResponseCode  mã phản hồi VNPAY (00 = success)
+     * @param vnpTransactionStatus trạng thái giao dịch VNPAY (00 = thành công, 02 = thất bại/cancel)
      * @return kết quả xử lý để controller/IPN trả đúng response code cho VNPAY
      */
-    IpResult handleCallback(Long paymentId, long vnpAmount, String vnpResponseCode);
+    //IpResult handleCallback(Long paymentId, long vnpAmount, String vnpResponseCode);
+    IpResult handleCallback(Long paymentId, long vnpAmount, String vnpResponseCode, String vnpTransactionStatus);
 
     enum IpResult {
         CONFIRM_SUCCESS,        // RspCode 00
