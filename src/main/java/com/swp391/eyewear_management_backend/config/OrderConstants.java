@@ -48,6 +48,7 @@ public final class OrderConstants {
     public static final String PAYMENT_STATUS_PENDING = "PENDING";
     public static final String PAYMENT_STATUS_SUCCESS = "SUCCESS";
     public static final String PAYMENT_STATUS_FAILED = "FAILED";
+    public static final String PAYMENT_STATUS_CANCELED = "CANCELED";
     public static final String PAYMENT_STATUS_REFUNDED = "REFUNDED";
 
     public static final String PAYMENT_METHOD_COD = "COD";

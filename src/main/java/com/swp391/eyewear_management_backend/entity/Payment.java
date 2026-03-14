@@ -57,7 +57,7 @@ public class Payment {
     }
 
     private void normalizePaymentDateByStatus() {
-        if (status != null && "PENDING".equalsIgnoreCase(status)) {
+        if (status != null && ("PENDING".equalsIgnoreCase(status) || "CANCELED".equalsIgnoreCase(status))) {
             paymentDate = null;
         }
     }

@@ -186,6 +186,19 @@ public class PaymentServiceImpl implements PaymentService {
                     invoice.setStatus(OrderConstants.INVOICE_STATUS_CANCELED);
                     invoiceRepo.save(invoice);
                 }
+
+                var remainingPayments = paymentRepo.findByOrderIdAndPurposeAndStatusForUpdate(
+                        order.getOrderID(),
+                        OrderConstants.PAYMENT_PURPOSE_REMAINING,
+                        OrderConstants.PAYMENT_STATUS_PENDING
+                );
+                if (!remainingPayments.isEmpty()) {
+                    remainingPayments.forEach(p -> {
+                        p.setStatus(OrderConstants.PAYMENT_STATUS_CANCELED);
+                        p.setPaymentDate(LocalDateTime.now(APP_ZONE_ID));
+                    });
+                    paymentRepo.saveAll(remainingPayments);
+                }
             }
             orderRepository.save(order);
         } catch (Exception e) {

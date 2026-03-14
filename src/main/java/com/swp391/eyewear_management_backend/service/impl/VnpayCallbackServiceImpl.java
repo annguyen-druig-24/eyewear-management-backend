@@ -107,6 +107,19 @@ public class VnpayCallbackServiceImpl implements VnpayCallbackService {
                     inv.setStatus(OrderConstants.INVOICE_STATUS_CANCELED);
                     invoiceRepo.save(inv);
                 }
+
+                var remainingPayments = paymentRepo.findByOrderIdAndPurposeAndStatusForUpdate(
+                        order.getOrderID(),
+                        OrderConstants.PAYMENT_PURPOSE_REMAINING,
+                        OrderConstants.PAYMENT_STATUS_PENDING
+                );
+                if (!remainingPayments.isEmpty()) {
+                    remainingPayments.forEach(p -> {
+                        p.setStatus(OrderConstants.PAYMENT_STATUS_CANCELED);
+                        p.setPaymentDate(LocalDateTime.now(APP_ZONE_ID));
+                    });
+                    paymentRepo.saveAll(remainingPayments);
+                }
             }
         }
 

@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import jakarta.persistence.LockModeType;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -20,4 +21,18 @@ public interface PaymentRepo extends JpaRepository<Payment, Long> {
         where p.paymentID = :paymentId
     """)
     Optional<Payment> findByIdForUpdate(@Param("paymentId") Long paymentId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        select p
+        from Payment p
+        where p.order.orderID = :orderId
+          and upper(p.paymentPurpose) = upper(:paymentPurpose)
+          and upper(p.status) = upper(:status)
+    """)
+    List<Payment> findByOrderIdAndPurposeAndStatusForUpdate(
+            @Param("orderId") Long orderId,
+            @Param("paymentPurpose") String paymentPurpose,
+            @Param("status") String status
+    );
 }

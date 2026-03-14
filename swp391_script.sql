@@ -1,4 +1,4 @@
-﻿CREATE DATABASE EyewearManagement
+CREATE DATABASE EyewearManagement
 GO
 USE EyewearManagement
 GO
@@ -416,7 +416,7 @@ CREATE TABLE Payment (
                          CONSTRAINT FK_Payment_Order FOREIGN KEY (Order_ID) REFERENCES [Order](Order_ID),
 
                          CONSTRAINT CK_Payment_Status CHECK (Status IN (
-                                                                        N'PENDING', N'SUCCESS', N'FAILED', N'REFUNDED'
+                                                                       N'PENDING', N'SUCCESS', N'FAILED', N'REFUNDED', N'CANCELED'
                              )),
                          CONSTRAINT CK_Payment_Amount CHECK (Amount > 0),
                          CONSTRAINT CK_Payment_Method CHECK (Payment_Method IN (
@@ -426,7 +426,7 @@ CREATE TABLE Payment (
                                                                                   N'DEPOSIT', N'FULL', N'REMAINING'
                              )),
                          CONSTRAINT CK_Payment_Date_By_Status CHECK (
-                             (Status = N'PENDING' AND Payment_Date IS NULL)
+                            (Status IN (N'PENDING', N'CANCELED') AND Payment_Date IS NULL)
                                  OR (Status IN (N'SUCCESS', N'FAILED', N'REFUNDED'))
                              ),
                          CONSTRAINT CK_Payment_Deposit_Method CHECK (
