@@ -1,5 +1,6 @@
 package com.swp391.eyewear_management_backend.repository;
 
+import com.swp391.eyewear_management_backend.dto.response.ProductInventoryResponse;
 import com.swp391.eyewear_management_backend.entity.Product;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -39,5 +40,36 @@ public interface ProductRepo extends JpaRepository<Product,Long> {
                                                      @Param("excludeId") Long excludeId);
 
     boolean existsBySKU(String sku);
+
+    @Query("""
+            SELECT new com.swp391.eyewear_management_backend.dto.response.ProductInventoryResponse(
+                p.productID,
+                p.productName,
+                p.SKU,
+                b.brandName,
+                f.frameMaterialName,
+                f.frameShapeName,
+                lt.typeName,
+                l.indexValue,
+                l.isBlueLightBlock,
+                l.isPhotochromic,
+                cl.usageType,
+                cl.lensMaterial,
+                cl.baseCurve,
+                cl.waterContent,
+                cl.replacementSchedule,
+                COALESCE(i.quantityAfter, 0)
+            )
+            FROM Product p
+            LEFT JOIN p.brand b
+            LEFT JOIN p.frame f
+            LEFT JOIN p.lens l
+            LEFT JOIN l.lensType lt
+            LEFT JOIN p.contactLens cl
+            LEFT JOIN Inventory i ON i.product = p AND i.inventoryID = (
+                SELECT MAX(i2.inventoryID) FROM Inventory i2 WHERE i2.product = p
+            )
+            """)
+    List<ProductInventoryResponse> findAllProductsWithLatestInventoryQuantity();
 
 }

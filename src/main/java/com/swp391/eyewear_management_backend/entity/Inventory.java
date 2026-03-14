@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
 @Setter
 @NoArgsConstructor
 @ToString(exclude = {"product", "user", "supplier"})
-public class Inventory {
+public class    Inventory {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

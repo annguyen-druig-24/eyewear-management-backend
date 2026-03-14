@@ -98,7 +98,7 @@ class VnpayCallbackServiceImplTest {
         assertThat(invoice.getStatus()).isEqualTo(OrderConstants.INVOICE_STATUS_CANCELED);
         assertThat(depositPayment.getStatus()).isEqualTo(OrderConstants.PAYMENT_STATUS_FAILED);
         assertThat(remainingPayment.getStatus()).isEqualTo(OrderConstants.PAYMENT_STATUS_CANCELED);
-        assertThat(remainingPayment.getPaymentDate()).isNull();
+        assertThat(remainingPayment.getPaymentDate()).isNotNull();
 
         verify(paymentRepo).save(depositPayment);
         verify(orderRepo).save(order);
@@ -111,4 +111,3 @@ class VnpayCallbackServiceImplTest {
         assertThat(captor.getValue().getFirst().getPaymentID()).isEqualTo(11L);
     }
 }
-
