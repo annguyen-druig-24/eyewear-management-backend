@@ -2,12 +2,12 @@ package com.swp391.eyewear_management_backend.repository;
 
 import com.swp391.eyewear_management_backend.dto.response.ProductInventoryResponse;
 import com.swp391.eyewear_management_backend.entity.Product;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.data.rest.core.annotation.RepositoryRestResource;
-import org.springframework.stereotype.Repository;
 
 import java.util.List;
 
@@ -41,10 +41,20 @@ public interface ProductRepo extends JpaRepository<Product,Long> {
 
     boolean existsBySKU(String sku);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select p
+            from Product p
+            where p.productID in :productIds
+            order by p.productID asc
+            """)
+    List<Product> findByIdsForUpdate(@Param("productIds") List<Long> productIds);
+
     @Query("""
             SELECT new com.swp391.eyewear_management_backend.dto.response.ProductInventoryResponse(
                 p.productID,
                 p.productName,
+                pt.typeName,
                 p.SKU,
                 b.brandName,
                 f.frameMaterialName,
@@ -58,18 +68,20 @@ public interface ProductRepo extends JpaRepository<Product,Long> {
                 cl.baseCurve,
                 cl.waterContent,
                 cl.replacementSchedule,
-                COALESCE(i.quantityAfter, 0)
+                COALESCE(p.onHandQuantity, 0),
+                COALESCE(p.reservedQuantity, 0),
+                COALESCE(p.availableQuantity, 0),
+                p.isActive
             )
             FROM Product p
+            LEFT JOIN p.productType pt
             LEFT JOIN p.brand b
             LEFT JOIN p.frame f
             LEFT JOIN p.lens l
             LEFT JOIN l.lensType lt
             LEFT JOIN p.contactLens cl
-            LEFT JOIN Inventory i ON i.product = p AND i.inventoryID = (
-                SELECT MAX(i2.inventoryID) FROM Inventory i2 WHERE i2.product = p
-            )
+            ORDER BY p.productID DESC
             """)
-    List<ProductInventoryResponse> findAllProductsWithLatestInventoryQuantity();
+    List<ProductInventoryResponse> findAllProductsWithInventoryQuantity();
 
 }

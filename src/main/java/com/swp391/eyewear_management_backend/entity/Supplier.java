@@ -13,7 +13,7 @@ import java.util.List;
 @Getter
 @Setter
 @NoArgsConstructor
-@ToString(exclude = {"brandSuppliers", "inventories"})
+@ToString(exclude = {"brandSuppliers", "inventories", "inventoryReceipts"})
 public class Supplier {
 
     @Id
@@ -35,6 +35,9 @@ public class Supplier {
 
     @OneToMany(mappedBy = "supplier", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     private List<Inventory> inventories;
+
+    @OneToMany(mappedBy = "supplier", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    private List<InventoryReceipt> inventoryReceipts;
 
     public Supplier(String supplierName, String supplierPhone, String supplierAddress) {
         this.supplierName = supplierName;

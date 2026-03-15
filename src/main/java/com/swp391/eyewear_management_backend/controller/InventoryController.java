@@ -23,10 +23,10 @@ public class InventoryController {
 
     @GetMapping("/products")
     @PreAuthorize("hasAnyAuthority('ROLE_OPERATIONS STAFF','ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
-    public ResponseEntity<ApiResponse<List<ProductInventoryResponse>>> getAllProductsWithLatestInventoryQuantity() {
+    public ResponseEntity<ApiResponse<List<ProductInventoryResponse>>> getAllProductsWithInventoryQuantity() {
         return ResponseEntity.ok(ApiResponse.<List<ProductInventoryResponse>>builder()
                 .message("OK")
-                .result(inventoryService.getAllProductsWithLatestInventoryQuantity())
+                .result(inventoryService.getAllProductsWithInventoryQuantity())
                 .build());
     }
 }

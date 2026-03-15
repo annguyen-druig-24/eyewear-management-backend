@@ -15,6 +15,7 @@ import java.math.BigDecimal;
 public class ProductInventoryResponse {
     private Long productId;
     private String productName;
+    private String productTypeName;
 
     @JsonProperty("SKU")
     private String sku;
@@ -31,5 +32,8 @@ public class ProductInventoryResponse {
     private BigDecimal baseCurve;
     private BigDecimal waterContent;
     private String replacementSchedule;
-    private Integer quantity;
+    private Integer onHandQuantity;
+    private Integer reservedQuantity;
+    private Integer availableQuantity;
+    private Boolean isActive;
 }

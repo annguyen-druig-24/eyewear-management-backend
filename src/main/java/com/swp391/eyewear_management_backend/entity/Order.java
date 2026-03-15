@@ -16,7 +16,7 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(exclude = {"user", "orderDetails", "payments", "invoice", "orderProcessings", "orderPromotions", "prescriptionOrder"})
+@ToString(exclude = {"user", "orderDetails", "payments", "inventoryTransactions", "invoice", "orderProcessings", "orderPromotions", "prescriptionOrder"})
 public class Order {
 
     @Id
@@ -67,6 +67,9 @@ public class Order {
 
     @OneToMany(mappedBy = "order", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     private List<Payment> payments;
+
+    @OneToMany(mappedBy = "order", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    private List<InventoryTransaction> inventoryTransactions;
 
     @OneToOne(mappedBy = "order", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     private Invoice invoice;

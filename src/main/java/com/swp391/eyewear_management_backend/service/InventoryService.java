@@ -5,5 +5,5 @@ import com.swp391.eyewear_management_backend.dto.response.ProductInventoryRespon
 import java.util.List;
 
 public interface InventoryService {
-    List<ProductInventoryResponse> getAllProductsWithLatestInventoryQuantity();
+    List<ProductInventoryResponse> getAllProductsWithInventoryQuantity();
 }
