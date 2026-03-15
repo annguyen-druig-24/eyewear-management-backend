@@ -7,13 +7,14 @@ import lombok.NoArgsConstructor;
 import lombok.ToString;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Entity
 @Table(name = "Order_Detail")
 @Getter
 @Setter
 @NoArgsConstructor
-@ToString(exclude = {"order", "product", "returnExchange"})
+@ToString(exclude = {"order", "product", "returnExchange", "inventoryTransactions"})
 public class OrderDetail {
 
     @Id
@@ -44,6 +45,9 @@ public class OrderDetail {
 
     @OneToOne(mappedBy = "orderDetail", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     private ReturnExchange returnExchange;
+
+    @OneToMany(mappedBy = "orderDetail", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    private List<InventoryTransaction> inventoryTransactions;
 
     public OrderDetail(Order order, Product product, BigDecimal unitPrice, String note, Integer quantity) {
         this.order = order;

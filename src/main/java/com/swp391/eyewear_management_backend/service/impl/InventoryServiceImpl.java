@@ -17,7 +17,7 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Override
     @PreAuthorize("hasAnyAuthority('ROLE_OPERATIONS STAFF', 'ROLE_SALES STAFF', 'ROLE_ADMIN','ROLE_MANAGER')")
-    public List<ProductInventoryResponse> getAllProductsWithLatestInventoryQuantity() {
-        return productRepo.findAllProductsWithLatestInventoryQuantity();
+    public List<ProductInventoryResponse> getAllProductsWithInventoryQuantity() {
+        return productRepo.findAllProductsWithInventoryQuantity();
     }
 }

@@ -14,7 +14,7 @@ import java.util.List;
 @Getter
 @Setter
 @NoArgsConstructor
-@ToString(exclude = {"role", "orders", "inventories", "orderProcessings", "returnExchanges", "approvedReturnExchanges", "prescriptionOrders"})
+@ToString(exclude = {"role", "orders", "inventories", "createdInventoryReceipts", "approvedInventoryReceipts", "receivedInventoryReceipts", "performedInventoryTransactions", "orderProcessings", "returnExchanges", "approvedReturnExchanges", "prescriptionOrders"})
 public class User {
 
     @Id
@@ -58,6 +58,18 @@ public class User {
 
     @OneToMany(mappedBy = "user", fetch = FetchType.LAZY)
     private List<Inventory> inventories;
+
+    @OneToMany(mappedBy = "createdBy", fetch = FetchType.LAZY)
+    private List<InventoryReceipt> createdInventoryReceipts;
+
+    @OneToMany(mappedBy = "approvedBy", fetch = FetchType.LAZY)
+    private List<InventoryReceipt> approvedInventoryReceipts;
+
+    @OneToMany(mappedBy = "receivedBy", fetch = FetchType.LAZY)
+    private List<InventoryReceipt> receivedInventoryReceipts;
+
+    @OneToMany(mappedBy = "performedBy", fetch = FetchType.LAZY)
+    private List<InventoryTransaction> performedInventoryTransactions;
 
     @OneToMany(mappedBy = "changedBy", fetch = FetchType.LAZY)
     private List<OrderProcessing> orderProcessings;

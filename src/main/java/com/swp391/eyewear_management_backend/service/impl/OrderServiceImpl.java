@@ -43,6 +43,8 @@ public class OrderServiceImpl implements OrderService {
     private final ShippingInfoRepo shippingInfoRepo;
     private final PaymentRepo paymentRepo;
     private final InvoiceRepo invoiceRepo;
+    private final ProductRepo productRepo;
+    private final InventoryTransactionRepo inventoryTransactionRepo;
 
     private final PromotionRepo promotionRepo;
 
@@ -238,6 +240,8 @@ public class OrderServiceImpl implements OrderService {
             prescriptionOrderDetailRepo.saveAll(rxDetails);
         }
 
+        deductInventoryAfterOrderCreated(savedOrder, cartItems, user);
+
         // 9) INSERT Shipping_Info
         ShippingInfo ship = new ShippingInfo();
         ship.setOrder(savedOrder);
@@ -379,6 +383,92 @@ public class OrderServiceImpl implements OrderService {
     private BigDecimal normalizeOnlineAmount(BigDecimal amount) {
         if (amount == null) return BigDecimal.ZERO;
         return amount.setScale(0, RoundingMode.HALF_UP);
+    }
+
+    private void deductInventoryAfterOrderCreated(Order order, List<CartItem> cartItems, User user) {
+        Map<Long, Integer> requiredByProductId = new HashMap<>();
+
+        for (CartItem cartItem : cartItems) {
+            int qty = cartItem.getQuantity() == null || cartItem.getQuantity() <= 0 ? 1 : cartItem.getQuantity();
+            addRequiredQuantity(requiredByProductId, productFromContactLens(cartItem), qty);
+            addRequiredQuantity(requiredByProductId, productFromFrame(cartItem), qty);
+            addRequiredQuantity(requiredByProductId, productFromLens(cartItem), qty);
+        }
+
+        if (requiredByProductId.isEmpty()) {
+            return;
+        }
+
+        List<Long> productIds = requiredByProductId.keySet().stream()
+                .sorted()
+                .toList();
+        List<Product> products = productRepo.findByIdsForUpdate(productIds);
+        if (products.size() != productIds.size()) {
+            throw new AppException(ErrorCode.CART_ITEM_INVALID_FOR_CHECKOUT);
+        }
+
+        List<InventoryTransaction> transactions = new ArrayList<>();
+        for (Product product : products) {
+            Long productId = product.getProductID();
+            int requestedQty = requiredByProductId.getOrDefault(productId, 0);
+            int onHandBefore = product.getOnHandQuantity() == null ? 0 : product.getOnHandQuantity();
+            boolean allowPreorder = Boolean.TRUE.equals(product.getAllowPreorder());
+            if (onHandBefore < requestedQty && !allowPreorder) {
+                throw new AppException(ErrorCode.INVENTORY_INSUFFICIENT_QUANTITY);
+            }
+
+            int deductedQty = Math.min(onHandBefore, requestedQty);
+            int onHandAfter = onHandBefore - deductedQty;
+            product.setOnHandQuantity(onHandAfter);
+
+            if (deductedQty <= 0) {
+                continue;
+            }
+
+            InventoryTransaction tx = new InventoryTransaction();
+            tx.setProduct(product);
+            tx.setTransactionType("SALE_OUT");
+            tx.setQuantityBefore(onHandBefore);
+            tx.setQuantityAfter(onHandAfter);
+            tx.setQuantityChange(-deductedQty);
+            tx.setReferenceType("ORDER");
+            tx.setReferenceID(order.getOrderID());
+            tx.setOrder(order);
+            tx.setPerformedBy(user);
+            tx.setPerformedAt(now());
+            tx.setNote(order.getOrderCode());
+            transactions.add(tx);
+        }
+
+        productRepo.saveAll(products);
+        if (!transactions.isEmpty()) {
+            inventoryTransactionRepo.saveAll(transactions);
+        }
+    }
+
+    private void addRequiredQuantity(Map<Long, Integer> requiredByProductId,
+                                     Product product,
+                                     int qty) {
+        if (product == null || product.getProductID() == null || qty <= 0) {
+            return;
+        }
+        Long productId = product.getProductID();
+        requiredByProductId.merge(productId, qty, Integer::sum);
+    }
+
+    private Product productFromContactLens(CartItem cartItem) {
+        if (cartItem.getContactLens() == null) return null;
+        return cartItem.getContactLens().getProduct();
+    }
+
+    private Product productFromFrame(CartItem cartItem) {
+        if (cartItem.getFrame() == null) return null;
+        return cartItem.getFrame().getProduct();
+    }
+
+    private Product productFromLens(CartItem cartItem) {
+        if (cartItem.getLens() == null) return null;
+        return cartItem.getLens().getProduct();
     }
 
     @Override
