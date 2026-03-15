@@ -28,6 +28,7 @@ public enum ErrorCode {
 
     //Return-Exchange
     RETURN_EXCHANGE_NOT_FOUND(1032, "Return Exchange not found", HttpStatus.NOT_FOUND),
+    RETURN_EXCHANGE_NOT_FIT(400, "The reason or item condition is not eligible for a return or exchange.",HttpStatus.BAD_REQUEST),
 
     PAYMENT_METHOD_NOT_SUPPORTED(1027, "Payment is not applicable for this checkout", HttpStatus.BAD_REQUEST),
     DEPOSIT_PAYMENT_METHOD_REQUIRED(1033, "Deposit payment method is required when payment method is COD", HttpStatus.BAD_REQUEST),

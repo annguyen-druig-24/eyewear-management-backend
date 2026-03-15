@@ -28,9 +28,10 @@ public class ReturnExchangeController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<ReturnExchangeResponse>> createReturnExchange(
             @ModelAttribute ReturnExchangeRequest request,
-            @RequestParam(value = "image", required = false) MultipartFile imageFile) {
+            @RequestParam(value = "image", required = false) MultipartFile imageFile1,
+            @RequestParam(value = "imageQr", required = false) MultipartFile imageFile2) {
         try {
-            ReturnExchangeResponse response = returnExchangeService.createReturnExchange(request, imageFile);
+            ReturnExchangeResponse response = returnExchangeService.createReturnExchange(request, imageFile1);
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(ApiResponse.<ReturnExchangeResponse>builder()
                             .code(1000)

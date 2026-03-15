@@ -7,6 +7,7 @@ import com.swp391.eyewear_management_backend.exception.AppException;
 import com.swp391.eyewear_management_backend.exception.ErrorCode;
 import com.swp391.eyewear_management_backend.mapper.ReturnExchangeMapper;
 import com.swp391.eyewear_management_backend.repository.OrderDetailRepo;
+import com.swp391.eyewear_management_backend.repository.OrderRepo;
 import com.swp391.eyewear_management_backend.repository.ReturnExchangeRepo;
 import com.swp391.eyewear_management_backend.repository.UserRepo;
 import com.swp391.eyewear_management_backend.service.ImageUploadService;
@@ -36,6 +37,7 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
 
     @Autowired
     private UserRepo userRepository;
+
 
     @Autowired
     private ReturnExchangeMapper returnExchangeMapper;
@@ -77,11 +79,13 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
         OrderDetail orderDetail = orderDetailRepository.findById(request.getOrderDetailId())
                 .orElseThrow(() -> new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION)); // Thay bằng lỗi phù hợp
 
+        if(!orderDetail.getOrder().getOrderStatus().equals("COMPLETED")){
+            throw new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FIT);
+        }
         // Kiểm tra OrderDetail đã có return/exchange chưa
         if (returnExchangeRepository.existsByOrderDetail_OrderDetailID(request.getOrderDetailId())) {
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION); // Thay bằng lỗi phù hợp
         }
-
         // Kiểm tra số lượng hợp lệ
         if (request.getQuantity() == null || request.getQuantity() <= 0 || request.getQuantity() > orderDetail.getQuantity()) {
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION); // Thay bằng lỗi phù hợp
@@ -111,10 +115,15 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
         returnExchange.setReturnReason(request.getReturnReason());
         returnExchange.setReturnType(request.getReturnType()); // RETURN/REFUND/WARRANTY
         returnExchange.setProductCondition(null); // Không cần quan tâm, để null
-        returnExchange.setRefundAmount(refundAmount); // Tự động tính
+        if(request.getReturnType().equals("RETURN")){
+            returnExchange.setRefundAmount(refundAmount); // Tự động tính
+        }
+        else{
+            returnExchange.setRefundAmount(null);
+        }
         returnExchange.setRefundMethod(request.getRefundMethod());
         returnExchange.setRefundAccountNumber(request.getRefundAccountNumber());
-        returnExchange.setStatus("PENDING"); // Trạng thái mặc định
+        returnExchange.setStatus(orderDetail.getOrder().getOrderStatus()); // Trạng thái mặc định
         returnExchange.setImageUrl(imageUrl); // URL từ Cloudinary
         // approvedBy, approvedDate, rejectReason để null (chưa xử lý)
 
