@@ -14,7 +14,7 @@ import java.util.List;
 @Getter
 @Setter
 @NoArgsConstructor
-@ToString(exclude = {"order", "product", "returnExchange", "inventoryTransactions"})
+@ToString(exclude = {"order", "product", "returnExchangeItems", "inventoryTransactions"})
 public class OrderDetail {
 
     @Id
@@ -43,8 +43,8 @@ public class OrderDetail {
     @Column(name = "Quantity", nullable = false)
     private Integer quantity;
 
-    @OneToOne(mappedBy = "orderDetail", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
-    private ReturnExchange returnExchange;
+    @OneToMany(mappedBy = "orderDetail", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    private List<ReturnExchangeItem> returnExchangeItems;
 
     @OneToMany(mappedBy = "orderDetail", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     private List<InventoryTransaction> inventoryTransactions;

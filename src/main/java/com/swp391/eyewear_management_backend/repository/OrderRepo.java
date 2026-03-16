@@ -55,7 +55,8 @@ public interface OrderRepo extends JpaRepository<Order, Long>, JpaSpecificationE
         FROM Order o
         JOIN FETCH o.user u
         JOIN o.orderDetails od
-        WHERE od.returnExchange IS NOT NULL
+        JOIN od.returnExchangeItems rei
+        WHERE rei.returnExchange IS NOT NULL
     """)
     List<Order> findAllOrdersWithReturnExchange();
 

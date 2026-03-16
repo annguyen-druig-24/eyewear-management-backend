@@ -132,13 +132,14 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         for (Order entityOrder : orders) {
             StaffOrderListResponse response = staffOrderMapper.toStaffOrderListResponse(entityOrder);
             ReturnExchange returnExchange = entityOrder.getOrderDetails().stream()
-                    .map(OrderDetail::getReturnExchange)
+                    .flatMap(od -> od.getReturnExchangeItems().stream())
+                    .map(ReturnExchangeItem::getReturnExchange)
                     .filter(Objects::nonNull)
                     .findFirst()
                     .orElse(null);
 
             if (returnExchange != null) {
-                response.setReturnExchangeId(returnExchange.getReturnExchangeID());
+                response.setReturnExchangeId(returnExchange.getReturnExchangeId());
                 response.setReturnType(resolveReturnType(returnExchange));
                 response.setReturnExchangeStatus(returnExchange.getStatus());
             }
@@ -1102,7 +1103,10 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         ReturnExchange returnExchange = returnExchangeRepo.findById(returnExchangeId)
                 .orElseThrow(() -> new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FOUND));
 
-        OrderDetail orderDetail = returnExchange.getOrderDetail();
+        ReturnExchangeItem firstItem = returnExchange.getItems() != null && !returnExchange.getItems().isEmpty()
+                ? returnExchange.getItems().get(0)
+                : null;
+        OrderDetail orderDetail = firstItem != null ? firstItem.getOrderDetail() : null;
         Long orderId = orderDetail != null && orderDetail.getOrder() != null
                 ? orderDetail.getOrder().getOrderID()
                 : null;
@@ -1111,6 +1115,13 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         }
 
         StaffOrderDetailResponse orderDetailResponse = getOrderDetailForSalesStaff(orderId);
+        
+        Integer totalQuantity = returnExchange.getItems() != null 
+                ? returnExchange.getItems().stream()
+                    .filter(Objects::nonNull)
+                    .map(ReturnExchangeItem::getQuantity)
+                    .reduce(0, Integer::sum)
+                : 0;
 
         return StaffReturnExchangeDetailResponse.builder()
                 .orderId(orderDetailResponse.getOrderId())
@@ -1136,15 +1147,15 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                 .recipientEmail(orderDetailResponse.getRecipientEmail())
                 .recipientAddress(orderDetailResponse.getRecipientAddress())
                 .note(orderDetailResponse.getNote())
-                .returnExchangeId(returnExchange.getReturnExchangeID())
-                .returnOrderDetailId(orderDetail.getOrderDetailID())
+                .returnExchangeId(returnExchange.getReturnExchangeId())
+                .returnOrderDetailId(orderDetail != null ? orderDetail.getOrderDetailID() : null)
                 .returnCode(returnExchange.getReturnCode())
                 .requestDate(returnExchange.getRequestDate())
                 .returnExchangeStatus(returnExchange.getStatus())
-                .returnQuantity(returnExchange.getQuantity())
+                .returnQuantity(totalQuantity)
                 .returnReason(returnExchange.getReturnReason())
-                .returnImgUrl(returnExchange.getImageUrl())
-                .productCondition(returnExchange.getProductCondition())
+                .returnImgUrl(orderDetail != null && orderDetail.getProduct() != null ? pickPrimaryImage(orderDetail.getProduct()) : null)
+                .productCondition(null)
                 .refundAmount(returnExchange.getRefundAmount())
                 .refundMethod(returnExchange.getRefundMethod())
                 .refundAccountNumber(returnExchange.getRefundAccountNumber())

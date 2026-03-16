@@ -5,6 +5,7 @@ import com.swp391.eyewear_management_backend.dto.request.ReturnExchangeRequest;
 import com.swp391.eyewear_management_backend.dto.response.ApiResponse;
 import com.swp391.eyewear_management_backend.dto.response.ReturnExchangeResponse;
 import com.swp391.eyewear_management_backend.service.ReturnExchangeService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -24,23 +25,28 @@ public class ReturnExchangeController {
 
     /**
      * Tạo yêu cầu đổi trả
+     *
+     * / Phần 1: Nhận cục JSON (chứa cả cha lẫn list con)
+     *             @RequestPart("request") @Valid ReturnExchangeRequest request,
+     *
+     *             // Phần 2: Nhận File ảnh (có thể không bắt buộc)
+     *             @RequestPart(value = "imageFile", required = false) MultipartFile imageFile
      */
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ApiResponse<ReturnExchangeResponse>> createReturnExchange(
-            @ModelAttribute ReturnExchangeRequest request,
-            @RequestParam(value = "image", required = false) MultipartFile imageFile1,
-            @RequestParam(value = "imageQr", required = false) MultipartFile imageFile2) {
-        try {
-            ReturnExchangeResponse response = returnExchangeService.createReturnExchange(request, imageFile1);
-            return ResponseEntity.status(HttpStatus.CREATED)
-                    .body(ApiResponse.<ReturnExchangeResponse>builder()
-                            .code(1000)
-                            .message("Return exchange request created successfully")
-                            .result(response)
-                            .build());
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to process return exchange request: " + e.getMessage(), e);
-        }
+    public ResponseEntity<ApiResponse<String>> createReturnExchange(
+            @RequestPart("request") @Valid ReturnExchangeRequest request,
+            @RequestPart(value = "imageFile", required = false) MultipartFile imageFile) {
+
+        // Gọi Service thực thi logic tạo đơn (không cần hứng dữ liệu trả về nếu không dùng đến)
+        returnExchangeService.createReturnExchange(request, imageFile);
+
+        // Trả về duy nhất câu thông báo thành công bằng tiếng Anh
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.<String>builder()
+                        .code(1000)
+                        .message("Success")
+                        .result("Return exchange request created successfully")
+                        .build());
     }
 
     /**
