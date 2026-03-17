@@ -4,6 +4,7 @@ import com.swp391.eyewear_management_backend.dto.request.CartItemRequest;
 import com.swp391.eyewear_management_backend.dto.request.CartItemQuantityUpdateRequest;
 import com.swp391.eyewear_management_backend.dto.response.CartItemResponse;
 import com.swp391.eyewear_management_backend.entity.*;
+import com.swp391.eyewear_management_backend.entity.enumpackage.ItemType;
 import com.swp391.eyewear_management_backend.exception.AppException;
 import com.swp391.eyewear_management_backend.exception.ErrorCode;
 import com.swp391.eyewear_management_backend.mapper.CartItemMapper;
@@ -144,6 +145,8 @@ public class CartServiceImpl implements CartService {
             // Cập nhật quantity: tăng lên thay vì ghi đè
             cartItem = existingItem;
             cartItem.setQuantity(cartItem.getQuantity() + request.getQuantity());
+            // Cập nhật lại luôn ItemType phòng trường hợp kho vừa hết hàng chuyển sang Preorder
+            cartItem.setItemType(determineItemType(request, finalFrame, finalLens, finalContactLens));
             savedItem = cartItemRepository.save(cartItem);
         } else {
             // Tạo mới CartItem
@@ -153,6 +156,9 @@ public class CartServiceImpl implements CartService {
             cartItem.setFrame(finalFrame);
             cartItem.setLens(finalLens);
             cartItem.setQuantity(request.getQuantity());
+
+            // ---> GỌI HÀM PHÂN LOẠI VÀ GÁN VÀO ĐÂY <---
+            cartItem.setItemType(determineItemType(request, finalFrame, finalLens, finalContactLens));
 
             // Set giá từ database
             if (finalFrame != null) {
@@ -327,5 +333,39 @@ public class CartServiceImpl implements CartService {
                 Objects.equals(request.getPd(), itemPrescription.getPd()) &&
                 Objects.equals(request.getPdRight(), itemPrescription.getPdRight()) &&
                 Objects.equals(request.getPdLeft(), itemPrescription.getPdLeft());
+    }
+
+    /**
+     * Xác định loại hình sản phẩm trong giỏ hàng (ORDER, PREORDER, PRESCRIPTION)
+     */
+    private ItemType determineItemType(CartItemRequest request, Frame frame, Lens lens, ContactLens contactLens) {
+        // 1. Ưu tiên kiểm tra trước: Nếu có thông số độ -> PRESCRIPTION
+        if (hasPrescription(request)) {
+            return ItemType.PRESCRIPTION;
+        }
+
+        // 2. Kiểm tra xem Gọng, Tròng, hoặc Kính áp tròng có phải là hàng Preorder không
+        if (isProductPreorder(frame != null ? frame.getProduct() : null) ||
+                isProductPreorder(lens != null ? lens.getProduct() : null) ||
+                isProductPreorder(contactLens != null ? contactLens.getProduct() : null)) {
+            return ItemType.PREORDER;
+        }
+
+        // 3. Các trường hợp còn lại (có sẵn hàng) -> ORDER
+        return ItemType.ORDER;
+    }
+
+    /**
+     * Kiểm tra một Product có đang ở trạng thái Preorder hay không
+     */
+    private boolean isProductPreorder(Product product) {
+        if (product == null) {
+            return false;
+        }
+        // Cho phép Preorder = true VÀ Số lượng khả dụng = 0
+        // (Lưu ý: Hãy chắc chắn tên getter getAllowPreorder() và getAvailableQuantity() khớp với Entity Product của bạn)
+        return Boolean.TRUE.equals(product.getAllowPreorder()) &&
+                product.getAvailableQuantity() != null &&
+                product.getAvailableQuantity() == 0;
     }
 }

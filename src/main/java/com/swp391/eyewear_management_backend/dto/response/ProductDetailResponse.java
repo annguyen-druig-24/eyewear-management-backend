@@ -15,4 +15,6 @@ public class ProductDetailResponse {
     private BigDecimal price;
     private String brandName;
     private List<String> imageUrls;
+    // Thêm trường availableQuantity
+    private Integer availableQuantity;
 }

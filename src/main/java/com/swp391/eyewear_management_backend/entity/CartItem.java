@@ -1,5 +1,6 @@
 package com.swp391.eyewear_management_backend.entity;
 
+import com.swp391.eyewear_management_backend.entity.enumpackage.ItemType;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -48,6 +49,11 @@ public class CartItem {
 
     @Column(name = "Price", columnDefinition = "DECIMAL(18,2)", nullable = false)
     private BigDecimal price;
+
+    // THÊM TRƯỜNG PHÂN LOẠI VÀO ĐÂY
+    @Enumerated(EnumType.STRING)
+    @Column(name = "Item_Type", length = 50)
+    private ItemType itemType;
 
     @OneToOne(mappedBy = "cartItem",
             cascade = CascadeType.ALL,

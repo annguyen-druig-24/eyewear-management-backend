@@ -60,4 +60,6 @@ public class ReturnExchangeItem {
 
     @Column(name = "Note", columnDefinition = "NVARCHAR(500)")
     private String note;
+
+
 }

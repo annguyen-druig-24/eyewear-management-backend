@@ -14,8 +14,7 @@ public interface ReturnExchangeService {
      * @param imageFile File ảnh đính kèm
      * @return ReturnExchangeResponse
      */
-    String createReturnExchange(ReturnExchangeRequest request, MultipartFile imageFile);
-    
+    String createReturnExchange(ReturnExchangeRequest request, List<MultipartFile> itemImages);
     /**
      * Lấy chi tiết một yêu cầu đổi trả
      * @param returnExchangeId ID của return/exchange

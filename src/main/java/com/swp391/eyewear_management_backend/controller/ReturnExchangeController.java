@@ -26,21 +26,17 @@ public class ReturnExchangeController {
     /**
      * Tạo yêu cầu đổi trả
      *
-     * / Phần 1: Nhận cục JSON (chứa cả cha lẫn list con)
-     *             @RequestPart("request") @Valid ReturnExchangeRequest request,
-     *
-     *             // Phần 2: Nhận File ảnh (có thể không bắt buộc)
-     *             @RequestPart(value = "imageFile", required = false) MultipartFile imageFile
+     * Phần 1: Nhận cục JSON (chứa cả cha lẫn list con)
+     * Phần 2: Nhận danh sách File ảnh tương ứng với từng item con
      */
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<String>> createReturnExchange(
             @RequestPart("request") @Valid ReturnExchangeRequest request,
-            @RequestPart(value = "imageFile", required = false) MultipartFile imageFile) {
+            @RequestPart(value = "itemImages", required = false) List<MultipartFile> itemImages) {
 
-        // Gọi Service thực thi logic tạo đơn (không cần hứng dữ liệu trả về nếu không dùng đến)
-        returnExchangeService.createReturnExchange(request, imageFile);
+        // Truyền thêm danh sách ảnh xuống Service
+        returnExchangeService.createReturnExchange(request, itemImages);
 
-        // Trả về duy nhất câu thông báo thành công bằng tiếng Anh
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.<String>builder()
                         .code(1000)

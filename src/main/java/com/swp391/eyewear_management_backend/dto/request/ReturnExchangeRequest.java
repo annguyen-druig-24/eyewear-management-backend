@@ -1,11 +1,9 @@
 package com.swp391.eyewear_management_backend.dto.request;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-import java.math.BigDecimal;
 import java.util.List;
 
 @Data
@@ -15,52 +13,32 @@ import java.util.List;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ReturnExchangeRequest {
 
-    @JsonProperty("order_id")
     // NOT NULL trong DB
     @NotNull(message = "Mã đơn hàng không được để trống")
     Long orderId;
 
-    @JsonProperty("order_detail_id")
-    Long orderDetailId;
-
-    @JsonProperty("return_type")
     // NOT NULL trong DB
     @NotBlank(message = "Loại yêu cầu đổi trả (Return Type) không được để trống")
-    String returnType;
+    String returnType; // VD: RETURN, EXCHANGE, WARRANTY, REFUND
 
-    @JsonProperty("request_scope")
     // NOT NULL trong DB
     @NotBlank(message = "Phạm vi yêu cầu (Request Scope) không được để trống")
-    String requestScope;
+    String requestScope; // VD: ORDER, ITEM
 
-    @JsonProperty("request_note")
+
+
     String requestNote;
 
-    @JsonProperty("return_reason")
     String returnReason;
 
-    @JsonProperty("customer_evidence_url")
-    String customerEvidenceUrl;
 
-    @JsonProperty("refund_amount")
-    BigDecimal refundAmount;
 
-    @JsonProperty("refund_method")
-    String refundMethod;
+    String refundMethod; // VD: BANK_TRANSFER, EWALLET
 
-    @JsonProperty("refund_account_number")
     String refundAccountNumber;
 
-    @JsonProperty("refund_account_name")
     String refundAccountName;
 
-    @JsonProperty("refund_reference_code")
-    String refundReferenceCode;
-
-    @JsonProperty("staff_refund_evidence_url")
-    String staffRefundEvidenceUrl;
-
-    @JsonProperty("items")
+    // Danh sách các sản phẩm cần đổi trả (nếu Request_Scope = 'ITEM')
     List<ReturnExchangeItemRequest> items;
 }
-

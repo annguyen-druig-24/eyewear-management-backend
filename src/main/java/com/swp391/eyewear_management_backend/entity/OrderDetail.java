@@ -1,5 +1,6 @@
 package com.swp391.eyewear_management_backend.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -14,7 +15,6 @@ import java.util.List;
 @Getter
 @Setter
 @NoArgsConstructor
-@ToString(exclude = {"order", "product", "returnExchangeItems", "inventoryTransactions"})
 public class OrderDetail {
 
     @Id
@@ -25,6 +25,7 @@ public class OrderDetail {
     @ManyToOne(fetch = FetchType.LAZY, cascade = {
             CascadeType.PERSIST, CascadeType.MERGE, CascadeType.DETACH, CascadeType.REFRESH
     })
+    @JsonIgnore
     @JoinColumn(name = "Order_ID", nullable = false)
     private Order order;
 

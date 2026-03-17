@@ -23,4 +23,6 @@ public class ProductResponse {
     private Long frameId;
     private Long lensId;
     private Long contactLensId;
+    // Thêm trường availableQuantity
+    private Integer availableQuantity;
 }
