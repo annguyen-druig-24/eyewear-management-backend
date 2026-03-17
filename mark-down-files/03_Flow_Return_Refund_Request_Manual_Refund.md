@@ -16,7 +16,7 @@ Tài liệu này mô tả lại chi tiết flow CUSTOMER gửi yêu cầu trả 
 ### 2.1. Phần được giữ lại
 
 - Giữ ý tưởng CUSTOMER tạo request từ lịch sử đơn hàng.
-- Giữ hướng xử lý theo `Order_Detail` để hỗ trợ item-level.
+- Giữ hướng xử lý item-level theo `Order_Detail` và mở rộng thêm `Prescription_Order_Detail`.
 - Giữ flow staff:
   - xem request
   - kiểm tra
@@ -37,7 +37,7 @@ Tài liệu này mô tả lại chi tiết flow CUSTOMER gửi yêu cầu trả 
 > - refund account name (khuyến nghị)  
 > [BỔ SUNG MỚI] Làm rõ validation quantity, eligibility window và chống trùng request.  
 > [BỔ SUNG MỚI] Bổ sung mapping rất cụ thể với `Return_Exchange` và `Return_Exchange_Item`.  
-> [BỔ SUNG MỚI] Bổ sung ví dụ thực tế, API gợi ý, timeline trạng thái, rule inventory sau khi nhận hàng hoàn.
+> [BỔ SUNG MỚI] Bổ sung ví dụ thực tế, API gợi ý, timeline trạng thái, rule inventory sau khi nhận hàng hoàn (sẽ làm sau về rule inventory sau khi nhận hàng hoàn).
 
 ---
 
@@ -96,10 +96,10 @@ Các field chính dùng trong flow này:
 - `Return_Type = RETURN`
 - `Request_Scope = ITEM`
 - `Return_Reason`: lý do trả hàng
-- `Customer_Evidence_URL`: ảnh/video bằng chứng lỗi
 - `Refund_Method`
 - `Refund_Account_Number`
 - `Refund_Account_Name`
+- `Customer_Account_QR`: hỉnh ảnh mã QR từ tài khoản ngân hàng hoặc Momo của CUSTOMER
 - `Status`
 - `Approved_By`, `Approved_Date`
 - `Processed_By`, `Processed_Date`
@@ -111,8 +111,10 @@ Các field chính dùng trong flow này:
 Mỗi dòng thể hiện một item cụ thể CUSTOMER muốn trả:
 
 - `Return_Exchange_ID`
-- `Order_Detail_ID`
+- `Item_Source`
+- `Order_Detail_ID` hoặc `Prescription_Order_Detail_ID`
 - `Quantity`
+- `Item_Evidence_URL` (ảnh bằng chứng của từng sản phẩm)
 - `Item_Reason`
 - `Note`
 
@@ -129,7 +131,7 @@ CUSTOMER chỉ được tạo request nếu thỏa mãn tất cả điều kiệ
    - `COMPLETED`
    - hoặc đã giao thành công theo logic hệ thống
 3. Yêu cầu được gửi trong thời hạn cho phép, ví dụ:
-   - trong vòng 7 ngày từ `delivered_at` hoặc `completed_at`
+   - trong vòng 7 ngày từ `delivered_at` hoặc `completed_at` (Dựa theo Shipping_Info.Delivered_At - Delivered_At là thời gian CUSTOMER nhận được hàng)
 4. Item được chọn thật sự thuộc order.
 5. Tổng quantity xin trả không vượt số lượng đã mua và chưa trả trước đó.
 6. Không có request mở trùng cho cùng item nếu policy không cho phép.
@@ -144,25 +146,24 @@ Khi tạo request, giao diện nên yêu cầu CUSTOMER nhập:
 
 - `return_reason`
 - `request_note` / mô tả chi tiết lỗi
-- `customer_evidence_url` (ít nhất 1 ảnh nếu policy yêu cầu)
 
 ### 7.2. Dữ liệu refund
 
-- `refund_method`
-  - `BANK_TRANSFER`
-  - `EWALLET`
-  - `OTHER_MANUAL`
+- `refund_method` (CUSTOMER có thể tự nhập method CUSTOMER mong muốn. VD: ABC, VCB, Momo, ...)
 - `refund_account_number`
 - `refund_account_name` (khuyến nghị thêm)
+- `customer_account_qr` (khuyến nghị thêm để staff chuyển khoản nhanh hơn)
 
 ### 7.3. Dữ liệu theo từng item
 
-- `order_detail_id`
+- `item_source` (`ORDER_DETAIL` hoặc `PRESCRIPTION_ORDER_DETAIL`)
+- `order_detail_id` hoặc `prescription_order_detail_id`
 - `quantity`
+- `item_evidence_url` (mỗi item 1 ảnh theo yêu cầu mới)
 - `item_reason`
 - `note`
 
-> [BỔ SUNG MỚI] File gốc chưa nói rõ customer cần nhập refund info từ lúc nào. Bản này chốt luôn nhập từ bước tạo request để staff có thể hoàn tiền ngay sau khi approve.
+> [BỔ SUNG MỚI] File gốc chưa nói rõ customer cần nhập refund info từ lúc nào. Bản này chốt luôn nhập từ bước tạo request để staff có thể hoàn tiền ngay sau khi approve. Sau khi SALES STAFF bấm xác nhận (APPROVED) thì trên UI sẽ có phần upload file ảnh để SALES STAFF có thể upload file ảnh chuyển tiền bằng chứng. SALES STAFF chỉ có thể bấm "Hoàn thành" (COMPLETED) khi và chỉ khi đã upload file ảnh chuyển tiền bằng chứng.
 
 ---
 
@@ -172,11 +173,11 @@ Khi tạo request, giao diện nên yêu cầu CUSTOMER nhập:
 
 1. CUSTOMER vào lịch sử đơn hàng.
 2. Chọn `Order` cần trả hàng.
-3. Chọn một hoặc nhiều `Order_Detail`.
+3. Chọn một hoặc nhiều item từ `Order_Detail` hoặc `Prescription_Order_Detail`.
 4. Nhập:
    - lý do trả hàng
    - mô tả lỗi
-   - ảnh/video bằng chứng
+   - ảnh bằng chứng theo từng sản phẩm
    - số lượng cần trả cho từng item
    - thông tin nhận hoàn tiền
 5. Hệ thống validate.
@@ -216,15 +217,16 @@ SALES STAFF mở request và xem:
 - customer
 - các item yêu cầu trả
 - quantity
-- ảnh/video lỗi
+- ảnh lỗi của từng item
 - refund method / refund account number / refund account name
+- customer account QR (nếu có)
 
 ### 8.3.1. Những gì staff cần kiểm tra
 
 1. Đúng order của customer hay không
 2. Item có thuộc order hay không
 3. Quantity có hợp lệ hay không
-4. Request có còn trong thời hạn policy hay không
+4. Request có còn trong thời hạn policy hay không (Trong vòng 7 ngày kể từ khi nhận được hàng, Shipping_Info.Delivered_At chính là thời gian CUSTOMER nhận được hàng)
 5. Lý do / evidence có đủ cơ sở hay không
 6. Payment của order có đủ điều kiện hoàn tiền hay không
 
@@ -268,6 +270,7 @@ Sau khi request đã `APPROVED`, staff thực hiện:
    - `Refund_Method`
    - `Refund_Account_Number`
    - `Refund_Account_Name`
+   - `Customer_Account_QR`
 2. Kiểm tra số tiền hoàn theo policy
 3. Upload ảnh chuyển khoản / ảnh biên nhận
 4. Nhập `Refund_Reference_Code` nếu có
@@ -283,7 +286,7 @@ Sau khi request đã `APPROVED`, staff thực hiện:
 
 ---
 
-## Bước 6: Xử lý hàng hoàn và tồn kho
+## Bước 6: Xử lý hàng hoàn và tồn kho 
 
 > [BỔ SUNG MỚI - QUAN TRỌNG]
 
@@ -338,9 +341,10 @@ Không cho phép:
 - `Request_Scope = ITEM`
 - Có ít nhất 1 item
 - Mỗi `Order_Detail_ID` đều thuộc order đó
+- Với `Item_Source = PRESCRIPTION_ORDER_DETAIL`, mỗi `Prescription_Order_Detail_ID` cũng phải map đúng về `Order_ID`
 - `Quantity > 0`
 - Tổng số lượng xin trả không vượt số lượng đã mua
-- Có evidence nếu policy yêu cầu
+- Mỗi item phải có `Item_Evidence_URL` nếu policy yêu cầu
 - Có refund method và refund account number nếu flow cần hoàn tiền
 
 ### 10.2. Validation khi staff approve
@@ -366,7 +370,7 @@ Không cho phép:
 - Order có 2 item
 - CUSTOMER chọn item `Order_Detail_ID = 1001`
 - quantity trả = `1`
-- upload 3 ảnh lỗi
+- upload 1 ảnh lỗi cho item đó tại `Item_Evidence_URL`
 - nhập:
   - `Refund_Method = BANK_TRANSFER`
   - `Refund_Account_Number = 123456789`
@@ -423,14 +427,16 @@ Ví dụ payload:
   "requestScope": "ITEM",
   "returnReason": "Gọng kính bị lỗi bản lề",
   "requestNote": "Kính phát ra tiếng kêu khi mở càng, bản lề lỏng",
-  "customerEvidenceUrl": "https://cdn.example.com/return/customer-proof-01.jpg",
   "refundMethod": "BANK_TRANSFER",
   "refundAccountNumber": "123456789",
   "refundAccountName": "NGUYEN VAN A",
+  "customerAccountQr": "https://cdn.example.com/qr/nguyen-van-a.png",
   "items": [
     {
+      "itemSource": "ORDER_DETAIL",
       "orderDetailId": 1001,
       "quantity": 1,
+      "itemEvidenceUrl": "https://cdn.example.com/return/item-1001-proof.jpg",
       "itemReason": "Lỗi bản lề",
       "note": "Sản phẩm nhận ngày 10/03"
     }
@@ -487,7 +493,7 @@ Nếu muốn hiển thị rõ hơn trên UI, có thể thêm:
 - số tiền hoàn
 - ngày staff xử lý
 - mã tham chiếu hoàn tiền
-- ảnh evidence (nếu policy cho phép customer xem)
+- ảnh evidence (nếu policy cho phép customer xem) --> Sẽ cho phép CUSTOMER xem được Staff_Refund_Evidence_URL
 
 ---
 

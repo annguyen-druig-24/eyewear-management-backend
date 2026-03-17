@@ -15,6 +15,9 @@ public class ReturnExchangeItemResponse {
     private String productName;
     private Integer requestedQuantity;
     private Integer orderQuantity;
+    private String itemSource;
+    private String itemEvidenceURL;
+    private Long prescriptionOrderDetailId;
     private String itemReason;
     private String note;
 }

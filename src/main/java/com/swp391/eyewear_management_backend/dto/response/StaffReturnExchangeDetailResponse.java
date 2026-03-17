@@ -51,7 +51,6 @@ public class StaffReturnExchangeDetailResponse {
     private String requestScope;
     private String requestNote;
     private String returnReason;
-    private String customerEvidenceUrl;
     private BigDecimal refundAmount;
     private String refundMethod;
     private String refundAccountNumber;

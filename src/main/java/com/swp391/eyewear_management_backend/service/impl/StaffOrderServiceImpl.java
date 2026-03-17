@@ -4,6 +4,7 @@ import com.swp391.eyewear_management_backend.config.OrderConstants;
 import com.swp391.eyewear_management_backend.config.ghn.GhnProperties;
 import com.swp391.eyewear_management_backend.dto.projection.StaffReturnExchangeListProjection;
 import com.swp391.eyewear_management_backend.dto.request.ReturnExchangeDecisionRequest;
+import com.swp391.eyewear_management_backend.dto.request.StaffCompleteRefundRequest;
 import com.swp391.eyewear_management_backend.dto.request.StaffOrderSearchRequest;
 import com.swp391.eyewear_management_backend.dto.response.*;
 import com.swp391.eyewear_management_backend.entity.*;
@@ -13,6 +14,7 @@ import com.swp391.eyewear_management_backend.integration.ghn.GhnShippingClient;
 import com.swp391.eyewear_management_backend.mapper.ReturnExchangeMapper;
 import com.swp391.eyewear_management_backend.mapper.StaffOrderMapper;
 import com.swp391.eyewear_management_backend.repository.*;
+import com.swp391.eyewear_management_backend.service.ImageUploadService;
 import com.swp391.eyewear_management_backend.service.StaffOrderService;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -27,6 +29,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.multipart.MultipartFile;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -53,6 +57,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     private final ReturnExchangeRepo returnExchangeRepo;
     private final ReturnExchangeMapper returnExchangeMapper;
     private final UserRepo userRepo;
+    private final ImageUploadService imageUploadService;
     private final GhnShippingClient ghnShippingClient;
     private final GhnProperties ghnProperties;
 
@@ -95,6 +100,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     private static final String RETURN_STATUS_PENDING = "PENDING";
     private static final String RETURN_STATUS_APPROVED = "APPROVED";
     private static final String RETURN_STATUS_REJECTED = "REJECTED";
+    private static final String RETURN_STATUS_COMPLETED = "COMPLETED";
 
     private static final String RETURN_ACTION_APPROVE = "APPROVE";
     private static final String RETURN_ACTION_APPROVED = "APPROVED";
@@ -829,6 +835,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         Integer quantity = detail.getQuantity() == null ? 0 : detail.getQuantity();
         BigDecimal unitPrice = detail.getUnitPrice() == null ? BigDecimal.ZERO : detail.getUnitPrice();
         return StaffOrderItemResponse.builder()
+                .orderDetailId(detail.getOrderDetailID())
                 .productId(product != null ? product.getProductID() : null)
                 .productName(product != null ? product.getProductName() : null)
                 .quantity(quantity)
@@ -886,6 +893,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 
             RxAggregate aggregate = aggregates.computeIfAbsent(key, k -> new RxAggregate(
                     StaffPrescriptionOrderItemResponse.builder()
+                            .prescriptionOrderDetailId(detail.getPrescriptionOrderDetailID())
                             .frameId(frameId)
                             .frameName(frameName)
                             .framePrice(framePrice)
@@ -1195,6 +1203,46 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         return returnExchangeMapper.toReturnExchangeResponse(savedReturnExchange);
     }
 
+    @Override
+    @Transactional
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public ReturnExchangeResponse completeRefundForSalesStaff(Long returnExchangeId, StaffCompleteRefundRequest request, MultipartFile staffEvidenceFile) {
+        ReturnExchange returnExchange = returnExchangeRepo.findById(returnExchangeId)
+                .orElseThrow(() -> new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FOUND));
+
+        String currentStatus = normalize(returnExchange.getStatus());
+        if (!RETURN_STATUS_APPROVED.equals(currentStatus)) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
+        BigDecimal expectedRefundAmount = returnExchange.getRefundAmount();
+        if (expectedRefundAmount == null || request.getRefundAmount().compareTo(expectedRefundAmount) != 0) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+        if (staffEvidenceFile == null || staffEvidenceFile.isEmpty()) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+        String staffEvidenceUrl;
+        try {
+            staffEvidenceUrl = imageUploadService.uploadImage(staffEvidenceFile);
+        } catch (IOException e) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
+        // Cập nhật thông tin hoàn tiền
+        returnExchange.setStatus(RETURN_STATUS_COMPLETED);
+        returnExchange.setRefundAmount(request.getRefundAmount());
+        returnExchange.setRefundReferenceCode(request.getRefundReferenceCode());
+        returnExchange.setStaffRefundEvidenceUrl(staffEvidenceUrl);
+
+        // Cập nhật người thực hiện và ngày thực hiện
+        returnExchange.setProcessedBy(getCurrentUser());
+        returnExchange.setProcessedDate(LocalDateTime.now(APP_ZONE_ID));
+
+        ReturnExchange savedReturnExchange = returnExchangeRepo.save(returnExchange);
+        return returnExchangeMapper.toReturnExchangeResponse(savedReturnExchange);
+    }
+
     private String resolveReturnStatusAction(String action) {
         if (RETURN_ACTION_APPROVE.equals(action) || RETURN_ACTION_APPROVED.equals(action)) {
             return RETURN_STATUS_APPROVED;
@@ -1272,6 +1320,11 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                                 : item.getOrderDetail().getProduct().getProductName())
                         .requestedQuantity(item.getQuantity())
                         .orderQuantity(item.getOrderDetail() == null ? null : item.getOrderDetail().getQuantity())
+                        .itemSource(item.getItemSource())
+                        .itemEvidenceURL(item.getItemEvidenceUrl())
+                        .prescriptionOrderDetailId(item.getPrescriptionOrderDetail() == null
+                                ? null
+                                : item.getPrescriptionOrderDetail().getPrescriptionOrderDetailID())
                         .itemReason(item.getItemReason())
                         .note(item.getNote())
                         .build())
