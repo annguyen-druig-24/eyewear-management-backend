@@ -1,6 +1,7 @@
 package com.swp391.eyewear_management_backend.controller;
 
 import com.swp391.eyewear_management_backend.dto.request.ReturnExchangeDecisionRequest;
+import com.swp391.eyewear_management_backend.dto.request.StaffCompleteRefundRequest;
 import com.swp391.eyewear_management_backend.dto.request.StaffOrderSearchRequest;
 import com.swp391.eyewear_management_backend.dto.response.*;
 import com.swp391.eyewear_management_backend.service.StaffOrderService;
@@ -11,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -126,6 +128,22 @@ public class StaffOrderController {
         return ResponseEntity.ok(ApiResponse.<ReturnExchangeResponse>builder()
                 .code(1000)
                 .message("Return exchange status updated successfully")
+                .result(response)
+                .build());
+    }
+
+    /**
+     * Hoàn tất quá trình hoàn tiền thủ công cho yêu cầu đổi trả
+     */
+    @PutMapping(value = "/return-exchange/{returnExchangeId}/complete-refund", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<ReturnExchangeResponse>> completeRefund(
+            @PathVariable Long returnExchangeId,
+            @RequestPart("request") @Valid StaffCompleteRefundRequest request,
+            @RequestPart("staffEvidenceFile") MultipartFile staffEvidenceFile) {
+        ReturnExchangeResponse response = staffOrderService.completeRefundForSalesStaff(returnExchangeId, request, staffEvidenceFile);
+        return ResponseEntity.ok(ApiResponse.<ReturnExchangeResponse>builder()
+                .code(1000)
+                .message("Refund completed successfully")
                 .result(response)
                 .build());
     }

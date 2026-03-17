@@ -24,7 +24,7 @@ Tài liệu này mô tả chi tiết flow cho trường hợp:
 
 > [CHỈNH SỬA] Bỏ hướng ưu tiên auto-refund qua gateway trong phạm vi triển khai hiện tại.  
 > [BỔ SUNG MỚI] Chốt rõ phạm vi hiện tại: **manual refund only**.  
-> [CHỈNH SỬA] Không khuyến nghị cập nhật `Invoice.Status = UNPAID` một cách máy móc nếu tiền đã thu thành công; cần giữ sự thật dữ liệu về payment/refund.  
+> [CHỈNH SỬA] Không khuyến nghị cập nhật `Invoice.Status = UNPAID` một cách máy móc nếu tiền đã thu thành công; cần giữ sự thật dữ liệu về payment/refund. Nếu CUSTOMER chọn hủy đơn hàng thì sẽ cập nhật Invoice.Status = CANCELED.
 > [BỔ SUNG MỚI] Bổ sung chi tiết bước CUSTOMER nhập thông tin nhận hoàn tiền.  
 > [BỔ SUNG MỚI] Bổ sung mapping dữ liệu với `Return_Exchange`.  
 > [BỔ SUNG MỚI] Bổ sung rule về hoàn kho/tạo inventory reversal nếu hệ thống đã trừ kho khi tạo đơn.  
@@ -156,7 +156,7 @@ Hệ thống phải validate:
    - `Request_Scope = ORDER`
    - `Status IN (PENDING, APPROVED)`
 4. Đơn chưa bị hủy trước đó.
-5. Nếu hệ thống có logic trừ kho ngay khi tạo đơn thì chuẩn bị flow hoàn kho.
+5. Nếu hệ thống có logic trừ kho ngay khi tạo đơn thì chuẩn bị flow hoàn kho. --> Sau khi Return_Exchange.Status = COMPLETED thì sẽ cộng lại số lượng sản phẩm CUSTOMER hủy vào Product.Available_Quantity.
 
 ### 7.1.2. Dữ liệu CUSTOMER cần nhập
 
@@ -223,6 +223,7 @@ Tạo `Return_Exchange`:
 - `Refund_Method = CUSTOMER input`
 - `Refund_Account_Number = CUSTOMER input`
 - `Refund_Account_Name = CUSTOMER input`
+- `Customer_Account_QR = CUSTOMER input`
 - `Return_Reason = CUSTOMER cancel reason`
 - `Request_Note = Hủy đơn trước khi staff xác nhận`
 
@@ -240,7 +241,8 @@ SALES STAFF mở danh sách “Đơn đã hủy chờ hoàn tiền” và kiểm
 4. Thông tin hoàn tiền của CUSTOMER có đủ hay không:
    - refund method
    - account number
-   - account name (nếu áp dụng)
+   - account name (có thể có hoặc không, không bắt buộc)
+   - account_QR (có thể có hoặc không, không bắt buộc)
 
 ### 7.3.1. Các lý do có thể từ chối
 
@@ -267,9 +269,10 @@ Nếu accept:
    - `Refund_Method`
    - `Refund_Account_Number`
    - `Refund_Account_Name` (nếu có)
+   - `Customer_Account_QR` (nếu có)
 3. Sau khi chuyển tiền xong:
    - upload ảnh biên nhận / ảnh xác nhận chuyển khoản
-   - nhập mã tham chiếu chuyển khoản nếu có (`Refund_Reference_Code`)
+   - nhập mã tham chiếu chuyển khoản nếu có (`Refund_Reference_Code`) --> không cần thiết
 4. Cập nhật request:
    - `Status = COMPLETED`
    - `Approved_By`
@@ -277,7 +280,7 @@ Nếu accept:
    - `Processed_By`
    - `Processed_Date`
    - `Staff_Refund_Evidence_URL`
-   - `Refund_Reference_Code`
+   - `Refund_Reference_Code`(có thể không cần)
 
 > [BỔ SUNG MỚI] Tách rõ `Approved_By` và `Processed_By` để sau này audit tốt hơn, dù giai đoạn đầu hai người này có thể là cùng một staff.
 
@@ -290,7 +293,7 @@ Sau khi hoàn tất:
 - Thông báo cho CUSTOMER:
   - đơn đã hủy
   - refund đã hoàn tất
-  - số tiền đã hoàn
+  - số tiền đã hoàn (cho phép CUSTOMER xem được ảnh bằng chứng Staff_Refund_Evidence_URL của SALES STAFF đã upload)
 - Lưu timeline/audit
 - Dashboard staff không còn hiển thị request này trong danh sách chờ xử lý
 
@@ -310,7 +313,7 @@ Sau khi hoàn tất:
 | `Refund_Method` | do CUSTOMER cung cấp |
 | `Refund_Account_Number` | do CUSTOMER cung cấp |
 | `Refund_Account_Name` | do CUSTOMER cung cấp (nếu có) |
-| `Customer_Evidence_URL` | thường để `NULL` trong flow này |
+| `Customer_Account_QR` | do CUSTOMER cung cấp (nếu có) |
 | `Staff_Refund_Evidence_URL` | ảnh chuyển khoản do staff upload |
 | `Status` | `PENDING/APPROVED/REJECTED/COMPLETED` |
 
@@ -428,8 +431,7 @@ Ví dụ payload:
 ```json
 {
   "refundReferenceCode": "VCB-20260315-8891",
-  "staffRefundEvidenceUrl": "https://cdn.example.com/refund-proof/order-123.png",
-  "processedNote": "Đã chuyển khoản thủ công cho khách"
+  "staffRefundEvidenceUrl": "https://cdn.example.com/refund-proof/order-123.png"
 }
 ```
 
