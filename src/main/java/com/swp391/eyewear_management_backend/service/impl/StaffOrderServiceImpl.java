@@ -137,6 +137,14 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                 .toList();
     }
 
+    @Override
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public List<StaffReturnExchangeListResponse> getCancelRefundRequestsForSalesStaff() {
+        return returnExchangeRepo.findCancelRefundRequestsForSalesStaff().stream()
+                .map(this::mapToStaffReturnExchangeListResponse)
+                .toList();
+    }
+
     private String resolveReturnType(ReturnExchange returnExchange) {
         if (returnExchange.getRefundAmount() != null || StringUtils.hasText(returnExchange.getRefundMethod())) {
             return "RETURN";

@@ -91,6 +91,15 @@ public class StaffOrderController {
                 .build();
     }
 
+    @GetMapping("/return-exchange/cancel-refund-requests")
+    public ApiResponse<List<StaffReturnExchangeListResponse>> getCancelRefundRequestsForSalesStaff() {
+        List<StaffReturnExchangeListResponse> result = staffOrderService.getCancelRefundRequestsForSalesStaff();
+        return ApiResponse.<List<StaffReturnExchangeListResponse>>builder()
+                .message("OK")
+                .result(result)
+                .build();
+    }
+
     /**
      * Lấy chi tiết yêu cầu đổi trả theo ID bao gồm cả thông tin của Order
      */

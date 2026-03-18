@@ -33,6 +33,17 @@ public class StaffOrderDetailResponse {
     private Boolean hasPrescriptionItem;
     private Boolean requiresFinalPayment;
     private List<String> availableActions;
+    private Boolean canCancelOrder;
+    private Boolean requiresRefundInfoOnCancel;
+    private BigDecimal refundableAmount;
+    private String cancelScenario;
+    private Boolean hasOpenRefundRequest;
+    private Long latestReturnExchangeId;
+    private String latestReturnExchangeCode;
+    private String latestReturnExchangeStatus;
+    private BigDecimal latestReturnExchangeRefundAmount;
+    private String latestStaffRefundEvidenceUrl;
+    private String latestRejectReason;
 
     //Thông tin người đặt hàng
     private String customerName;

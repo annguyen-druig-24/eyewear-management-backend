@@ -38,6 +38,18 @@ public interface ReturnExchangeRepo extends JpaRepository<ReturnExchange, Long> 
             String requestScope,
             List<String> statuses);
 
+    Optional<ReturnExchange> findTopByOrder_OrderIDAndReturnTypeIgnoreCaseAndRequestScopeIgnoreCaseOrderByRequestDateDesc(
+            Long orderId,
+            String returnType,
+            String requestScope
+    );
+
+    List<ReturnExchange> findByOrder_OrderIDAndReturnTypeIgnoreCaseAndRequestScopeIgnoreCase(
+            Long orderId,
+            String returnType,
+            String requestScope
+    );
+
     @Query(value = """
         SELECT re.Return_Exchange_ID AS returnExchangeId,
                re.Return_Code AS returnCode,
@@ -66,6 +78,40 @@ public interface ReturnExchangeRepo extends JpaRepository<ReturnExchange, Long> 
         ORDER BY re.Request_Date DESC
     """, nativeQuery = true)
     List<StaffReturnExchangeListProjection> findStaffReturnExchangeSummaries();
+
+    @Query(value = """
+        SELECT re.Return_Exchange_ID AS returnExchangeId,
+               re.Return_Code AS returnCode,
+               re.Order_ID AS orderId,
+               o.Order_Code AS orderCode,
+               o.Order_Date AS orderDate,
+               o.Order_Status AS orderStatus,
+               u.Name AS customerName,
+               u.Phone AS customerPhone,
+               u.Email AS customerEmail,
+               re.Return_Type AS returnType,
+               re.Request_Scope AS requestScope,
+               re.Request_Date AS requestDate,
+               re.Status AS returnExchangeStatus,
+               re.Refund_Amount AS refundAmount,
+               re.Refund_Method AS refundMethod,
+               re.Refund_Account_Number AS refundAccountNumber,
+               re.Refund_Account_Name AS refundAccountName,
+               re.Request_Note AS requestNote,
+               re.Reject_Reason AS rejectReason,
+               re.Approved_Date AS approvedDate,
+               re.Processed_Date AS processedDate
+        FROM Return_Exchange re
+        JOIN [Order] o ON o.Order_ID = re.Order_ID
+        JOIN [User] u ON u.User_ID = re.User_ID
+        WHERE UPPER(re.Return_Type) = 'REFUND'
+          AND UPPER(re.Request_Scope) = 'ORDER'
+          AND re.Refund_Amount IS NOT NULL
+          AND re.Refund_Amount > 0
+          AND UPPER(o.Order_Status) = 'CANCELED'
+        ORDER BY re.Request_Date DESC
+    """, nativeQuery = true)
+    List<StaffReturnExchangeListProjection> findCancelRefundRequestsForSalesStaff();
 
     @Query(value = """
         SELECT re.Order_ID AS orderId,

@@ -650,7 +650,7 @@ CREATE TABLE Return_Exchange (
     /* Lý do khách tạo request */
                                  Return_Reason NVARCHAR(500) NULL,
 
-    /* REFUND / RETURN / WARRANTY */
+    /* REFUND / RETURN / WARRANTY / CANCEL_ORDER */
                                  Return_Type NVARCHAR(20) NOT NULL,
 
     /* ORDER / ITEM */
@@ -700,16 +700,16 @@ CREATE TABLE Return_Exchange (
 
                                  CONSTRAINT CK_ReturnExchange_ReturnType
                                      CHECK (Return_Type IN (
-                                                            N'REFUND', N'RETURN', N'WARRANTY'
+                                                            N'REFUND', N'RETURN', N'WARRANTY', N'CANCEL_ORDER'
                                          )),
 
                                  CONSTRAINT CK_ReturnExchange_RequestScope
                                      CHECK (Request_Scope IN (N'ORDER', N'ITEM')),
 
-    /* REFUND = ORDER, RETURN/WARRANTY = ITEM */
+    /* REFUND/CANCEL_ORDER = ORDER, RETURN/WARRANTY = ITEM */
                                  CONSTRAINT CK_ReturnExchange_ScopeByType
                                      CHECK (
-                                         (Return_Type = N'REFUND' AND Request_Scope = N'ORDER')
+                                         (Return_Type IN (N'REFUND', N'CANCEL_ORDER') AND Request_Scope = N'ORDER')
                                              OR
                                          (Return_Type IN (N'RETURN', N'WARRANTY') AND Request_Scope = N'ITEM')
                                          ),
@@ -724,18 +724,15 @@ CREATE TABLE Return_Exchange (
                                              OR (Reject_Reason IS NOT NULL AND LTRIM(RTRIM(Reject_Reason)) <> N'')
                                          ),
 
-    /* Nếu APPROVED hoặc COMPLETED thì phải có người duyệt */
-                                 CONSTRAINT CK_ReturnExchange_Approval_Required
-                                     CHECK (
-                                         Status NOT IN (N'APPROVED', N'COMPLETED')
-                                             OR (Approved_By IS NOT NULL AND Approved_Date IS NOT NULL)
-                                         ),
-
-    /* Nếu COMPLETED và là nghiệp vụ có hoàn tiền thì phải có dữ liệu hoàn tiền + evidence */
+    /*
+       COMPLETED:
+       - WARRANTY, CANCEL_ORDER: không bắt buộc dữ liệu refund
+       - REFUND, RETURN: bắt buộc có dữ liệu refund + evidence
+    */
                                  CONSTRAINT CK_ReturnExchange_CompletedRefund_Required
                                      CHECK (
                                          Status <> N'COMPLETED'
-                                             OR Return_Type = N'WARRANTY'
+                                             OR Return_Type IN (N'WARRANTY', N'CANCEL_ORDER')
                                              OR (
                                              Refund_Amount IS NOT NULL
                                                  AND Refund_Amount > 0

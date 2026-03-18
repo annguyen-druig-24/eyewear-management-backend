@@ -1,5 +1,6 @@
 package com.swp391.eyewear_management_backend.controller;
 
+import com.swp391.eyewear_management_backend.dto.request.CustomerCancelOrderRequest;
 import com.swp391.eyewear_management_backend.dto.request.CreateOrderRequest;
 import com.swp391.eyewear_management_backend.dto.response.*;
 import com.swp391.eyewear_management_backend.service.OrderService;
@@ -7,6 +8,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -46,6 +48,17 @@ public class OrderController {
         return ApiResponse.<StaffOrderDetailResponse>builder()
                 .message("OK")
                 .result(orderService.getOrderDetailForCustomer(orderId))
+                .build();
+    }
+
+    @PostMapping(value = "/{orderId}/cancel", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<CustomerCancelOrderResponse> cancelOrderByCustomer(
+            @PathVariable Long orderId,
+            @RequestPart("request") CustomerCancelOrderRequest request,
+            @RequestPart(value = "customerAccountQrFile", required = false) MultipartFile customerAccountQrFile) {
+        return ApiResponse.<CustomerCancelOrderResponse>builder()
+                .message("OK")
+                .result(orderService.cancelOrderByCustomer(orderId, request, customerAccountQrFile))
                 .build();
     }
 }

@@ -20,6 +20,7 @@ public interface StaffOrderService {
     List<OrderStatusGroupResponse> getSalesStaffOrderStatuses();
     List<OrderStatusGroupResponse> getOperationStaffOrderStatuses();
     List<StaffReturnExchangeListResponse> getReturnExchangeOrders();
+    List<StaffReturnExchangeListResponse> getCancelRefundRequestsForSalesStaff();
     StaffReturnExchangeDetailResponse getReturnExchangeDetailForSalesStaff(Long returnExchangeId);
     ReturnExchangeResponse getReturnExchangeById(Long returnExchangeId);
     ReturnExchangeResponse updateReturnExchangeStatusForSalesStaff(Long returnExchangeId, ReturnExchangeDecisionRequest request);

@@ -1,6 +1,8 @@
 package com.swp391.eyewear_management_backend.service.impl;
 
+import com.swp391.eyewear_management_backend.config.OrderConstants;
 import com.swp391.eyewear_management_backend.dto.request.CheckoutPreviewRequest;
+import com.swp391.eyewear_management_backend.dto.request.CustomerCancelOrderRequest;
 import com.swp391.eyewear_management_backend.dto.request.CreateOrderRequest;
 import com.swp391.eyewear_management_backend.dto.request.ShippingAddressRequest;
 import com.swp391.eyewear_management_backend.dto.response.*;
@@ -9,6 +11,7 @@ import com.swp391.eyewear_management_backend.exception.AppException;
 import com.swp391.eyewear_management_backend.exception.ErrorCode;
 import com.swp391.eyewear_management_backend.repository.*;
 import com.swp391.eyewear_management_backend.service.CheckoutService;
+import com.swp391.eyewear_management_backend.service.ImageUploadService;
 import com.swp391.eyewear_management_backend.service.OrderService;
 import com.swp391.eyewear_management_backend.service.PaymentGatewayService;
 import com.swp391.eyewear_management_backend.service.PaymentService;
@@ -18,11 +21,15 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -39,12 +46,14 @@ public class OrderServiceImpl implements OrderService {
     private final OrderDetailRepo orderDetailRepo;
     private final PrescriptionOrderRepo prescriptionOrderRepo;
     private final PrescriptionOrderDetailRepo prescriptionOrderDetailRepo;
+    private final OrderProcessingRepo orderProcessingRepo;
 
     private final ShippingInfoRepo shippingInfoRepo;
     private final PaymentRepo paymentRepo;
     private final InvoiceRepo invoiceRepo;
     private final ProductRepo productRepo;
     private final InventoryTransactionRepo inventoryTransactionRepo;
+    private final ReturnExchangeRepo returnExchangeRepo;
 
     private final PromotionRepo promotionRepo;
 
@@ -52,6 +61,7 @@ public class OrderServiceImpl implements OrderService {
     private final PaymentService paymentService; // stub for now
     private final PaymentGatewayService paymentGatewayService;
     private final CheckoutCartTrackingService checkoutCartTrackingService;
+    private final ImageUploadService imageUploadService;
 
     /*
         Hàm này làm 6 nhóm việc chính trong 1 transaction:
@@ -540,6 +550,187 @@ public class OrderServiceImpl implements OrderService {
                 .build();
     }
 
+    @Override
+    @Transactional
+    public CustomerCancelOrderResponse cancelOrderByCustomer(Long orderId,
+                                                             CustomerCancelOrderRequest request,
+                                                             MultipartFile customerAccountQrFile) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || auth instanceof AnonymousAuthenticationToken) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+
+        String username = auth.getName();
+        User currentUser = userRepo.findByUsername(username)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
+
+        Order order = orderRepo.findByIdFetchStatus(orderId)
+                .orElseThrow(() -> new AppException(ErrorCode.ORDER_NOT_FOUND));
+
+        boolean isOwner = order.getUser() != null
+                && Objects.equals(order.getUser().getUserId(), currentUser.getUserId());
+        if (!isOwner) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+
+        if (!isCustomerCancelableStatus(order.getOrderStatus())) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
+        boolean hasOpenRefundRequest = returnExchangeRepo.existsByOrder_OrderIDAndReturnTypeAndRequestScopeAndStatusIn(
+                orderId,
+                "REFUND",
+                "ORDER",
+                List.of("PENDING", "APPROVED")
+        );
+        if (hasOpenRefundRequest) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
+        BigDecimal totalPaidSuccess = sumSuccessfulPayments(order);
+        BigDecimal totalRefundedCompleted = sumCompletedOrderRefundAmount(orderId);
+        BigDecimal refundAmount = totalPaidSuccess.subtract(totalRefundedCompleted);
+        if (refundAmount.signum() < 0) {
+            refundAmount = BigDecimal.ZERO;
+        }
+        boolean refundRequired = refundAmount.compareTo(BigDecimal.ZERO) > 0;
+
+        String refundMethod = null;
+        String refundAccountNumber = null;
+        String refundAccountName = null;
+        String customerAccountQrUrl = null;
+        if (refundRequired) {
+            refundMethod = normalizeText(request != null ? request.getRefundMethod() : null);
+            refundAccountNumber = normalizeText(request != null ? request.getRefundAccountNumber() : null);
+            refundAccountName = normalizeText(request != null ? request.getRefundAccountName() : null);
+            if (refundMethod == null || refundAccountNumber == null) {
+                throw new AppException(ErrorCode.INVALID_REQUEST);
+            }
+            if (customerAccountQrFile != null && !customerAccountQrFile.isEmpty()) {
+                try {
+                    customerAccountQrUrl = imageUploadService.uploadImage(customerAccountQrFile);
+                } catch (IOException ex) {
+                    throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+                }
+            }
+        }
+
+        order.setOrderStatus(OrderConstants.ORDER_STATUS_CANCELED);
+        orderRepo.save(order);
+
+        ShippingInfo shippingInfo = order.getShippingInfo();
+        if (shippingInfo != null) {
+            shippingInfo.setShippingStatus(OrderConstants.SHIPPING_STATUS_CANCELED);
+            shippingInfoRepo.save(shippingInfo);
+        }
+
+        Invoice invoice = order.getInvoice();
+        if (invoice != null) {
+            invoice.setStatus(OrderConstants.INVOICE_STATUS_CANCELED);
+            invoiceRepo.save(invoice);
+        }
+        cancelPendingPaymentsAfterOrderCanceled(order);
+
+        OrderProcessing orderProcessing = new OrderProcessing();
+        orderProcessing.setOrder(order);
+        orderProcessing.setChangedBy(currentUser);
+        orderProcessing.setChangedAt(now());
+        orderProcessing.setNote(buildCustomerCancelNote(request));
+        orderProcessingRepo.save(orderProcessing);
+
+        String returnType = refundRequired ? "REFUND" : "CANCEL_ORDER";
+        ReturnExchange returnExchange = new ReturnExchange();
+        returnExchange.setOrder(order);
+        returnExchange.setUser(currentUser);
+        returnExchange.setReturnCode(generateReturnCode(returnType));
+        returnExchange.setRequestDate(now());
+        returnExchange.setRequestNote(normalizeText(request != null ? request.getRequestNote() : null));
+        returnExchange.setReturnReason(normalizeText(request != null ? request.getCancelReason() : null));
+        returnExchange.setRequestScope("ORDER");
+        returnExchange.setReturnType(returnType);
+        if (refundRequired) {
+            returnExchange.setRefundAmount(refundAmount);
+            returnExchange.setRefundMethod(refundMethod);
+            returnExchange.setRefundAccountNumber(refundAccountNumber);
+            returnExchange.setRefundAccountName(refundAccountName);
+            returnExchange.setCustomerAccountQr(customerAccountQrUrl);
+            returnExchange.setStatus("PENDING");
+        } else {
+            returnExchange.setStatus("COMPLETED");
+        }
+        returnExchange = returnExchangeRepo.save(returnExchange);
+
+        return CustomerCancelOrderResponse.builder()
+                .orderId(order.getOrderID())
+                .orderCode(order.getOrderCode())
+                .orderStatus(order.getOrderStatus())
+                .cancelScenario(refundRequired ? "CANCEL_WITH_MANUAL_REFUND" : "CANCEL_WITHOUT_REFUND")
+                .refundRequired(refundRequired)
+                .refundAmount(refundAmount)
+                .returnExchangeId(returnExchange != null ? returnExchange.getReturnExchangeID() : null)
+                .returnExchangeCode(returnExchange != null ? returnExchange.getReturnCode() : null)
+                .returnExchangeStatus(returnExchange != null ? returnExchange.getStatus() : null)
+                .build();
+    }
+
+    private String generateReturnCode(String returnType) {
+        String typePrefix = "RX";
+        if (returnType != null) {
+            switch (returnType.trim().toUpperCase(Locale.ROOT)) {
+                case "RETURN" -> typePrefix = "RT";
+                case "WARRANTY" -> typePrefix = "WA";
+                case "REFUND" -> typePrefix = "RF";
+                default -> typePrefix = "RX";
+            }
+        }
+        String datePart = LocalDate.now(APP_ZONE_ID).format(DateTimeFormatter.ofPattern("yyMMdd"));
+        String prefix = typePrefix + datePart;
+        Optional<ReturnExchange> lastReturnOpt = returnExchangeRepo.findTopByReturnCodeStartingWithOrderByReturnCodeDesc(prefix);
+        int sequence = 1;
+        if (lastReturnOpt.isPresent()) {
+            String lastCode = lastReturnOpt.get().getReturnCode();
+            String sequenceStr = lastCode.substring(lastCode.length() - 4);
+            sequence = Integer.parseInt(sequenceStr) + 1;
+        }
+        String finalCode;
+        do {
+            finalCode = prefix + String.format("%04d", sequence);
+            sequence++;
+        } while (returnExchangeRepo.findByReturnCode(finalCode).isPresent());
+        return finalCode;
+    }
+
+    private String buildCustomerCancelNote(CustomerCancelOrderRequest request) {
+        String reason = normalizeText(request != null ? request.getCancelReason() : null);
+        if (reason == null) {
+            return "CUSTOMER_CANCEL_BEFORE_CONFIRM";
+        }
+        return "CUSTOMER_CANCEL_BEFORE_CONFIRM: " + reason;
+    }
+
+    private String normalizeText(String text) {
+        if (text == null) {
+            return null;
+        }
+        String trimmed = text.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private void cancelPendingPaymentsAfterOrderCanceled(Order order) {
+        if (order.getPayments() == null || order.getPayments().isEmpty()) {
+            return;
+        }
+        List<Payment> pendingPayments = order.getPayments().stream()
+                .filter(Objects::nonNull)
+                .filter(p -> OrderConstants.PAYMENT_STATUS_PENDING.equalsIgnoreCase(p.getStatus()))
+                .toList();
+        if (pendingPayments.isEmpty()) {
+            return;
+        }
+        pendingPayments.forEach(p -> p.setStatus(OrderConstants.PAYMENT_STATUS_CANCELED));
+        paymentRepo.saveAll(pendingPayments);
+    }
+
     private Product resolveOrderDetailProduct(CartItem ci) {
         if (ci.getContactLens() != null) return ci.getContactLens().getProduct();
         if (ci.getFrame() != null && ci.getLens() == null) return ci.getFrame().getProduct();
@@ -751,6 +942,28 @@ public class OrderServiceImpl implements OrderService {
         List<StaffPrescriptionOrderItemResponse> prescriptionItems = mapPrescriptionItems(prescriptionOrder);
         boolean hasPrescriptionItem = !prescriptionItems.isEmpty();
         boolean requiresFinalPayment = isRequiresFinalPayment(order);
+        BigDecimal totalPaidSuccess = sumSuccessfulPayments(order);
+        BigDecimal totalRefundedCompleted = sumCompletedOrderRefundAmount(orderEntityId);
+        BigDecimal refundableAmount = totalPaidSuccess.subtract(totalRefundedCompleted);
+        if (refundableAmount.signum() < 0) {
+            refundableAmount = BigDecimal.ZERO;
+        }
+        boolean canCancelOrder = isCustomerCancelableStatus(order.getOrderStatus());
+        boolean requiresRefundInfoOnCancel = canCancelOrder && refundableAmount.compareTo(BigDecimal.ZERO) > 0;
+        boolean hasOpenRefundRequest = returnExchangeRepo.existsByOrder_OrderIDAndReturnTypeAndRequestScopeAndStatusIn(
+                orderEntityId,
+                "REFUND",
+                "ORDER",
+                List.of("PENDING", "APPROVED")
+        );
+        ReturnExchange latestOrderRefund = returnExchangeRepo
+                .findTopByOrder_OrderIDAndReturnTypeIgnoreCaseAndRequestScopeIgnoreCaseOrderByRequestDateDesc(
+                        orderEntityId,
+                        "REFUND",
+                        "ORDER"
+                )
+                .orElse(null);
+        String cancelScenario = resolveCancelScenario(order.getOrderStatus(), refundableAmount, latestOrderRefund);
 
         return StaffOrderDetailResponse.builder()
                 .orderId(order.getOrderID())
@@ -767,6 +980,17 @@ public class OrderServiceImpl implements OrderService {
                 .hasPrescriptionItem(hasPrescriptionItem)
                 .requiresFinalPayment(requiresFinalPayment)
                 .availableActions(List.of())
+                .canCancelOrder(canCancelOrder)
+                .requiresRefundInfoOnCancel(requiresRefundInfoOnCancel)
+                .refundableAmount(refundableAmount)
+                .cancelScenario(cancelScenario)
+                .hasOpenRefundRequest(hasOpenRefundRequest)
+                .latestReturnExchangeId(latestOrderRefund != null ? latestOrderRefund.getReturnExchangeID() : null)
+                .latestReturnExchangeCode(latestOrderRefund != null ? latestOrderRefund.getReturnCode() : null)
+                .latestReturnExchangeStatus(latestOrderRefund != null ? latestOrderRefund.getStatus() : null)
+                .latestReturnExchangeRefundAmount(latestOrderRefund != null ? latestOrderRefund.getRefundAmount() : null)
+                .latestStaffRefundEvidenceUrl(latestOrderRefund != null ? latestOrderRefund.getStaffRefundEvidenceUrl() : null)
+                .latestRejectReason(latestOrderRefund != null ? latestOrderRefund.getRejectReason() : null)
                 .customerName(order.getUser() != null ? order.getUser().getName() : null)
                 .customerPhone(order.getUser() != null ? order.getUser().getPhone() : null)
                 .customerEmail(order.getUser() != null ? order.getUser().getEmail() : null)
@@ -778,6 +1002,59 @@ public class OrderServiceImpl implements OrderService {
                 .recipientAddress(shippingInfo != null ? shippingInfo.getRecipientAddress() : null)
                 .note(shippingInfo != null ? shippingInfo.getNote() : null)
                 .build();
+    }
+
+    private BigDecimal sumSuccessfulPayments(Order order) {
+        if (order.getPayments() == null || order.getPayments().isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        return order.getPayments().stream()
+                .filter(Objects::nonNull)
+                .filter(p -> OrderConstants.PAYMENT_STATUS_SUCCESS.equalsIgnoreCase(p.getStatus()))
+                .map(Payment::getAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal sumCompletedOrderRefundAmount(Long orderId) {
+        return returnExchangeRepo.findByOrder_OrderIDAndReturnTypeIgnoreCaseAndRequestScopeIgnoreCase(orderId, "REFUND", "ORDER")
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(re -> "COMPLETED".equalsIgnoreCase(re.getStatus()))
+                .map(ReturnExchange::getRefundAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private boolean isCustomerCancelableStatus(String orderStatus) {
+        if (orderStatus == null) {
+            return false;
+        }
+        return OrderConstants.ORDER_STATUS_PENDING.equalsIgnoreCase(orderStatus)
+                || OrderConstants.ORDER_STATUS_PARTIALLY_PAID.equalsIgnoreCase(orderStatus)
+                || OrderConstants.ORDER_STATUS_PAID.equalsIgnoreCase(orderStatus);
+    }
+
+    private String resolveCancelScenario(String orderStatus, BigDecimal refundableAmount, ReturnExchange latestOrderRefund) {
+        if (isCustomerCancelableStatus(orderStatus)) {
+            if (refundableAmount != null && refundableAmount.compareTo(BigDecimal.ZERO) > 0) {
+                return "CANCEL_WITH_MANUAL_REFUND";
+            }
+            return "CANCEL_WITHOUT_REFUND";
+        }
+        if (!OrderConstants.ORDER_STATUS_CANCELED.equalsIgnoreCase(orderStatus)) {
+            return "CANCEL_NOT_ALLOWED";
+        }
+        if (latestOrderRefund == null) {
+            return "CANCELED_NO_REFUND_COMPLETED";
+        }
+        String status = latestOrderRefund.getStatus() == null ? "" : latestOrderRefund.getStatus().trim().toUpperCase(Locale.ROOT);
+        return switch (status) {
+            case "PENDING", "APPROVED" -> "CANCELED_REFUND_IN_PROGRESS";
+            case "REJECTED" -> "CANCELED_REFUND_REJECTED";
+            case "COMPLETED" -> "CANCELED_REFUND_COMPLETED";
+            default -> "CANCELED_REFUND_IN_PROGRESS";
+        };
     }
 
     private StaffOrderItemResponse toOrderItemResponse(OrderDetail detail) {
