@@ -26,5 +26,6 @@ public interface StaffOrderService {
     ReturnExchangeResponse getReturnExchangeById(Long returnExchangeId);
     ReturnExchangeResponse updateCancelRefundRequestStatusForSalesStaff(Long returnExchangeId, ReturnExchangeDecisionRequest request);
     ReturnExchangeResponse updateReturnExchangeStatusForSalesStaff(Long returnExchangeId, ReturnExchangeDecisionRequest request);
+    ReturnExchangeResponse completeCancelRefundRequestForSalesStaff(Long returnExchangeId, StaffCompleteRefundRequest request, MultipartFile staffEvidenceFile);
     ReturnExchangeResponse completeRefundForSalesStaff(Long returnExchangeId, StaffCompleteRefundRequest request, MultipartFile staffEvidenceFile);
 }
