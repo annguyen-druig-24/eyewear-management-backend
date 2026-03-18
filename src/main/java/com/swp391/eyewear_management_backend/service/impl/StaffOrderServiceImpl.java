@@ -145,6 +145,27 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                 .toList();
     }
 
+    @Override
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public StaffReturnExchangeDetailResponse getCancelRefundRequestDetailForSalesStaff(Long returnExchangeId) {
+        ReturnExchange returnExchange = returnExchangeRepo.findById(returnExchangeId)
+                .orElseThrow(() -> new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FOUND));
+        if (!"REFUND".equals(normalize(returnExchange.getReturnType()))) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+        if (!"ORDER".equals(normalize(returnExchange.getRequestScope()))) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+        if (returnExchange.getRefundAmount() == null || returnExchange.getRefundAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+        Order order = returnExchange.getOrder();
+        if (order == null || !"CANCELED".equals(normalize(order.getOrderStatus()))) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+        return getReturnExchangeDetailForSalesStaff(returnExchangeId);
+    }
+
     private String resolveReturnType(ReturnExchange returnExchange) {
         if (returnExchange.getRefundAmount() != null || StringUtils.hasText(returnExchange.getRefundMethod())) {
             return "RETURN";
@@ -1167,6 +1188,56 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         ReturnExchange returnExchange = returnExchangeRepo.findById(returnExchangeId)
                 .orElseThrow(() -> new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FOUND));
         return returnExchangeMapper.toReturnExchangeResponse(returnExchange);
+    }
+
+    @Override
+    @Transactional
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public ReturnExchangeResponse updateCancelRefundRequestStatusForSalesStaff(Long returnExchangeId, ReturnExchangeDecisionRequest request) {
+        ReturnExchange returnExchange = returnExchangeRepo.findById(returnExchangeId)
+                .orElseThrow(() -> new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FOUND));
+        if (!"REFUND".equals(normalize(returnExchange.getReturnType()))) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+        if (!"ORDER".equals(normalize(returnExchange.getRequestScope()))) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+        if (returnExchange.getRefundAmount() == null || returnExchange.getRefundAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+        Order order = returnExchange.getOrder();
+        if (order == null || !"CANCELED".equals(normalize(order.getOrderStatus()))) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
+        String action = request == null ? "" : normalize(request.getAction());
+        String targetStatus = resolveReturnStatusAction(action);
+        String currentStatus = normalize(returnExchange.getStatus());
+        if (!RETURN_STATUS_PENDING.equals(currentStatus) || targetStatus == null) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
+        switch (targetStatus) {
+            case RETURN_STATUS_APPROVED -> {
+                returnExchange.setStatus(RETURN_STATUS_APPROVED);
+                returnExchange.setApprovedBy(getCurrentUser());
+                returnExchange.setApprovedDate(LocalDateTime.now(APP_ZONE_ID));
+                returnExchange.setRejectReason(null);
+            }
+            case RETURN_STATUS_REJECTED -> {
+                String rejectReason = request == null ? "" : request.getRejectReason();
+                if (!StringUtils.hasText(rejectReason)) {
+                    throw new AppException(ErrorCode.INVALID_REQUEST);
+                }
+                returnExchange.setStatus(RETURN_STATUS_REJECTED);
+                returnExchange.setApprovedBy(getCurrentUser());
+                returnExchange.setApprovedDate(LocalDateTime.now(APP_ZONE_ID));
+                returnExchange.setRejectReason(rejectReason.trim());
+            }
+            default -> throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+        ReturnExchange savedReturnExchange = returnExchangeRepo.save(returnExchange);
+        return returnExchangeMapper.toReturnExchangeResponse(savedReturnExchange);
     }
 
     @Override

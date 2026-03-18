@@ -100,6 +100,17 @@ public class StaffOrderController {
                 .build();
     }
 
+    @GetMapping("/return-exchange/cancel-refund-requests/{returnExchangeId}")
+    public ResponseEntity<ApiResponse<StaffReturnExchangeDetailResponse>> getCancelRefundRequestDetailForSalesStaff(
+            @PathVariable Long returnExchangeId) {
+        StaffReturnExchangeDetailResponse response = staffOrderService.getCancelRefundRequestDetailForSalesStaff(returnExchangeId);
+        return ResponseEntity.ok(ApiResponse.<StaffReturnExchangeDetailResponse>builder()
+                .code(1000)
+                .message("Cancel refund request detail retrieved successfully")
+                .result(response)
+                .build());
+    }
+
     /**
      * Lấy chi tiết yêu cầu đổi trả theo ID bao gồm cả thông tin của Order
      */
@@ -124,6 +135,18 @@ public class StaffOrderController {
         return ResponseEntity.ok(ApiResponse.<ReturnExchangeResponse>builder()
                 .code(1000)
                 .message("Return exchange retrieved successfully")
+                .result(response)
+                .build());
+    }
+
+    @PutMapping("/return-exchange/cancel-refund-requests/{returnExchangeId}/status")
+    public ResponseEntity<ApiResponse<ReturnExchangeResponse>> updateCancelRefundRequestStatusForSalesStaff(
+            @PathVariable Long returnExchangeId,
+            @RequestBody @Valid ReturnExchangeDecisionRequest request) {
+        ReturnExchangeResponse response = staffOrderService.updateCancelRefundRequestStatusForSalesStaff(returnExchangeId, request);
+        return ResponseEntity.ok(ApiResponse.<ReturnExchangeResponse>builder()
+                .code(1000)
+                .message("Cancel refund request status updated successfully")
                 .result(response)
                 .build());
     }
