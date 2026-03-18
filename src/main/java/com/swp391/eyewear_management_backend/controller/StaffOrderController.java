@@ -151,6 +151,19 @@ public class StaffOrderController {
                 .build());
     }
 
+    @PutMapping(value = "/return-exchange/cancel-refund-requests/{returnExchangeId}/complete-refund", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<ReturnExchangeResponse>> completeCancelRefundRequestForSalesStaff(
+            @PathVariable Long returnExchangeId,
+            @RequestPart("request") @Valid StaffCompleteRefundRequest request,
+            @RequestPart("staffEvidenceFile") MultipartFile staffEvidenceFile) {
+        ReturnExchangeResponse response = staffOrderService.completeCancelRefundRequestForSalesStaff(returnExchangeId, request, staffEvidenceFile);
+        return ResponseEntity.ok(ApiResponse.<ReturnExchangeResponse>builder()
+                .code(1000)
+                .message("Cancel refund request completed successfully")
+                .result(response)
+                .build());
+    }
+
     //Hàm này dùng để cập nhật Return_Exchange.Status = "APPROVED" hoặc "REJECTED" khi request đang PENDING
     @PutMapping("/return-exchange/{returnExchangeId}/status")
     public ResponseEntity<ApiResponse<ReturnExchangeResponse>> updateReturnExchangeStatus(

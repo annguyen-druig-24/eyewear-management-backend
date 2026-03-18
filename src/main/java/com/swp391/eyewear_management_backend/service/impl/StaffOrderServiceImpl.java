@@ -56,6 +56,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     private final StaffOrderMapper staffOrderMapper;
     private final ReturnExchangeRepo returnExchangeRepo;
     private final ReturnExchangeMapper returnExchangeMapper;
+    private final PaymentRepo paymentRepo;
     private final UserRepo userRepo;
     private final ImageUploadService imageUploadService;
     private final GhnShippingClient ghnShippingClient;
@@ -1285,6 +1286,46 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     @Override
     @Transactional
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public ReturnExchangeResponse completeCancelRefundRequestForSalesStaff(Long returnExchangeId, StaffCompleteRefundRequest request, MultipartFile staffEvidenceFile) {
+        ReturnExchange returnExchange = returnExchangeRepo.findById(returnExchangeId)
+                .orElseThrow(() -> new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FOUND));
+        if (!isCancelRefundRequestFlow(returnExchange)) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+        if (!RETURN_STATUS_APPROVED.equals(normalize(returnExchange.getStatus()))) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
+        BigDecimal expectedRefundAmount = returnExchange.getRefundAmount();
+        if (expectedRefundAmount == null || request.getRefundAmount().compareTo(expectedRefundAmount) != 0) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+        if (staffEvidenceFile == null || staffEvidenceFile.isEmpty()) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
+        String staffEvidenceUrl;
+        try {
+            staffEvidenceUrl = imageUploadService.uploadImage(staffEvidenceFile);
+        } catch (IOException e) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
+        returnExchange.setStatus(RETURN_STATUS_COMPLETED);
+        returnExchange.setRefundAmount(request.getRefundAmount());
+        returnExchange.setRefundReferenceCode(request.getRefundReferenceCode());
+        returnExchange.setStaffRefundEvidenceUrl(staffEvidenceUrl);
+        returnExchange.setProcessedBy(getCurrentUser());
+        returnExchange.setProcessedDate(LocalDateTime.now(APP_ZONE_ID));
+
+        ReturnExchange savedReturnExchange = returnExchangeRepo.save(returnExchange);
+        updateSuccessfulPaymentsToRefunded(returnExchange.getOrder());
+        return returnExchangeMapper.toReturnExchangeResponse(savedReturnExchange);
+    }
+
+    @Override
+    @Transactional
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
     public ReturnExchangeResponse completeRefundForSalesStaff(Long returnExchangeId, StaffCompleteRefundRequest request, MultipartFile staffEvidenceFile) {
         ReturnExchange returnExchange = returnExchangeRepo.findById(returnExchangeId)
                 .orElseThrow(() -> new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FOUND));
@@ -1320,6 +1361,38 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 
         ReturnExchange savedReturnExchange = returnExchangeRepo.save(returnExchange);
         return returnExchangeMapper.toReturnExchangeResponse(savedReturnExchange);
+    }
+
+    private boolean isCancelRefundRequestFlow(ReturnExchange returnExchange) {
+        if (returnExchange == null) {
+            return false;
+        }
+        if (!"REFUND".equals(normalize(returnExchange.getReturnType()))) {
+            return false;
+        }
+        if (!"ORDER".equals(normalize(returnExchange.getRequestScope()))) {
+            return false;
+        }
+        if (returnExchange.getRefundAmount() == null || returnExchange.getRefundAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            return false;
+        }
+        Order order = returnExchange.getOrder();
+        return order != null && "CANCELED".equals(normalize(order.getOrderStatus()));
+    }
+
+    private void updateSuccessfulPaymentsToRefunded(Order order) {
+        if (order == null || order.getPayments() == null || order.getPayments().isEmpty()) {
+            return;
+        }
+        List<Payment> successfulPayments = order.getPayments().stream()
+                .filter(Objects::nonNull)
+                .filter(p -> OrderConstants.PAYMENT_STATUS_SUCCESS.equalsIgnoreCase(p.getStatus()))
+                .toList();
+        if (successfulPayments.isEmpty()) {
+            return;
+        }
+        successfulPayments.forEach(p -> p.setStatus(OrderConstants.PAYMENT_STATUS_REFUNDED));
+        paymentRepo.saveAll(successfulPayments);
     }
 
     private String resolveReturnStatusAction(String action) {
