@@ -122,7 +122,7 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
 
         // 1. Kiểm tra Đơn hàng
         Order order = orderRepository.findById(request.getOrderId())
-                .orElseThrow(() -> new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION)); // Đổi mã lỗi tương ứng ORDER_NOT_FOUND
+                .orElseThrow(() -> new AppException(ErrorCode.ORDER_NOT_FOUND)); // Đổi mã lỗi tương ứng ORDER_NOT_FOUND
 
         if (!"COMPLETED".equalsIgnoreCase(order.getOrderStatus())) {
             throw new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FIT);
@@ -132,20 +132,20 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
         if (order.getShippingInfo() != null && order.getShippingInfo().getDeliveredAt() != null) {
             LocalDateTime delivery = order.getShippingInfo().getDeliveredAt();
             if (LocalDateTime.now().isAfter(delivery.plusDays(7))) {
-                throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION); // Cần đổi thành lỗi quá hạn đổi trả
+                throw new AppException(ErrorCode.RETURN_EXCHANGE_EXPIRED_TIME); // Cần đổi thành lỗi quá hạn đổi trả
             }
         }
 
         if ("RETURN".equalsIgnoreCase(request.getReturnType()) || "REFUND".equalsIgnoreCase(request.getReturnType())) {
             // Nếu là Trả hàng / Hoàn tiền thì 3 trường này BẮT BUỘC phải có
             if (request.getRefundMethod() == null || request.getRefundMethod().trim().isEmpty()) {
-                throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+                throw new AppException(ErrorCode.RETURN_EXCHANGE_REFUND_METHOD_NOT_FOUND);
             }
             if (request.getRefundAccountNumber() == null || request.getRefundAccountNumber().trim().isEmpty()) {
-                throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+                throw new AppException(ErrorCode.RETURN_EXCHANGE_REFUND_ACCOUNT_NOT_FOUND);
             }
             if (request.getRefundAccountName() == null || request.getRefundAccountName().trim().isEmpty()) {
-                throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+                throw new AppException(ErrorCode.RETURN_EXCHANGE_REFUND_NAME_NOT_FOUND);
             }
         }
 
@@ -197,12 +197,12 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
 
                 // Validation 1: Không tìm thấy ID này trong cả 2 danh sách
                 if (matchedNormal == null && matchedPrescription == null) {
-                    throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION); // Báo lỗi item không hợp lệ
+                    throw new AppException(ErrorCode.ITEM_NOT_FOUND); // Báo lỗi item không hợp lệ
                 }
 
                 // Validation 2: Trùng ID giữa đơn thường và đơn thuốc (Xung đột dữ liệu hiếm gặp)
                 if (matchedNormal != null && matchedPrescription != null) {
-                    throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION); // Báo lỗi xung đột dữ liệu
+                    throw new AppException(ErrorCode.ORDER_DETAIL_MATCH_PRESCRIPTION_DETAIL); // Báo lỗi xung đột dữ liệu
                 }
 
                 // Khởi tạo đối tượng Con
@@ -249,7 +249,7 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
                             String itemImageUrl = imageUploadService.uploadImage(currentImage);
                             returnItem.setItemEvidenceUrl(itemImageUrl);
                         } catch (IOException e) {
-                            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION); // Đổi thành UPLOAD_IMAGE_FAILED
+                            throw new AppException(ErrorCode.UPLOAD_IMAGE_FAILED); // Đổi thành UPLOAD_IMAGE_FAILED
                         }
                     }
                 }
@@ -275,7 +275,7 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
                 String customerQrImageUrl = imageUploadService.uploadImage(customerImageQr);
                 returnExchange.setCustomerAccountQr(customerQrImageUrl);
             } catch (IOException e) {
-                throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION); // Đổi thành UPLOAD_IMAGE_FAILED
+                throw new AppException(ErrorCode.UPLOAD_IMAGE_FAILED); // Đổi thành UPLOAD_IMAGE_FAILED
             }
         }
 
