@@ -1,0 +1,606 @@
+OPERATIONS STAFF
+
+### OrderList page for OPERATIONS STAFF ###
+1) Những Order nào sẽ được xuất hiện ở trang OrderList của OPERATIONS STAFF:
+- Chỉ những Order có orderType thuộc: PRESCRIPTION_ORDER , MIX_ORDER
+- Những Order có orderStatus thuộc: CONFIRMED , PROCESSING , READY , COMPLETED , CANCELED
+
+2) API show toàn bộ order (PRESCRIPTION):
+POST http://localhost:8080/api/operation-staff/orders/search
+	* Điều kiện để hiển thị được dữ liệu trên trang của OPERATIONS STAFF là:
+	- OrderType = 'PRESCRIPTION_ORDER' hoặc OrderType = 'MIX_ORDER' nhưng có thành phần là 'PRESCRIPTION_ORDER'. Ví dụ: đơn MIX_ORDER (DIRECT_ORDER, PRESCRIPTION_ORDER) --> sẽ hiển thị
+																															MIX_ORDER (DIRECT_ORDER, PRE_ORDER) --> ko có PRESCRIPTION_ORDER --> ko hiển thị
+	- Khi SALES STAFF cập nhật trạng thái OrderStatus = 'PROCESSING' thì lúc đó mới bắt đầu có thể hiển thị được dữ liệu bên OPERATIONS STAFF 
+	==> Phải thỏa 2 điều kiện thì mới hiển thị dữ liệu bên OPERATIONS STAFF
+	a) Chuỗi JSON truyền vào:
+		{
+		  "orderCode": "ORD-2026-03-02-E2833C70",
+		  "orderDate": "2026-03-02",
+		  "orderType": "PRESCRIPTION_ORDER",
+		  "orderStatus": "PROCESSING",
+		  "page": 0,
+		  "size": 10,
+		  "sortBy": "orderDate",
+		  "sortDir": "desc"
+		}
+		--> Có thể chỉ truyền 1 field duy nhất cũng trả ra kết quả được
+	b) Chuỗi JSON trả ra: (dữ liệu fake, chỉ dùng để làm ví dụ)
+		{
+			"code": 1000,
+			"message": "OK",
+			"result": {
+				"content": [
+					{
+						"orderId": 5,
+						"orderCode": "ORD-2026-03-02-E2833C70",
+						"customerName": "Lê Đức Lợi",
+						"orderType": "MIX_ORDER",
+						"orderStatus": "PROCESSING",
+						"orderDate": "2026-03-02T09:39:01.72",
+						"totalAmount": 43421002.00
+					}
+				],
+				"empty": false,
+				"first": true,
+				"last": true,
+				"number": 0,
+				"numberOfElements": 1,
+				"pageable": {
+					"offset": 0,
+					"pageNumber": 0,
+					"pageSize": 10,
+					"paged": true,
+					"sort": {
+						"empty": false,
+						"sorted": true,
+						"unsorted": false
+					},
+					"unpaged": false
+				},
+				"size": 10,
+				"sort": {
+					"empty": false,
+					"sorted": true,
+					"unsorted": false
+				},
+				"totalElements": 1,
+				"totalPages": 1
+			}
+		}
+	c) Lưu ý: Phải truyền token vào mới có thể gọi được API này
+	==> Đã phân quyền dưới BE (chỉ có OPERATIONS STAFF, MANAGER, ADMIN mới gọi và sử dụng được API này)
+	
+3) API show drop down OrderStatusList:
+GET: http://localhost:8080/api/operation-staff/orders/status-options
+	* Lưu ý: Phải truyền token vào mới có thể gọi được API này ==> Đã phân quyền dưới BE (chỉ có OPERATIONS STAFF, MANAGER, ADMIN mới gọi và sử dụng được API này)
+	* Công dụng: show drop down Order Status List dành cho loại đơn PRESCRIPTION, MIX_ORDER có thành phần đơn là PRESCRIPTION:
+		- Đối với đơn MIX_ORDER (bao gồm PRESCRIPTION_ORDER) thì sẽ có các status:...
+		--> Xem chuỗi JSON ví dụ bên dưới
+	* Các Status khi bấm drop down hiển thị:
+		- CONFIRMED: "Đã xác nhận và đang chuẩn bị hàng"
+		- PROCESSING: "Đang gia công"
+		- READY: "Đã chuyển cho đơn vị vận chuyển"
+		- COMPLETED: "Hoàn thành"
+		- CANCELED: "Đã hủy"
+	* Các OrderType khi bấm drop down hiển thị:
+		- PRESCRIPTION_ORDER
+		- MIX_ORDER
+	
+	* Ví dụ:
+		1) Chuỗi JSON truyền vào: {} 
+		2) Chuỗi JSON trả ra:
+			{
+				"code": 1000,
+				"message": "OK",
+				"result": [
+					{
+						"groupName": "PRESCRIPTION WORKFLOW",
+						"orderTypes": [
+							"PRESCRIPTION_ORDER",
+							"MIX_ORDER"
+						],
+						"statuses": [
+							{
+								"code": "CONFIRMED",
+								"displayName": "Đã xác nhận và đang chuẩn bị hàng"
+							},
+							{
+								"code": "PROCESSING",
+								"displayName": "Đang gia công"
+							},
+							{
+								"code": "READY",
+								"displayName": "Đã chuyển cho đơn vị vận chuyển"
+							},
+							{
+								"code": "COMPLETED",
+								"displayName": "Hoàn thành"
+							},
+							{
+								"code": "CANCELED",
+								"displayName": "Đã hủy"
+							}
+						]
+					}
+				]
+			}
+		
+		
+### OrderDetail page for OPERATIONS STAFF ###
+1) Các status của table Shipping_Info và table Order
+Shipping_Status: PENDING, PACKING, SHIPPING, DELIVERED, FAILED, CANCELED, RETURNED
+Order_Status: PENDING, CONFIRMED, PARTIALLY_PAID, PAID, PROCESSING, READY, COMPLETED, CANCELED
+
+2) Mapping status - các nút bấm cập nhật trạng thái cho OPERATIONS STAFF: 	
+	a) Order = CONFIRMED:
+		- Nếu có prescription : hiện nút Bắt đầu gia công → set Order=PROCESSING .
+		- Nếu không prescription : hiện nút Bắt đầu đóng gói → set Shipping=PACKING .
+	b) Order = PROCESSING (chỉ nhóm có prescription):
+		- Hiện nút Chuyển đóng gói → set Shipping=PACKING .
+	c) Shipping = PACKING:
+		- Hiện nút Bàn giao GHN → set Order=READY , Shipping=SHIPPING .
+	d) Shipping = SHIPPING:
+		- Không cho staff set tay DELIVERED nếu đã có webhook GHN; chỉ cho Đồng bộ GHN (manual sync) khi cần.
+	e) Shipping = DELIVERED
+		- Nếu đơn cọc ( Order=PARTIALLY_PAID ): hiện Xác nhận đã thu đủ → Order=PAID , sau đó Hoàn tất đơn → Order=COMPLETED .
+		- Nếu đơn đã paid/full COD thu đủ: hiện Hoàn tất đơn → Order=COMPLETED .
+	f) Order/Shipping = CANCELED, COMPLETED
+		- Không hiện nút update nghiệp vụ (read-only).
+
+3) Phân biệt các trạng thái do OPERATIONS STAFF, GHN cập nhật:
+	a) Do OPERATIONS STAFF cập nhật:
+		- Shipping: PENDING -> PACKING (bắt đầu xử lý nội bộ).
+		- PACKING -> SHIPPING (khi bấm bàn giao và đã tạo vận đơn GHN thành công).
+		- Với đơn prescription: Order: CONFIRMED -> PROCESSING trước bước PACKING.
+	b) Do GHN tự động cập nhật (qua webhook/poll):
+		- Shipping -> DELIVERED , FAILED , RETURNED (theo tracking thực tế).
+		- Khi nhận DELIVERED , backend mới chạy rule nghiệp vụ tiếp: PAID (nếu còn thiếu) rồi COMPLETED .
+	
+4) API GET http://localhost:8080/api/operation-staff/orders/{orderId}
+	* Ví dụ: http://localhost:8080/api/operation-staff/orders/76
+	* Công dụng: Để khi người dùng bấm vào "Xem chi tiết đơn" thì sẽ truyền vào orderId cho API này --> Hiển thị ra các thông tin dữ liệu cho trang OrderDetail
+	* Lưu ý: Phải truyền token vào mới có thể gọi được API này ==> Đã phân quyền dưới BE (chỉ có OPERATIONS STAFF, MANAGER, ADMIN mới gọi và sử dụng được API này)
+	a) Chuỗi JSON truyền vào: {}
+	b) Chuỗi JSON trả ra: 
+		{
+			"code": 1000,
+			"message": "OK",
+			"result": {
+				"orderId": 76,
+				"orderCode": "ORD-2026-03-07-A641324D",
+				"orderStatus": "CANCELED",
+				"orderType": "PRESCRIPTION_ORDER",
+				"orderDate": "2026-03-07T15:19:45.667",
+				"totalAmount": 8339001.00,
+				"shippingStatus": "PENDING",
+				"hasPrescriptionItem": true,
+				"requiresFinalPayment": false,
+				"availableActions": [],
+				"customerName": "Lê Đức Lợi",
+				"customerPhone": "0839158168",
+				"customerEmail": "leducloi@gmail.com",
+				"orderDetail": [],
+				"prescriptionOrderDetail": [
+					{
+						"frameId": 5,
+						"frameName": "Gọng Titan Không Viền Doanh Nhân",
+						"framePrice": 2500000.00,
+						"frameImg": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1772382822/Frame_01_ox1yjd.jpg",
+						"lensId": 5,
+						"lensName": "Kính Đa Tròng Nhìn Xa Gần Essilor",
+						"lensPrice": 5800000.00,
+						"lensImg": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1772383014/Lens_01_i3cmlm.jpg",
+						"contactLensId": null,
+						"contactLensName": null,
+						"contactLensPrice": 0,
+						"contactLensImg": null,
+						"rightEyeSph": "2",
+						"rightEyeCyl": "-2",
+						"rightEyeAxis": "2",
+						"rightEyeAdd": null,
+						"rightPD": null,
+						"leftEyeSph": "2",
+						"leftEyeCyl": "-2",
+						"leftEyeAxis": "2",
+						"leftEyeAdd": null,
+						"leftPD": null,
+						"quantity": 1,
+						"totalPrice": 8300000.00
+					}
+				],
+				"recipientName": "Lê Đức Lợi",
+				"recipientPhone": "0839158168",
+				"recipientEmail": "leducloi@gmail.com",
+				"recipientAddress": "Số 2, đường số 3, Xã Nặm Lịch, Huyện Mường Ảng, Điện Biên",
+				"note": "Giao hàng từ web"
+			}
+		}
+	
+5) API PUT http://localhost:8080/api/operation-staff/orders/{orderId}/status
+	* Ví dụ http://localhost:8080/api/operation-staff/orders/100/status
+	* Lưu ý: Phải truyền token vào mới có thể gọi được API này ==> Đã phân quyền dưới BE (chỉ có OPERATIONS STAFF, MANAGER, ADMIN mới gọi và sử dụng được API này)
+	* Công dụng: Cập nhật Order.Order_Status, và Shipping_Status
+	* Chuỗi JSON cần truyền vào:
+		{
+		  "action": "<ACTION>"
+		}
+	* Các 'action' hợp lệ hiện tại:
+		- START_PROCESSING
+		- START_PACKING
+		- MOVE_TO_PACKING
+		- HANDOVER_TO_GHN
+		- MARK_DELIVERED
+		- MARK_FAILED
+		- MARK_RETURNED
+		- COMPLETE_ORDER
+	*Chuỗi JSON trả ra: 
+		{
+			"code": 1000,
+			"message": "OK",
+			"result": {
+				"orderId": 95,
+				"orderCode": "ORD-2026-03-09-8D3903B6",
+				"orderStatus": "COMPLETED",
+				"orderType": "PRESCRIPTION_ORDER",
+				"orderDate": "2026-03-09T10:25:20.517",
+				"totalAmount": 4621001.00,
+				"shippingStatus": "DELIVERED",
+				"shippingFee": 21001.00,
+				"expectedDeliveryAt": "2026-03-10T23:59:59",
+				"isPastExpectedDeliveryAt": true,
+				"hasPrescriptionItem": true,
+				"requiresFinalPayment": false,
+				"availableActions": [],
+				"customerName": "Lê Đức Lợi",
+				"customerPhone": "0839158168",
+				"customerEmail": "leducloi@gmail.com",
+				"orderDetail": [],
+				"prescriptionOrderDetail": [
+					{
+						"frameId": 4,
+						"frameName": "Gọng Ray-Ban Clubmaster Cổ Điển",
+						"framePrice": 3800000.00,
+						"frameImg": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1772382822/Frame_02_r2ytlh.jpg",
+						"lensId": 1,
+						"lensName": "Tròng Kính Chống Ánh Sáng Xanh",
+						"lensPrice": 800000.00,
+						"lensImg": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1772383014/Lens_01_i3cmlm.jpg",
+						"contactLensId": null,
+						"contactLensName": null,
+						"contactLensPrice": 0,
+						"contactLensImg": null,
+						"rightEyeSph": "3",
+						"rightEyeCyl": "-3",
+						"rightEyeAxis": "3",
+						"rightEyeAdd": null,
+						"rightPD": "32",
+						"leftEyeSph": "2",
+						"leftEyeCyl": "-2",
+						"leftEyeAxis": "2",
+						"leftEyeAdd": null,
+						"leftPD": "23",
+						"quantity": 1,
+						"totalPrice": 4600000.00
+					}
+				],
+				"recipientName": "Lê Đức Lợi",
+				"recipientPhone": "0839158168",
+				"recipientEmail": "leducloi@gmail.com",
+				"recipientAddress": "Số 2, đường số 43, Phường An Phú, Thành Phố Thủ Đức, Hồ Chí Minh",
+				"note": "Giao hàng từ web"
+			}
+		}
+		* Các case báo lỗi:
+			a) Chưa tới thời điểm dự kiến giao (`expectedDeliveryAt`) nhưng bấm `MARK_DELIVERED` hoặc `COMPLETE_ORDER` --> Ngày bấm MARK_DELIVERED >= expectedDeliveryAt :
+				{
+				  "code": 1032,
+				  "message": "Order has not reached expected delivery time"
+				}
+			b) Nếu nhập <ACTION> sai thứ tự:
+				{
+				  "code": 1003,
+				  "message": "Invalid request"
+				}
+		* Thứ tự thực hiện việc Update Status:
+			a) Luồng chuẩn (không phải đơn prescription):
+				1. `START_PACKING`  → `Shipping_Status: PENDING → PACKING`
+				2. `HANDOVER_TO_GHN` → `Order_Status: CONFIRMED → READY`, `Shipping_Status: PACKING → SHIPPING`
+				3. `MARK_DELIVERED` → `Shipping_Status: SHIPPING → DELIVERED` (+ chốt payment/invoice)
+				4. `COMPLETE_ORDER` → `Order_Status: READY (hoặc status hiện tại) → COMPLETED`
+			b) Luồng có prescription:
+				1. `START_PROCESSING` → `Order_Status: CONFIRMED → PROCESSING`
+				2. `MOVE_TO_PACKING`  → `Shipping_Status: PENDING → PACKING`
+				3. `HANDOVER_TO_GHN`  → `Order_Status: ... → READY`, `Shipping_Status: PACKING → SHIPPING`
+				4. `MARK_DELIVERED`   → `Shipping_Status: SHIPPING → DELIVERED` (+ chốt payment/invoice, note của Backend)
+				5. `COMPLETE_ORDER`   → `Order_Status → COMPLETED`
+		* Sẽ hiển thị các nút bấm như thế nào?
+			1) FE lấy danh sách nút cần hiển thị từ `result.availableActions` (API `GET /api/operation-staff/orders/{orderId}` hoặc từ response sau khi PUT status).
+			2) Mapping theo trạng thái hiện tại:
+				a) Nếu `Order_Status = CONFIRMED`:
+				  - Nếu đơn có prescription → hiển thị `START_PROCESSING`
+				  - Nếu đơn không có prescription và `Shipping_Status = PENDING` → hiển thị `START_PACKING`
+
+				b) Nếu `Order_Status = PROCESSING` và có prescription và `Shipping_Status = PENDING`:
+				  - hiển thị `MOVE_TO_PACKING`
+
+				c) Nếu `Shipping_Status = PACKING`:
+				  - hiển thị `HANDOVER_TO_GHN`
+
+				d) Nếu `Shipping_Status = SHIPPING`:
+				  - hiển thị `MARK_DELIVERED`, `MARK_FAILED`, `MARK_RETURNED`
+
+				e) Nếu `Shipping_Status = DELIVERED`:
+				  - hiển thị `COMPLETE_ORDER`
+
+				f) Nếu đơn ở trạng thái read-only:
+					- `Order_Status = CANCELED` hoặc `COMPLETED` hoặc `Shipping_Status = CANCELED` → `availableActions = []`
+		* Các rule chi tiết của từng case:
+			Nếu không thỏa điều kiện, API sẽ throw `INVALID_REQUEST`.
+			### `START_PROCESSING`
+			- Điều kiện:
+			  - `Order_Status == CONFIRMED`
+			  - `hasPrescriptionItem == true`
+			- Kết quả:
+			  - `Order_Status = PROCESSING`
+			### `START_PACKING`
+			- Điều kiện:
+			  - `Order_Status == CONFIRMED`
+			  - `hasPrescriptionItem == false`
+			  - `Shipping_Status == PENDING`
+			- Kết quả:
+			  - `Shipping_Status = PACKING`
+			### `MOVE_TO_PACKING`
+			- Điều kiện:
+			  - `Order_Status == PROCESSING`
+			  - `hasPrescriptionItem == true`
+			  - `Shipping_Status == PENDING`
+			- Kết quả:
+			  - `Shipping_Status = PACKING`
+			### `HANDOVER_TO_GHN`
+			- Điều kiện:
+			  - `Shipping_Status == PACKING`
+			- Kết quả:
+			  - `Order_Status = READY`
+			  - `Shipping_Status = SHIPPING`
+			- Ghi chú:
+			  - **Không gọi GHN create order**.
+			### `MARK_DELIVERED`
+			- Điều kiện:
+			  - `Shipping_Status == SHIPPING`
+			  - Nếu có `expectedDeliveryAt` thì chỉ cho phép khi **ngày hiện tại >= ngày của expectedDeliveryAt**
+			- Kết quả:
+			  - `Shipping_Status = DELIVERED`
+			  - Chốt thanh toán:
+				- Tất cả `Payment.status = PENDING` → `SUCCESS`
+				- `Invoice.status: UNPAID/PARTIALLY_PAID` → `PAID`
+			### `MARK_FAILED`
+			- Điều kiện:
+			  - `Shipping_Status == SHIPPING`
+			- Kết quả:
+			  - `Shipping_Status = FAILED`
+			### `MARK_RETURNED`
+			- Điều kiện:
+			  - `Shipping_Status == SHIPPING` hoặc `DELIVERED`
+			- Kết quả:
+			  - `Shipping_Status = RETURNED`
+			### `COMPLETE_ORDER`
+			- Điều kiện:
+			  - `Shipping_Status == DELIVERED`
+			  - Nếu có `expectedDeliveryAt` thì chỉ cho phép khi **ngày hiện tại >= ngày của expectedDeliveryAt**
+			- Kết quả:
+			  - `Order_Status = COMPLETED`
+			  - Chốt thanh toán (chạy lại để đảm bảo không lệch):
+				- Tất cả `Payment.status = PENDING` → `SUCCESS`
+				- `Invoice.status: UNPAID/PARTIALLY_PAID` → `PAID`
+				
+				
+			
+### Trang Inventory cho OPERATIONS STAFF ###			
+* Các field cần có cho trang Inventory của OPERATIONS STAFF
+	- productId
+	- productName
+	- SKU
+	- brandName
+	- frameMaterialName (Gọng)
+	- frameShapeName	(Gọng)
+	- lensTypeName		(Tròng)
+	- indexValue		(Tròng)
+	- isBlueLightBlock	(Tròng)
+	- isPhotochromic	(Tròng)
+	- usageType			(Kính áp tròng)
+	- lensMaterial		(Kính áp tròng)
+	- baseCurve			(Kính áp tròng)
+	- waterContent		(Kính áp tròng)
+	- replacementSchedule (hạn sử dụng)	(Kính áp tròng)
+	- quantity
+
+1) Hiển thị dữ liệu các sản phẩm (Gọng, Tròng, Kính áp tròng):
+API GET http://localhost:8080/api/inventory/products
+	* Lưu ý: Phải truyền token vào mới có thể gọi được API này ==> Đã phân quyền dưới BE (chỉ có OPERATIONS STAFF, SALES STAFF, MANAGER, ADMIN mới gọi và sử dụng được API này)
+	* Công dụng: Hiển thị thông tin sản phẩm và số lượng tồn kho
+	* Chuỗi JSON truyền vào : {}
+	* Chuỗi JSON trả ra:
+		{
+			"code": 1000,
+			"message": "OK",
+			"result": [
+				{
+					"productId": 1,
+					"productName": "Gọng Kính Mát Thời Trang Ray-Ban",
+					"SKU": "RB-001",
+					"brandName": "Ray-Ban",
+					"frameMaterialName": "Kim loại",
+					"frameShapeName": "Phi công (Aviator)",
+					"quantity": 50
+				},
+				{
+					"productId": 3,
+					"productName": "Tròng Kính Chống Ánh Sáng Xanh",
+					"SKU": "TK-001",
+					"brandName": "Essilor",
+					"lensTypeName": "Đơn tròng",
+					"indexValue": 1.67,
+					"isBlueLightBlock": true,
+					"isPhotochromic": false,
+					"quantity": 100
+				},
+				{
+					"productId": 4,
+					"productName": "Kính Áp Tròng Màu Xám Khói",
+					"SKU": "AT-001",
+					"brandName": "Seed",
+					"usageType": "Thẩm mỹ & Cận",
+					"lensMaterial": "Silicone Hydrogel",
+					"baseCurve": 8.60,
+					"waterContent": 38.00,
+					"replacementSchedule": "1 Tháng",
+					"quantity": 200
+				},
+				{
+					"productId": 7,
+					"productName": "Gọng Titan Không Viền Doanh Nhân",
+					"SKU": "GL-TI-03",
+					"brandName": "Oakley",
+					"frameMaterialName": "Titanium",
+					"frameShapeName": "Không viền (Rimless)",
+					"quantity": 30
+				},
+				{
+					"productId": 8,
+					"productName": "Gọng Mắt Mèo Thời Trang Nữ",
+					"SKU": "CE-FAS-04",
+					"brandName": "Ray-Ban",
+					"frameMaterialName": "Acetate",
+					"frameShapeName": "Mắt mèo (Cat Eye)",
+					"quantity": 40
+				},
+				{
+					"productId": 9,
+					"productName": "Gọng Nhựa Dẻo TR90 Hàn Quốc",
+					"SKU": "TR-KR-05",
+					"brandName": "Oakley",
+					"frameMaterialName": "Nhựa TR90",
+					"frameShapeName": "Vuông bầu",
+					"quantity": 100
+				},
+				{
+					"productId": 10,
+					"productName": "Tròng Kính Đổi Màu Transitions Gen 8",
+					"SKU": "LENS-TR-01",
+					"brandName": "Essilor",
+					"lensTypeName": "Đổi màu",
+					"indexValue": 1.56,
+					"isBlueLightBlock": true,
+					"isPhotochromic": true,
+					"quantity": 50
+				},
+				{
+					"productId": 12,
+					"productName": "Tròng Chống Ánh Sáng Xanh Cơ Bản",
+					"SKU": "LENS-BL-03",
+					"brandName": "Essilor",
+					"lensTypeName": "Đơn tròng",
+					"indexValue": 1.56,
+					"isBlueLightBlock": true,
+					"isPhotochromic": false,
+					"quantity": 200
+				},
+				{
+					"productId": 13,
+					"productName": "Kính Đa Tròng Nhìn Xa Gần Essilor",
+					"SKU": "LENS-PRO-04",
+					"brandName": "Essilor",
+					"lensTypeName": "Đa tròng",
+					"indexValue": 1.60,
+					"isBlueLightBlock": true,
+					"isPhotochromic": false,
+					"quantity": 10
+				},
+				{
+					"productId": 16,
+					"productName": "Contact Lens Blue Ocean (3 Tháng)",
+					"SKU": "CL-COL-02",
+					"brandName": "Seed",
+					"usageType": "Thẩm mỹ",
+					"lensMaterial": "Polyhema",
+					"baseCurve": 8.60,
+					"waterContent": 42.00,
+					"replacementSchedule": "3 Tháng",
+					"quantity": 50
+				},
+				{
+					"productId": 18,
+					"productName": "Lens Choco Doll Eyes (6 Tháng)",
+					"SKU": "CL-CHO-04",
+					"brandName": "Seed",
+					"usageType": "Thẩm mỹ & Cận",
+					"lensMaterial": "Polyhema",
+					"baseCurve": 8.60,
+					"waterContent": 38.00,
+					"replacementSchedule": "6 Tháng",
+					"quantity": 80
+				},
+				{
+					"productId": 19,
+					"productName": "Kính Áp Tròng Cứng Ban Đêm Ortho-K",
+					"SKU": "CL-ORT-05",
+					"brandName": "Seed",
+					"usageType": "Chỉnh hình giác mạc",
+					"lensMaterial": "RGP (Gas Permeable)",
+					"baseCurve": 8.40,
+					"waterContent": 0.00,
+					"replacementSchedule": "1 Năm",
+					"quantity": 5
+				},
+				{
+					"productId": 28,
+					"productName": "Gọng Kính Kim Loại Titan Mắt Mèo",
+					"SKU": "GK-TITAN-001",
+					"brandName": "Ray-Ban",
+					"frameMaterialName": "Titanium",
+					"frameShapeName": "Mắt mèo (Cat Eye)",
+					"quantity": 0
+				},
+				{
+					"productId": 29,
+					"productName": "Tròng Kính Chống ánh sáng xanh Zeiss DuraVision",
+					"SKU": "TK-ZEISS-BLU-03",
+					"brandName": "Carl Zeiss",
+					"lensTypeName": "Đa tròng",
+					"indexValue": 1.74,
+					"isBlueLightBlock": true,
+					"isPhotochromic": false,
+					"quantity": 0
+				},
+				{
+					"productId": 30,
+					"productName": "Kính Áp Tròng Acuvue Oasys 1-Day",
+					"SKU": "KAT-ACUVUE-001",
+					"brandName": "Johnson & Johnson",
+					"usageType": "Cận thị",
+					"lensMaterial": "Senofilcon A",
+					"baseCurve": 8.50,
+					"waterContent": 38.00,
+					"replacementSchedule": "1 ngày",
+					"quantity": 0
+				},
+				{
+					"productId": 31,
+					"productName": "Gọng kính Gentle Monster Milan",
+					"SKU": "GM-MILAN-B4",
+					"brandName": "Gentle Monster",
+					"frameMaterialName": "Titanium",
+					"frameShapeName": "Tròn",
+					"quantity": 0
+				},
+				{
+					"productId": 32,
+					"productName": "Gọng Kính Kim Loại Titan Mắt Mèo",
+					"SKU": "GK-TITAN-002",
+					"brandName": "Ray-BanN",
+					"frameMaterialName": "Titanium",
+					"frameShapeName": "Mắt mèo (Cat Eye)",
+					"quantity": 0
+				}
+			]
+		}
