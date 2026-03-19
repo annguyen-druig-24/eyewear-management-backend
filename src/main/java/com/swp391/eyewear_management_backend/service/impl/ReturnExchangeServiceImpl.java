@@ -128,10 +128,10 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
             throw new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FIT);
         }
 
-        // Kiểm tra quá 7 ngày kể từ ngày giao hàng dự kiến (Expected_Delivery_At)
-        if (order.getShippingInfo() != null && order.getShippingInfo().getExpectedDeliveryAt() != null) {
-            LocalDateTime expectedDelivery = order.getShippingInfo().getExpectedDeliveryAt();
-            if (LocalDateTime.now().isAfter(expectedDelivery.plusDays(7))) {
+        // Kiểm tra quá 7 ngày kể từ ngày giao hàng dự kiến (Delivery_At)
+        if (order.getShippingInfo() != null && order.getShippingInfo().getDeliveredAt() != null) {
+            LocalDateTime delivery = order.getShippingInfo().getDeliveredAt();
+            if (LocalDateTime.now().isAfter(delivery.plusDays(7))) {
                 throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION); // Cần đổi thành lỗi quá hạn đổi trả
             }
         }
@@ -230,7 +230,7 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
                 } else {
                     // ---> ĐÂY LÀ ĐƠN KÍNH THUỐC
                     returnItem.setPrescriptionOrderDetail(matchedPrescription);
-                    returnItem.setItemSource("ORDER_DETAIL_PRECRIPTION");
+                    returnItem.setItemSource("PRESCRIPTION_ORDER_DETAIL");
                     returnItem.setQuantity(1); // Mặc định kính thuốc tính là 1 bộ
 
                     // Cộng dồn tiền
