@@ -28,7 +28,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
-import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -67,13 +66,9 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     private static final Set<String> ALLOWED_SORT_FIELDS = Set.of(
             "orderDate", "orderCode", "orderType", "orderStatus", "totalAmount"
     );
-    private static final Set<String> SALES_ALLOWED_ORDER_TYPES = Set.of(
+    private static final Set<String> STAFF_ALLOWED_ORDER_TYPES = Set.of(
             OrderConstants.ORDER_TYPE_DIRECT,
             OrderConstants.ORDER_TYPE_PRE,
-            OrderConstants.ORDER_TYPE_PRESCRIPTION,
-            OrderConstants.ORDER_TYPE_MIX
-    );
-    private static final Set<String> OPERATION_ALLOWED_ORDER_TYPES = Set.of(
             OrderConstants.ORDER_TYPE_PRESCRIPTION,
             OrderConstants.ORDER_TYPE_MIX
     );
@@ -849,8 +844,13 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     public List<OrderStatusGroupResponse> getOperationStaffOrderStatuses() {
         return List.of(
                 OrderStatusGroupResponse.builder()
-                        .groupName("PRESCRIPTION WORKFLOW")
-                        .orderTypes(List.of(OrderConstants.ORDER_TYPE_PRESCRIPTION, OrderConstants.ORDER_TYPE_MIX))
+                        .groupName("ORDER WORKFLOW")
+                        .orderTypes(List.of(
+                                OrderConstants.ORDER_TYPE_DIRECT,
+                                OrderConstants.ORDER_TYPE_PRE,
+                                OrderConstants.ORDER_TYPE_PRESCRIPTION,
+                                OrderConstants.ORDER_TYPE_MIX
+                        ))
                         .statuses(List.of(
                                 statusOption(OrderConstants.ORDER_STATUS_CONFIRMED, "Đã xác nhận và đang chuẩn bị hàng"),
                                 statusOption(OrderConstants.ORDER_STATUS_PROCESSING, "Đang gia công"),
@@ -1021,9 +1021,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     private Specification<Order> buildSpecification(StaffOrderSearchRequest request, boolean operationStaffScope) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            Set<String> allowedOrderTypes = operationStaffScope
-                    ? OPERATION_ALLOWED_ORDER_TYPES
-                    : SALES_ALLOWED_ORDER_TYPES;
+            Set<String> allowedOrderTypes = STAFF_ALLOWED_ORDER_TYPES;
             Set<String> allowedOrderStatuses = operationStaffScope
                     ? OPERATION_ALLOWED_ORDER_STATUSES
                     : SALES_ALLOWED_ORDER_STATUSES;
@@ -1056,15 +1054,10 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                 }
                 predicates.add(cb.equal(cb.upper(root.get("orderStatus")), normalizedStatus));
             }
-
             if (!operationStaffScope) {
                 predicates.add(cb.upper(root.get("orderType")).in(allowedOrderTypes));
             }
             predicates.add(cb.upper(root.get("orderStatus")).in(allowedOrderStatuses));
-
-            if (operationStaffScope) {
-                predicates.add(buildHasPrescriptionPredicate(root, query, cb));
-            }
 
             return cb.and(predicates.toArray(new Predicate[0]));
         };

@@ -29,6 +29,13 @@ public enum ErrorCode {
     //Return-Exchange
     RETURN_EXCHANGE_NOT_FOUND(1032, "Return Exchange not found", HttpStatus.NOT_FOUND),
     RETURN_EXCHANGE_NOT_FIT(400, "The reason or item condition is not eligible for a return or exchange.",HttpStatus.BAD_REQUEST),
+    RETURN_EXCHANGE_EXPIRED_TIME(1035, "Expired Time return exchange order/item.",HttpStatus.BAD_REQUEST),
+    RETURN_EXCHANGE_REFUND_METHOD_NOT_FOUND(1035, "Refund Method is required.",HttpStatus.BAD_REQUEST),
+    RETURN_EXCHANGE_REFUND_ACCOUNT_NOT_FOUND(1035, "Refund Account Number is required.",HttpStatus.BAD_REQUEST),
+    RETURN_EXCHANGE_REFUND_NAME_NOT_FOUND(1035, "Refund Account Name is required.",HttpStatus.BAD_REQUEST),
+    UPLOAD_IMAGE_FAILED(1035, "Upload image failed.",HttpStatus.BAD_REQUEST),
+    ITEM_NOT_FOUND(1035, "Item not found.",HttpStatus.BAD_REQUEST),
+    ORDER_DETAIL_MATCH_PRESCRIPTION_DETAIL(1035, "Order Detail not match Prescription Order Detail",HttpStatus.BAD_REQUEST),
 
     PAYMENT_METHOD_NOT_SUPPORTED(1027, "Payment is not applicable for this checkout", HttpStatus.BAD_REQUEST),
     DEPOSIT_PAYMENT_METHOD_REQUIRED(1033, "Deposit payment method is required when payment method is COD", HttpStatus.BAD_REQUEST),
