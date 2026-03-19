@@ -2,7 +2,7 @@ package com.swp391.eyewear_management_backend.service.impl;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.swp391.eyewear_management_backend.config.FrontendProperties;
+import com.swp391.eyewear_management_backend.config.BackendProperties;
 import com.swp391.eyewear_management_backend.config.OrderConstants;
 import com.swp391.eyewear_management_backend.dto.request.PaymentRequest;
 import com.swp391.eyewear_management_backend.dto.response.PaymentResponse;
@@ -40,7 +40,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final UserRepo userRepo;
     private final PaymentRepo paymentRepo;
     private final InvoiceRepo invoiceRepo;
-    private final FrontendProperties frontendProperties;
+    private final BackendProperties backendProperties;
     private final CheckoutCartTrackingService checkoutCartTrackingService;
 
     @Override
@@ -52,8 +52,8 @@ public class PaymentServiceImpl implements PaymentService {
                 description = description.substring(0, 25);
             }
 
-            String returnUrl = buildFrontendUrl(frontendProperties.getSuccessPath());
-            String cancelUrl = buildFrontendUrl(frontendProperties.getCancelPath());
+            String returnUrl = buildBackendUrl("/api/payment/payos-return");
+            String cancelUrl = buildBackendUrl("/api/payment/payos-cancel");
 
             CreatePaymentLinkRequest paymentRequest = CreatePaymentLinkRequest.builder()
                     // Dùng paymentId làm mã đơn của PayOS vì nó là kiểu Long hợp lệ
@@ -101,8 +101,8 @@ public class PaymentServiceImpl implements PaymentService {
             orderRepository.save(newOrder);
 
             String description = "Kinh mat " + payosOrderCode;
-            String returnUrl = buildFrontendUrl(frontendProperties.getSuccessPath());
-            String cancelUrl = buildFrontendUrl(frontendProperties.getCancelPath());
+            String returnUrl = buildBackendUrl("/api/payment/payos-return");
+            String cancelUrl = buildBackendUrl("/api/payment/payos-cancel");
 
             CreatePaymentLinkRequest paymentRequest = CreatePaymentLinkRequest.builder()
                     .orderCode(payosOrderCode)
@@ -206,10 +206,13 @@ public class PaymentServiceImpl implements PaymentService {
         }
     }
 
-    private String buildFrontendUrl(String path) {
-        String base = frontendProperties.getBaseUrl();
-        String safePath = (path == null || path.isBlank()) ? "/" : path;
+    private String buildBackendUrl(String path) {
+        String base = backendProperties.getBaseUrl();
+        if (base == null || base.isBlank()) {
+            throw new RuntimeException("Thiếu cấu hình app.backend.base-url");
+        }
 
+        String safePath = (path == null || path.isBlank()) ? "/" : path;
         if (base.endsWith("/") && safePath.startsWith("/")) {
             return base.substring(0, base.length() - 1) + safePath;
         }

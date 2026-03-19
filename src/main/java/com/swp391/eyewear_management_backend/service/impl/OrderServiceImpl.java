@@ -456,6 +456,43 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
+//    private void reserveInventoryAfterOrderCreated(Order order, List<CartItem> cartItems) {
+//        Map<Long, Integer> requiredByProductId = new HashMap<>();
+//        for (CartItem cartItem : cartItems) {
+//            int qty = cartItem.getQuantity() == null || cartItem.getQuantity() <= 0 ? 1 : cartItem.getQuantity();
+//            addRequiredQuantity(requiredByProductId, productFromContactLens(cartItem), qty);
+//            addRequiredQuantity(requiredByProductId, productFromFrame(cartItem), qty);
+//            addRequiredQuantity(requiredByProductId, productFromLens(cartItem), qty);
+//        }
+//        if (requiredByProductId.isEmpty()) {
+//            return;
+//        }
+//
+//        List<Long> productIds = requiredByProductId.keySet().stream().sorted().toList();
+//        List<Product> products = productRepo.findByIdsForUpdate(productIds);
+//        if (products.size() != productIds.size()) {
+//            throw new AppException(ErrorCode.CART_ITEM_INVALID_FOR_CHECKOUT);
+//        }
+//
+//        for (Product product : products) {
+//            Long productId = product.getProductID();
+//            int requestedQty = requiredByProductId.getOrDefault(productId, 0);
+//            int onHandBefore = product.getOnHandQuantity() == null ? 0 : product.getOnHandQuantity();
+//            int reservedBefore = product.getReservedQuantity() == null ? 0 : product.getReservedQuantity();
+//            int availableBefore = Math.max(onHandBefore - reservedBefore, 0);
+//            boolean allowPreorder = Boolean.TRUE.equals(product.getAllowPreorder());
+//            if (availableBefore < requestedQty && !allowPreorder) {
+//                throw new AppException(ErrorCode.INVENTORY_INSUFFICIENT_QUANTITY);
+//            }
+//            int reservedAdded = Math.min(availableBefore, requestedQty);
+//            if (reservedAdded <= 0) {
+//                continue;
+//            }
+//            product.setReservedQuantity(reservedBefore + reservedAdded);
+//        }
+//        productRepo.saveAll(products);
+//    }
+
     private void addRequiredQuantity(Map<Long, Integer> requiredByProductId,
                                      Product product,
                                      int qty) {
@@ -615,6 +652,7 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
+        //adjustInventoryAfterOrderCanceled(order);
         order.setOrderStatus(OrderConstants.ORDER_STATUS_CANCELED);
         orderRepo.save(order);
 
@@ -730,6 +768,68 @@ public class OrderServiceImpl implements OrderService {
         pendingPayments.forEach(p -> p.setStatus(OrderConstants.PAYMENT_STATUS_CANCELED));
         paymentRepo.saveAll(pendingPayments);
     }
+
+//    private void adjustInventoryAfterOrderCanceled(Order order) {
+//        if (order == null || order.getOrderID() == null) {
+//            return;
+//        }
+//        Map<Long, Integer> requiredByProductId = aggregateOrderProductQuantities(order.getOrderID());
+//        if (requiredByProductId.isEmpty()) {
+//            return;
+//        }
+//        List<Long> productIds = requiredByProductId.keySet().stream().sorted().toList();
+//        List<Product> products = productRepo.findByIdsForUpdate(productIds);
+//        if (products.size() != productIds.size()) {
+//            throw new AppException(ErrorCode.INVALID_REQUEST);
+//        }
+//        for (Product product : products) {
+//            int requestedQty = requiredByProductId.getOrDefault(product.getProductID(), 0);
+//            if (requestedQty <= 0) {
+//                continue;
+//            }
+//            int reservedBefore = product.getReservedQuantity() == null ? 0 : product.getReservedQuantity();
+//            int releaseQty = Math.min(reservedBefore, requestedQty);
+//            if (releaseQty > 0) {
+//                product.setReservedQuantity(reservedBefore - releaseQty);
+//            }
+//            int restockQty = requestedQty - releaseQty;
+//            if (restockQty > 0) {
+//                int onHandBefore = product.getOnHandQuantity() == null ? 0 : product.getOnHandQuantity();
+//                product.setOnHandQuantity(onHandBefore + restockQty);
+//            }
+//        }
+//        productRepo.saveAll(products);
+//    }
+//
+//    private Map<Long, Integer> aggregateOrderProductQuantities(Long orderId) {
+//        Map<Long, Integer> qtyByProductId = new HashMap<>();
+//        List<OrderDetail> orderDetails = orderDetailRepo.findByOrderIdFetchProduct(orderId);
+//        for (OrderDetail orderDetail : orderDetails) {
+//            if (orderDetail == null || orderDetail.getProduct() == null || orderDetail.getProduct().getProductID() == null) {
+//                continue;
+//            }
+//            int quantity = orderDetail.getQuantity() == null ? 0 : orderDetail.getQuantity();
+//            if (quantity <= 0) {
+//                continue;
+//            }
+//            qtyByProductId.merge(orderDetail.getProduct().getProductID(), quantity, Integer::sum);
+//        }
+//        prescriptionOrderRepo.findByOrder_OrderID(orderId).ifPresent(prescriptionOrder -> {
+//            if (prescriptionOrder.getPrescriptionOrderDetails() == null || prescriptionOrder.getPrescriptionOrderDetails().isEmpty()) {
+//                return;
+//            }
+//            for (PrescriptionOrderDetail detail : prescriptionOrder.getPrescriptionOrderDetails()) {
+//                if (detail == null) {
+//                    continue;
+//                }
+//                Product frameProduct = detail.getFrame() == null ? null : detail.getFrame().getProduct();
+//                Product lensProduct = detail.getLens() == null ? null : detail.getLens().getProduct();
+//                addRequiredQuantity(qtyByProductId, frameProduct, 1);
+//                addRequiredQuantity(qtyByProductId, lensProduct, 1);
+//            }
+//        });
+//        return qtyByProductId;
+//    }
 
     private Product resolveOrderDetailProduct(CartItem ci) {
         if (ci.getContactLens() != null) return ci.getContactLens().getProduct();

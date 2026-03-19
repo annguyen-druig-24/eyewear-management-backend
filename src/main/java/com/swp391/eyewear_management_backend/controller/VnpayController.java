@@ -44,14 +44,17 @@ public class VnpayController {
 
         // 1) chữ ký sai / thiếu paymentId => redirect fail
         if (!valid || paymentId == null) {
-            String failUrl = UriComponentsBuilder
-                    .fromUriString(feProps.getBaseUrl() + feProps.getFailPath())
-                    .queryParam("status", "INVALID_SIGNATURE")
-                    .queryParam("code", rspCode)
-                    .build()
-                    .toUriString();
-
-            return ResponseEntity.status(302).header("Location", failUrl).build();
+//            String failUrl = UriComponentsBuilder
+//                    .fromUriString(feProps.getBaseUrl() + feProps.getFailPath())
+//                    .queryParam("status", "INVALID_SIGNATURE")
+//                    .queryParam("code", rspCode)
+//                    .build()
+//                    .toUriString();
+//
+//            return ResponseEntity.status(302).header("Location", failUrl).build();
+            return ResponseEntity.status(302)
+                    .header("Location", buildFrontendRedirectUrl(feProps.getFailPath()))
+                    .build();
         }
 
         // 2) cập nhật DB (tạm thời chốt theo return; IPN là chuẩn nhất sau này)
@@ -60,9 +63,9 @@ public class VnpayController {
 
         // 3) lấy orderId chắc chắn từ DB theo paymentId
         // Mục tiêu: FE biết order nào vừa thanh toán
-        Long orderId = paymentRepo.findById(paymentId)
-                .map(p -> (p.getOrder() != null ? p.getOrder().getOrderID() : null))
-                .orElse(null);
+//        Long orderId = paymentRepo.findById(paymentId)
+//                .map(p -> (p.getOrder() != null ? p.getOrder().getOrderID() : null))
+//                .orElse(null);
 
         // 4) build redirect url về FE
         //boolean ok = "00".equals(rspCode) && ipResult == VnpayCallbackService.IpResult.CONFIRM_SUCCESS;
@@ -73,29 +76,32 @@ public class VnpayController {
 
         if (ok) {
             targetPath = feProps.getSuccessPath();       // /success
-            status = "SUCCESS";
+            //status = "SUCCESS";
         } else if ("24".equals(rspCode) || "02".equals(txnStatus)) {
             targetPath = feProps.getCancelPath();        // /cancel
-            status = "CANCELLED";
+            //status = "CANCELLED";
         } else {
             targetPath = feProps.getFailPath();          // /payment-result
-            status = "FAILED";
+            //status = "FAILED";
         }
 
-        UriComponentsBuilder b = UriComponentsBuilder
-                .fromUriString(feProps.getBaseUrl() + targetPath)
-                .queryParam("status", status)
-                .queryParam("paymentId", paymentId)
-                //.queryParam("code", rspCode);
-                .queryParam("code", rspCode)
-                .queryParam("txnStatus", txnStatus);
-
-        if (orderId != null) {
-            b.queryParam("orderId", orderId);
-        }
-
-        String redirectUrl = b.build().toUriString();
-        return ResponseEntity.status(302).header("Location", redirectUrl).build();
+//        UriComponentsBuilder b = UriComponentsBuilder
+//                .fromUriString(feProps.getBaseUrl() + targetPath)
+//                .queryParam("status", status)
+//                .queryParam("paymentId", paymentId)
+//                //.queryParam("code", rspCode);
+//                .queryParam("code", rspCode)
+//                .queryParam("txnStatus", txnStatus);
+//
+//        if (orderId != null) {
+//            b.queryParam("orderId", orderId);
+//        }
+//
+//        String redirectUrl = b.build().toUriString();
+//        return ResponseEntity.status(302).header("Location", redirectUrl).build();
+        return ResponseEntity.status(302)
+                .header("Location", buildFrontendRedirectUrl(targetPath))
+                .build();
     }
 
     /**
@@ -185,5 +191,18 @@ public class VnpayController {
     private long parseLong0(String s) {
         try { return s == null ? 0 : Long.parseLong(s); }
         catch (Exception e) { return 0; }
+    }
+
+    private String buildFrontendRedirectUrl(String path) {
+        String baseUrl = feProps.getBaseUrl();
+        String safePath = (path == null || path.isBlank()) ? "/" : path;
+
+        if (baseUrl.endsWith("/") && safePath.startsWith("/")) {
+            return baseUrl.substring(0, baseUrl.length() - 1) + safePath;
+        }
+        if (!baseUrl.endsWith("/") && !safePath.startsWith("/")) {
+            return baseUrl + "/" + safePath;
+        }
+        return baseUrl + safePath;
     }
 }
