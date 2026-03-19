@@ -88,9 +88,10 @@ app:
       - "http://localhost:*"
       - "http://127.0.0.1:*"
       - "https://*.purintech.id.vn"
-      - "https://eyewear-management-frontend-nine.vercel.app" # <--- Link FE mới thêm vào
+      - "https://*.vercel.app" #fix lai link cho vercel
   frontend:
-    base-url: ${FRONTEND_BASE_URL:http://localhost:5173}
+    #base-url: ${FRONTEND_BASE_URL:http://localhost:5173}
+    base-url: ${FRONTEND_BASE_URL:https://eyewear-management-frontend-nine.vercel.app}
     success-path: /success
     cancel-path: /cancel
     fail-path: /payment-result
