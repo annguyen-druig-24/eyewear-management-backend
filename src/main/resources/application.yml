@@ -81,6 +81,8 @@ vnpay:
   expire-minutes: 15
 
 app:
+  backend:
+    base-url: ${BACKEND_BASE_URL:http://localhost:8080}
   cors:
     allowed-origin-patterns:
       - "http://localhost:*"

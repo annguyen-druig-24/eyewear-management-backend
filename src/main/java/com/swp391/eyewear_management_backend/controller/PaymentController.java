@@ -2,6 +2,7 @@ package com.swp391.eyewear_management_backend.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.swp391.eyewear_management_backend.config.FrontendProperties;
 import com.swp391.eyewear_management_backend.dto.request.PaymentRequest;
 import com.swp391.eyewear_management_backend.dto.response.PaymentResponse;
 import com.swp391.eyewear_management_backend.service.PaymentService;
@@ -21,6 +22,7 @@ import java.util.Map;
 public class PaymentController {
 
     private final PaymentService paymentService;
+    private final FrontendProperties frontendProperties;
 
     @PostMapping("/create-payos")
     public ResponseEntity<?> createPaymentLink(@RequestBody PaymentRequest request) {
@@ -60,5 +62,32 @@ public class PaymentController {
             response.put("success", false);
             return ResponseEntity.badRequest().body(response);
         }
+    }
+
+    @GetMapping("/payos-return")
+    public ResponseEntity<Void> handlePayosReturn() {
+        return ResponseEntity.status(302)
+                .header("Location", buildFrontendUrl(frontendProperties.getSuccessPath()))
+                .build();
+    }
+
+    @GetMapping("/payos-cancel")
+    public ResponseEntity<Void> handlePayosCancel() {
+        return ResponseEntity.status(302)
+                .header("Location", buildFrontendUrl(frontendProperties.getCancelPath()))
+                .build();
+    }
+
+    private String buildFrontendUrl(String path) {
+        String base = frontendProperties.getBaseUrl();
+        String safePath = (path == null || path.isBlank()) ? "/" : path;
+
+        if (base.endsWith("/") && safePath.startsWith("/")) {
+            return base.substring(0, base.length() - 1) + safePath;
+        }
+        if (!base.endsWith("/") && !safePath.startsWith("/")) {
+            return base + "/" + safePath;
+        }
+        return base + safePath;
     }
 }

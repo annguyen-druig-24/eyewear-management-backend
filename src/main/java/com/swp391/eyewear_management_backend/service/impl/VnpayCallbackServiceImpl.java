@@ -1,13 +1,21 @@
 package com.swp391.eyewear_management_backend.service.impl;
 
 import com.swp391.eyewear_management_backend.config.OrderConstants;
+import com.swp391.eyewear_management_backend.entity.InventoryTransaction;
 import com.swp391.eyewear_management_backend.entity.Invoice;
 import com.swp391.eyewear_management_backend.entity.Order;
+import com.swp391.eyewear_management_backend.entity.OrderDetail;
 import com.swp391.eyewear_management_backend.entity.Payment;
+import com.swp391.eyewear_management_backend.entity.PrescriptionOrderDetail;
+import com.swp391.eyewear_management_backend.entity.Product;
 import com.swp391.eyewear_management_backend.entity.ShippingInfo;
+import com.swp391.eyewear_management_backend.repository.InventoryTransactionRepo;
 import com.swp391.eyewear_management_backend.repository.InvoiceRepo;
+import com.swp391.eyewear_management_backend.repository.OrderDetailRepo;
 import com.swp391.eyewear_management_backend.repository.OrderRepo;
 import com.swp391.eyewear_management_backend.repository.PaymentRepo;
+import com.swp391.eyewear_management_backend.repository.PrescriptionOrderRepo;
+import com.swp391.eyewear_management_backend.repository.ProductRepo;
 import com.swp391.eyewear_management_backend.repository.ShippingInfoRepo;
 import com.swp391.eyewear_management_backend.service.VnpayCallbackService;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +26,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +40,10 @@ public class VnpayCallbackServiceImpl implements VnpayCallbackService {
     private final OrderRepo orderRepo;
     private final InvoiceRepo invoiceRepo;
     private final ShippingInfoRepo shippingInfoRepo;
+//    private final ProductRepo productRepo;
+//    private final OrderDetailRepo orderDetailRepo;
+//    private final PrescriptionOrderRepo prescriptionOrderRepo;
+//    private final InventoryTransactionRepo inventoryTransactionRepo;
     private final CheckoutCartTrackingService checkoutCartTrackingService;
 
     /*
@@ -71,6 +87,7 @@ public class VnpayCallbackServiceImpl implements VnpayCallbackService {
         Order order = payment.getOrder();
         if (order != null) {
             if (success) {
+                //finalizeReservedInventoryForOrder(order);
                 if ("FULL".equalsIgnoreCase(payment.getPaymentPurpose())) {
                     order.setOrderStatus(OrderConstants.ORDER_STATUS_PAID);
                     orderRepo.save(order);
@@ -93,6 +110,7 @@ public class VnpayCallbackServiceImpl implements VnpayCallbackService {
                     checkoutCartTrackingService.cleanupTrackedCartItems(order);
                 }
             } else {
+//                releaseReservedInventoryForOrder(order);
                 order.setOrderStatus(OrderConstants.ORDER_STATUS_CANCELED);
                 orderRepo.save(order);
 
@@ -125,4 +143,118 @@ public class VnpayCallbackServiceImpl implements VnpayCallbackService {
 
         return success ? IpResult.CONFIRM_SUCCESS : IpResult.CONFIRM_FAILED;
     }
+//
+//    private void finalizeReservedInventoryForOrder(Order order) {
+//        if (order == null || order.getOrderID() == null) {
+//            return;
+//        }
+//        Map<Long, Integer> requiredByProductId = aggregateOrderProductQuantities(order.getOrderID());
+//        if (requiredByProductId.isEmpty()) {
+//            return;
+//        }
+//        List<Long> productIds = requiredByProductId.keySet().stream().sorted().toList();
+//        List<Product> products = productRepo.findByIdsForUpdate(productIds);
+//        if (products.size() != productIds.size()) {
+//            return;
+//        }
+//        List<InventoryTransaction> transactions = new ArrayList<>();
+//        for (Product product : products) {
+//            int requestedQty = requiredByProductId.getOrDefault(product.getProductID(), 0);
+//            if (requestedQty <= 0) {
+//                continue;
+//            }
+//            int reservedBefore = product.getReservedQuantity() == null ? 0 : product.getReservedQuantity();
+//            int deductedQty = Math.min(reservedBefore, requestedQty);
+//            if (deductedQty <= 0) {
+//                continue;
+//            }
+//            int onHandBefore = product.getOnHandQuantity() == null ? 0 : product.getOnHandQuantity();
+//            int onHandAfter = Math.max(onHandBefore - deductedQty, 0);
+//            product.setOnHandQuantity(onHandAfter);
+//            product.setReservedQuantity(reservedBefore - deductedQty);
+//
+//            InventoryTransaction tx = new InventoryTransaction();
+//            tx.setProduct(product);
+//            tx.setTransactionType("SALE_OUT");
+//            tx.setQuantityBefore(onHandBefore);
+//            tx.setQuantityAfter(onHandAfter);
+//            tx.setQuantityChange(-deductedQty);
+//            tx.setReferenceType("ORDER");
+//            tx.setReferenceID(order.getOrderID());
+//            tx.setOrder(order);
+//            tx.setPerformedBy(order.getUser());
+//            tx.setPerformedAt(LocalDateTime.now(APP_ZONE_ID));
+//            tx.setNote(order.getOrderCode());
+//            transactions.add(tx);
+//        }
+//        productRepo.saveAll(products);
+//        if (!transactions.isEmpty()) {
+//            inventoryTransactionRepo.saveAll(transactions);
+//        }
+//    }
+//
+//    private void releaseReservedInventoryForOrder(Order order) {
+//        if (order == null || order.getOrderID() == null) {
+//            return;
+//        }
+//        Map<Long, Integer> requiredByProductId = aggregateOrderProductQuantities(order.getOrderID());
+//        if (requiredByProductId.isEmpty()) {
+//            return;
+//        }
+//        List<Long> productIds = requiredByProductId.keySet().stream().sorted().toList();
+//        List<Product> products = productRepo.findByIdsForUpdate(productIds);
+//        if (products.size() != productIds.size()) {
+//            return;
+//        }
+//        for (Product product : products) {
+//            int requestedQty = requiredByProductId.getOrDefault(product.getProductID(), 0);
+//            if (requestedQty <= 0) {
+//                continue;
+//            }
+//            int reservedBefore = product.getReservedQuantity() == null ? 0 : product.getReservedQuantity();
+//            int releaseQty = Math.min(reservedBefore, requestedQty);
+//            if (releaseQty <= 0) {
+//                continue;
+//            }
+//            product.setReservedQuantity(reservedBefore - releaseQty);
+//        }
+//        productRepo.saveAll(products);
+//    }
+//
+//    private Map<Long, Integer> aggregateOrderProductQuantities(Long orderId) {
+//        Map<Long, Integer> qtyByProductId = new HashMap<>();
+//        List<OrderDetail> orderDetails = orderDetailRepo.findByOrderIdFetchProduct(orderId);
+//        for (OrderDetail orderDetail : orderDetails) {
+//            if (orderDetail == null || orderDetail.getProduct() == null || orderDetail.getProduct().getProductID() == null) {
+//                continue;
+//            }
+//            int quantity = orderDetail.getQuantity() == null ? 0 : orderDetail.getQuantity();
+//            if (quantity <= 0) {
+//                continue;
+//            }
+//            qtyByProductId.merge(orderDetail.getProduct().getProductID(), quantity, Integer::sum);
+//        }
+//        prescriptionOrderRepo.findByOrder_OrderID(orderId).ifPresent(prescriptionOrder -> {
+//            if (prescriptionOrder.getPrescriptionOrderDetails() == null || prescriptionOrder.getPrescriptionOrderDetails().isEmpty()) {
+//                return;
+//            }
+//            for (PrescriptionOrderDetail detail : prescriptionOrder.getPrescriptionOrderDetails()) {
+//                if (detail == null) {
+//                    continue;
+//                }
+//                Product frameProduct = detail.getFrame() == null ? null : detail.getFrame().getProduct();
+//                Product lensProduct = detail.getLens() == null ? null : detail.getLens().getProduct();
+//                addQuantity(qtyByProductId, frameProduct, 1);
+//                addQuantity(qtyByProductId, lensProduct, 1);
+//            }
+//        });
+//        return qtyByProductId;
+//    }
+//
+//    private void addQuantity(Map<Long, Integer> qtyByProductId, Product product, int qty) {
+//        if (product == null || product.getProductID() == null || qty <= 0) {
+//            return;
+//        }
+//        qtyByProductId.merge(product.getProductID(), qty, Integer::sum);
+//    }
 }

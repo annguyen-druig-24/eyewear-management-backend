@@ -1040,7 +1040,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                 predicates.add(cb.lessThan(root.get("orderDate"), end));
             }
 
-            if (StringUtils.hasText(request.getOrderType())) {
+            if (!operationStaffScope && StringUtils.hasText(request.getOrderType())) {
                 String normalizedType = request.getOrderType().trim().toUpperCase();
                 if (!allowedOrderTypes.contains(normalizedType)) {
                     return cb.disjunction();
@@ -1057,15 +1057,9 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                 predicates.add(cb.equal(cb.upper(root.get("orderStatus")), normalizedStatus));
             }
 
-            /*
-                * Giới hạn phạm vi dữ liệu được phép xem
-                * Ví dụ role chỉ được thấy PRESCRIPTION, MIX thì dù không truyền filter, query vẫn chỉ trả về 2 loại này
-                * Dòng 1 chặn theo orderType
-                * Dòng 2 chặn theo orderStatus
-                * equal(...): filter “người dùng yêu cầu gì thì lọc đúng cái đó”.
-                * in(...): filter “hệ thống cho phép gì thì chỉ được thấy cái đó”.
-             */
-            predicates.add(cb.upper(root.get("orderType")).in(allowedOrderTypes));
+            if (!operationStaffScope) {
+                predicates.add(cb.upper(root.get("orderType")).in(allowedOrderTypes));
+            }
             predicates.add(cb.upper(root.get("orderStatus")).in(allowedOrderStatuses));
 
             if (operationStaffScope) {
