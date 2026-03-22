@@ -37,6 +37,9 @@ public enum ErrorCode {
     ITEM_NOT_FOUND(1035, "Item not found.",HttpStatus.BAD_REQUEST),
     ORDER_DETAIL_MATCH_PRESCRIPTION_DETAIL(1035, "Order Detail not match Prescription Order Detail",HttpStatus.BAD_REQUEST),
 
+    //Inventory
+    NOT_FOUND_SUPPLIER(1078,"Can not found the supplier",HttpStatus.NOT_FOUND),
+
     PAYMENT_METHOD_NOT_SUPPORTED(1027, "Payment is not applicable for this checkout", HttpStatus.BAD_REQUEST),
     DEPOSIT_PAYMENT_METHOD_REQUIRED(1033, "Deposit payment method is required when payment method is COD", HttpStatus.BAD_REQUEST),
     PAYMENT_IN_PROGRESS(1028, "These cart items already have a pending online payment", HttpStatus.CONFLICT),

@@ -47,4 +47,7 @@ public class InventoryReceiptDetail {
 
     @Column(name = "Note", columnDefinition = "NVARCHAR(500)")
     private String note;
+
+    @Column(name = "Total_Price", nullable = false, precision = 18, scale = 2)
+    private BigDecimal totalPrice;
 }

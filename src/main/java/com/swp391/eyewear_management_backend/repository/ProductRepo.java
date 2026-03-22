@@ -96,4 +96,15 @@ public interface ProductRepo extends JpaRepository<Product,Long> {
             """)
     List<ProductInventoryResponse> findAllProductsWithInventoryQuantity();
 
+    @Query(value = "SELECT p.* FROM Product p " +
+            "INNER JOIN Brand_Supplier bs ON p.Brand_ID = bs.Brand_ID " +
+            "INNER JOIN Supplier s ON bs.Supplier_ID = s.Supplier_ID " +
+            "WHERE s.Supplier_Name LIKE %:supplierName%", nativeQuery = true)
+    List<Product> findProductsBySupplierName(@Param("supplierName") String supplierName);
+
+    // Sử dụng nativeQuery để lấy Product thông qua Brand và Brand_Supplier
+    @Query(value = "SELECT p.* FROM Product p " +
+            "INNER JOIN Brand_Supplier bs ON p.Brand_ID = bs.Brand_ID " +
+            "WHERE bs.Supplier_ID = :supplierId", nativeQuery = true)
+    List<Product> findProductsBySupplierId(@Param("supplierId") Long supplierId);
 }

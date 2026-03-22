@@ -1,5 +1,6 @@
 package com.swp391.eyewear_management_backend.mapper;
 
+import com.swp391.eyewear_management_backend.dto.response.ProductOfSupplierResponse;
 import com.swp391.eyewear_management_backend.dto.response.extend.ContactLensResponse;
 import com.swp391.eyewear_management_backend.dto.response.extend.FrameResponse;
 import com.swp391.eyewear_management_backend.dto.response.extend.LensResponse;
@@ -142,4 +143,18 @@ public interface ProductMapper {
         if (images == null) return null;
         return images.stream().map(ProductImage::getImageUrl).collect(Collectors.toList());
     }
+
+    // ... các code cũ trong mapper ...
+
+    @Mapping(source = "productType.productTypeID", target = "productTypeId") // Chú ý sửa lại tên getter cho đúng với entity của bạn
+    @Mapping(source = "productType.typeName", target = "productTypeName")
+
+    @Mapping(source = "brand.brandID", target = "brandId")
+    @Mapping(source = "brand.brandName", target = "brandName")
+
+    // Giả sử các class Frame, Lens, ContactLens của bạn có khóa chính lần lượt là frameID, lensID, contactLensID
+    @Mapping(source = "frame.frameID", target = "frameId")
+    @Mapping(source = "lens.lensID", target = "lensId")
+    @Mapping(source = "contactLens.contactLensID", target = "contactLensId")
+    ProductOfSupplierResponse toProductOfSupplierResponse(Product product);
 }

@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -66,6 +67,9 @@ public class InventoryReceipt {
 
     @OneToMany(mappedBy = "inventoryReceipt", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     private List<InventoryTransaction> transactions;
+
+    @Column(name = "Total_Amount", precision = 18, scale = 2)
+    private BigDecimal totalAmount;
 
     @PrePersist
     public void prePersist() {
