@@ -8,7 +8,7 @@ on:
   pull_request:
     branches:
       - main
-      - 'feature/API_Synthesis' # <--- Thêm dòng này (nếu muốn chạy khi tạo PR) hihi
+      - 'feature/API_Synthesis' # <--- Thêm dòng này (nếu muốn chạy khi tạo PR) (chỉnh sửa có thể chạy trên hai nhánh)
 
 jobs:
   build-and-deploy:
