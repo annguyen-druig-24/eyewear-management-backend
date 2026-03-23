@@ -50,4 +50,7 @@ public class InventoryReceiptDetail {
 
     @Column(name = "Total_Price", nullable = false, precision = 18, scale = 2)
     private BigDecimal totalPrice;
+
+    @Column(name = "Actual_Total_Price", precision = 18, scale = 2)
+    private BigDecimal actualTotalPrice;
 }

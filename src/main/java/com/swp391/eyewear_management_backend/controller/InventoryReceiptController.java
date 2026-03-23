@@ -1,6 +1,7 @@
 package com.swp391.eyewear_management_backend.controller;
 
 import com.swp391.eyewear_management_backend.dto.request.InventoryReceiptRequest;
+import com.swp391.eyewear_management_backend.dto.request.InventoryReceiptReceiveRequest;
 import com.swp391.eyewear_management_backend.dto.response.InventoryReceiptConformResponse;
 import com.swp391.eyewear_management_backend.dto.response.InventoryReceiptResponse;
 import com.swp391.eyewear_management_backend.dto.response.ProductOfSupplierResponse;
@@ -45,6 +46,15 @@ public class InventoryReceiptController {
     @GetMapping("/{id}")
     public ResponseEntity<InventoryReceiptConformResponse> getReceiptById(@PathVariable Long id) {
         InventoryReceiptConformResponse response = receiptService.getReceiptById(id);
+        return ResponseEntity.ok(response);
+    }
+
+    // 5. Receive inventory receipt by actual quantity/amount and update stock
+    @PutMapping("/{id}/receive")
+    public ResponseEntity<InventoryReceiptConformResponse> receiveReceipt(
+            @PathVariable Long id,
+            @RequestBody InventoryReceiptReceiveRequest request) {
+        InventoryReceiptConformResponse response = receiptService.receiveReceipt(id, request);
         return ResponseEntity.ok(response);
     }
 }

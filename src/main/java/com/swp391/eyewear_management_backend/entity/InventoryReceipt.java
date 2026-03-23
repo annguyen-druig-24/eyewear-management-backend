@@ -71,6 +71,9 @@ public class InventoryReceipt {
     @Column(name = "Total_Amount", precision = 18, scale = 2)
     private BigDecimal totalAmount;
 
+    @Column(name = "Actual_Total_Amount") // Phải map ĐÚNG tên cột trong SQL
+    private BigDecimal actualTotalAmount;
+
     @PrePersist
     public void prePersist() {
         if (orderDate == null) {
