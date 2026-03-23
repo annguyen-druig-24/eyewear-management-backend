@@ -71,9 +71,9 @@ public class DashboardServiceImpl implements DashboardService {
                 ? startDateInput.atStartOfDay()
                 : endDateTime.minusDays(6).with(LocalTime.MIN); // Mặc định lùi 7 ngày
 
-        // =========================================================================
+        // ==========================================================================
         // 3. TÍNH TOÁN Ô SUMMARY (TỔNG QUAN) TỪ NGÀY A -> B
-        // =========================================================================
+        // ==========================================================================
 
         // 1. Tính tổng doanh thu ĐÚNG trong khoảng startDateTime đến endDateTime
         BigDecimal totalRev = orderRepository.calculateRevenueBetween(startDateTime, endDateTime);
