@@ -37,6 +37,13 @@ public enum ErrorCode {
     ITEM_NOT_FOUND(1035, "Item not found.",HttpStatus.BAD_REQUEST),
     ORDER_DETAIL_MATCH_PRESCRIPTION_DETAIL(1035, "Order Detail not match Prescription Order Detail",HttpStatus.BAD_REQUEST),
 
+    //Glass Try On Config
+    PRODUCT_NOT_FOUND(2012, "Product not found", HttpStatus.NOT_FOUND),
+    PRODUCT_TRY_ON_CONFIG_NOT_FOUND(2013, "Product try-on config not found", HttpStatus.NOT_FOUND),
+    TRY_ON_MODEL_FILE_REQUIRED(2014, "Try-on model file is required", HttpStatus.BAD_REQUEST),
+    TRY_ON_MODEL_INVALID_FORMAT(2015, "Only .glb files are supported for try-on model", HttpStatus.BAD_REQUEST),
+    TRY_ON_MODEL_INVALID_SCALE(2016, "Scale value must be greater than 0", HttpStatus.BAD_REQUEST),
+
     PAYMENT_METHOD_NOT_SUPPORTED(1027, "Payment is not applicable for this checkout", HttpStatus.BAD_REQUEST),
     DEPOSIT_PAYMENT_METHOD_REQUIRED(1033, "Deposit payment method is required when payment method is COD", HttpStatus.BAD_REQUEST),
     PAYMENT_IN_PROGRESS(1028, "These cart items already have a pending online payment", HttpStatus.CONFLICT),

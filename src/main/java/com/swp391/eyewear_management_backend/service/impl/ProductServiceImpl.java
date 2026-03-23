@@ -4,28 +4,15 @@ import com.swp391.eyewear_management_backend.dto.request.ProductCreateRequest;
 import com.swp391.eyewear_management_backend.dto.request.ProductUpdateRequest;
 import com.swp391.eyewear_management_backend.dto.response.ProductDetailResponse;
 import com.swp391.eyewear_management_backend.dto.response.ProductResponse;
+import com.swp391.eyewear_management_backend.dto.response.VirtualTryOnResponse;
 import com.swp391.eyewear_management_backend.dto.response.extend.ContactLensResponse;
 import com.swp391.eyewear_management_backend.dto.response.extend.FrameResponse;
 import com.swp391.eyewear_management_backend.dto.response.extend.LensResponse;
-import com.swp391.eyewear_management_backend.entity.Brand;
-import com.swp391.eyewear_management_backend.entity.ContactLens;
-import com.swp391.eyewear_management_backend.entity.Frame;
-import com.swp391.eyewear_management_backend.entity.Lens;
-import com.swp391.eyewear_management_backend.entity.LensType;
-import com.swp391.eyewear_management_backend.entity.Product;
-import com.swp391.eyewear_management_backend.entity.ProductImage;
-import com.swp391.eyewear_management_backend.entity.ProductType;
+import com.swp391.eyewear_management_backend.entity.*;
 import com.swp391.eyewear_management_backend.exception.AppException;
 import com.swp391.eyewear_management_backend.exception.ErrorCode;
 import com.swp391.eyewear_management_backend.mapper.ProductMapper;
-import com.swp391.eyewear_management_backend.repository.BrandRepo;
-import com.swp391.eyewear_management_backend.repository.ContactLensRepo;
-import com.swp391.eyewear_management_backend.repository.FrameRepo;
-import com.swp391.eyewear_management_backend.repository.LensRepo;
-import com.swp391.eyewear_management_backend.repository.LensTypeRepo;
-import com.swp391.eyewear_management_backend.repository.ProductImageRepo;
-import com.swp391.eyewear_management_backend.repository.ProductRepo;
-import com.swp391.eyewear_management_backend.repository.ProductTypeRepo;
+import com.swp391.eyewear_management_backend.repository.*;
 import com.swp391.eyewear_management_backend.service.ImageUploadService;
 import com.swp391.eyewear_management_backend.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +23,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -71,6 +59,9 @@ public class ProductServiceImpl implements ProductService {
     @Autowired
     private ProductMapper productMapper;
 
+    @Autowired
+    private ProductTryOnConfigRepo productTryOnConfigRepo;
+
     @Override
     public List<ProductResponse> searchProducts(String name, Double minPrice, Double maxPrice, String brand) {
         List<Product> products = productRepository.searchProducts(name, minPrice, maxPrice, brand);
@@ -90,10 +81,11 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public ProductDetailResponse getProductById(Long id) {
         Product product = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Not found"));
+                .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
 
         // MapStruct tự động chọn trả về FrameResponse hay LensResponse
         ProductDetailResponse response = productMapper.toDetailResponse(product);
+        response.setVirtualTryOn(buildVirtualTryOn(product.getProductID()));
         
         // Populate related products based on type
         if (response instanceof FrameResponse) {
@@ -152,6 +144,48 @@ public class ProductServiceImpl implements ProductService {
         response.setRelatedContactLenses(relatedContactLenses.stream()
                 .map(productMapper::toProductResponse)
                 .collect(Collectors.toList()));
+    }
+
+    private VirtualTryOnResponse buildVirtualTryOn(Long productId) {
+        Optional<ProductTryOnConfig> configOptional = productTryOnConfigRepo.findByProduct_ProductID(productId);
+
+        if (configOptional.isEmpty()) {
+            return VirtualTryOnResponse.builder()
+                    .enabled(false)
+                    .modelFormat("glb")
+                    .scale(BigDecimal.ONE)
+                    .offsetX(BigDecimal.ZERO)
+                    .offsetY(BigDecimal.ZERO)
+                    .offsetZ(BigDecimal.ZERO)
+                    .rotationX(BigDecimal.ZERO)
+                    .rotationY(BigDecimal.ZERO)
+                    .rotationZ(BigDecimal.ZERO)
+                    .build();
+        }
+
+        ProductTryOnConfig config = configOptional.get();
+        return VirtualTryOnResponse.builder()
+                .enabled(Boolean.TRUE.equals(config.getIsEnabled()))
+                .modelUrl(config.getModelUrl())
+                .modelFormat(config.getModelFormat())
+                .scale(config.getScaleValue())
+                .offsetX(config.getOffsetX())
+                .offsetY(config.getOffsetY())
+                .offsetZ(config.getOffsetZ())
+                .rotationX(config.getRotationX())
+                .rotationY(config.getRotationY())
+                .rotationZ(config.getRotationZ())
+                .anchorMode(config.getAnchorMode())
+                .scaleMode(config.getScaleMode())
+                .fitRatio(config.getFitRatio())
+                .offsetIpdX(config.getOffsetIpdX())
+                .offsetIpdY(config.getOffsetIpdY())
+                .offsetIpdZ(config.getOffsetIpdZ())
+                .yawBias(config.getYawBias())
+                .pitchBias(config.getPitchBias())
+                .rollBias(config.getRollBias())
+                .depthRatio(config.getDepthRatio())
+                .build();
     }
 
     @Override

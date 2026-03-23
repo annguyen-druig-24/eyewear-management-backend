@@ -18,4 +18,5 @@ public class ProductDetailResponse {
     // Thêm trường availableQuantity
     private Integer availableQuantity;
     private Boolean allowPreorder;
+    private VirtualTryOnResponse virtualTryOn;
 }
