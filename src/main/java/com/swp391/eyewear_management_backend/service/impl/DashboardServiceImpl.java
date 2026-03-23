@@ -60,7 +60,7 @@ public class DashboardServiceImpl implements DashboardService {
             throw new IllegalArgumentException("Ngày bắt đầu không được lớn hơn ngày kết thúc!");
         }
 
-        // =========================================================================
+        // ==========================================================================
         // 2. CHUẨN HÓA THỜI GIAN
         // =========================================================================
         LocalDateTime endDateTime = (endDateInput != null)
