@@ -35,6 +35,7 @@ public class SecurityConfig {
             "/ghn/**",
             "/api/products/search",
             "/api/products/**",   // lưu ý: /{id} nên dùng /** thay vì {id}
+            "/api/v1/dashboard/top-products",
             "/v3/api-docs/**",
             "/swagger-ui/**",
             "/swagger-ui.html"

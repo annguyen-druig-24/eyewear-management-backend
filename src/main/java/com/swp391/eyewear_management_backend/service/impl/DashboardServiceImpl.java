@@ -30,6 +30,26 @@ public class DashboardServiceImpl implements DashboardService {
     private final DashboardMapper dashboardMapper;
 
     @Override
+    public List<TopProductResponse> getTopSellingProducts(LocalDate startDateInput, LocalDate endDateInput) {
+        if (startDateInput != null && endDateInput != null && startDateInput.isAfter(endDateInput)) {
+            throw new IllegalArgumentException("Ngày bắt đầu không được lớn hơn ngày kết thúc!");
+        }
+
+        LocalDateTime endDateTime = (endDateInput != null)
+                ? endDateInput.atTime(LocalTime.MAX)
+                : LocalDateTime.now();
+
+        LocalDateTime startDateTime = (startDateInput != null)
+                ? startDateInput.atStartOfDay()
+                : endDateTime.minusDays(6).with(LocalTime.MIN);
+
+        return orderDetailRepository.getTopSellingProducts(startDateTime, endDateTime, PageRequest.of(0, 5))
+                .stream()
+                .map(dashboardMapper::toTopProductDto)
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public DashboardResponse getDashboardStatistics(LocalDate startDateInput, LocalDate endDateInput) {
 
         // =========================================================================
