@@ -12,6 +12,7 @@ public class InventoryReceiptDetailResponse {
     private Integer receivedQuantity;
     private Integer rejectedQuantity;
     private BigDecimal unitCost;
+    private BigDecimal vatRate;
     private BigDecimal totalPrice;
     private String productImage; // Lấy ảnh avatar của sản phẩm
 }

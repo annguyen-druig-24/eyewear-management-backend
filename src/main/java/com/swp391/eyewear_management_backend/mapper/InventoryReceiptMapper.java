@@ -7,6 +7,8 @@ import com.swp391.eyewear_management_backend.entity.InventoryReceipt;
 import com.swp391.eyewear_management_backend.entity.InventoryReceiptDetail;
 import com.swp391.eyewear_management_backend.entity.Product;
 import com.swp391.eyewear_management_backend.entity.ProductImage;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.Named;
@@ -51,6 +53,7 @@ public interface InventoryReceiptMapper {
     @Mapping(source = "product.productName", target = "productName")
 
     // Gọi hàm custom bên dưới để lấy ảnh Avatar
+    @Mapping(source = ".", target = "vatRate", qualifiedByName = "calculateVatRate")
     @Mapping(source = "product", target = "productImage", qualifiedByName = "getAvatarFromProduct")
     InventoryReceiptDetailResponse toDetailResponse(InventoryReceiptDetail detail);
 
@@ -68,5 +71,30 @@ public interface InventoryReceiptMapper {
             }
         }
         return "default-placeholder.png";
+    }
+
+    @Named("calculateVatRate")
+    default BigDecimal calculateVatRate(InventoryReceiptDetail detail) {
+        if (detail == null
+                || detail.getUnitCost() == null
+                || detail.getOrderedQuantity() == null
+                || detail.getTotalPrice() == null
+                || detail.getOrderedQuantity() <= 0) {
+            return BigDecimal.ZERO;
+        }
+
+        BigDecimal subTotal = detail.getUnitCost().multiply(BigDecimal.valueOf(detail.getOrderedQuantity()));
+        if (subTotal.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+
+        BigDecimal vatAmount = detail.getTotalPrice().subtract(subTotal);
+        if (vatAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+
+        return vatAmount
+                .multiply(BigDecimal.valueOf(100))
+                .divide(subTotal, 2, RoundingMode.HALF_UP);
     }
 }
