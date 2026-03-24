@@ -30,6 +30,26 @@ public class DashboardServiceImpl implements DashboardService {
     private final DashboardMapper dashboardMapper;
 
     @Override
+    public List<TopProductResponse> getTopSellingProducts(LocalDate startDateInput, LocalDate endDateInput) {
+        if (startDateInput != null && endDateInput != null && startDateInput.isAfter(endDateInput)) {
+            throw new IllegalArgumentException("Ngày bắt đầu không được lớn hơn ngày kết thúc!");
+        }
+
+        LocalDateTime endDateTime = (endDateInput != null)
+                ? endDateInput.atTime(LocalTime.MAX)
+                : LocalDateTime.now();
+
+        LocalDateTime startDateTime = (startDateInput != null)
+                ? startDateInput.atStartOfDay()
+                : endDateTime.minusDays(6).with(LocalTime.MIN);
+
+        return orderDetailRepository.getTopSellingProducts(startDateTime, endDateTime, PageRequest.of(0, 5))
+                .stream()
+                .map(dashboardMapper::toTopProductDto)
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public DashboardResponse getDashboardStatistics(LocalDate startDateInput, LocalDate endDateInput) {
 
         // =========================================================================
@@ -40,7 +60,7 @@ public class DashboardServiceImpl implements DashboardService {
             throw new IllegalArgumentException("Ngày bắt đầu không được lớn hơn ngày kết thúc!");
         }
 
-        // =========================================================================
+        // ==========================================================================
         // 2. CHUẨN HÓA THỜI GIAN
         // =========================================================================
         LocalDateTime endDateTime = (endDateInput != null)
@@ -51,9 +71,9 @@ public class DashboardServiceImpl implements DashboardService {
                 ? startDateInput.atStartOfDay()
                 : endDateTime.minusDays(6).with(LocalTime.MIN); // Mặc định lùi 7 ngày
 
-        // =========================================================================
+        // ==========================================================================
         // 3. TÍNH TOÁN Ô SUMMARY (TỔNG QUAN) TỪ NGÀY A -> B
-        // =========================================================================
+        // ==========================================================================
 
         // 1. Tính tổng doanh thu ĐÚNG trong khoảng startDateTime đến endDateTime
         BigDecimal totalRev = orderRepository.calculateRevenueBetween(startDateTime, endDateTime);

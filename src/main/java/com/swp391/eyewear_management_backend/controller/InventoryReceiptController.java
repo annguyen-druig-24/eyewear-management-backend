@@ -9,6 +9,7 @@ import com.swp391.eyewear_management_backend.entity.Product;
 import com.swp391.eyewear_management_backend.service.InventoryReceiptService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,6 +23,7 @@ public class InventoryReceiptController {
     private final InventoryReceiptService receiptService;
 
     // 1. Lấy và show các mặt hàng của một supplier khi nhập ID
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER','ROLE_OPERATIONS STAFF')")
     @GetMapping("/products/search")
     public ResponseEntity<List<ProductOfSupplierResponse>> getProductsBySupplierId(@RequestParam Long supplierId) {
         List<ProductOfSupplierResponse> products = receiptService.getProductsBySupplierId(supplierId);
@@ -30,6 +32,7 @@ public class InventoryReceiptController {
 
     // 2. Thêm/ tạo đơn hàng nhập kho
     @PostMapping
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER','ROLE_OPERATIONS STAFF')")
     public ResponseEntity<InventoryReceiptResponse> createReceipt(@RequestBody InventoryReceiptRequest request) {
         InventoryReceiptResponse response = receiptService.createInventoryReceipt(request);
         return ResponseEntity.ok(response);
@@ -37,6 +40,7 @@ public class InventoryReceiptController {
 
     // 3. Lấy các đơn hàng đã được đặt và trạng thái của nó
     @GetMapping
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER','ROLE_OPERATIONS STAFF')")
     public ResponseEntity<List<InventoryReceiptResponse>> getAllReceipts() {
         List<InventoryReceiptResponse> receipts = receiptService.getAllReceipts();
         return ResponseEntity.ok(receipts);
@@ -44,6 +48,7 @@ public class InventoryReceiptController {
 
     // 4. Lấy chi tiết đơn hàng nhập kho theo ID
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER','ROLE_OPERATIONS STAFF')")
     public ResponseEntity<InventoryReceiptConformResponse> getReceiptById(@PathVariable Long id) {
         InventoryReceiptConformResponse response = receiptService.getReceiptById(id);
         return ResponseEntity.ok(response);
@@ -51,6 +56,7 @@ public class InventoryReceiptController {
 
     // 5. Receive inventory receipt by actual quantity/amount and update stock
     @PutMapping("/{id}/receive")
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER','ROLE_OPERATIONS STAFF')")
     public ResponseEntity<InventoryReceiptConformResponse> receiveReceipt(
             @PathVariable Long id,
             @RequestBody InventoryReceiptReceiveRequest request) {

@@ -8,4 +8,5 @@ import org.springframework.stereotype.Repository;
 public interface SupplierRepository extends JpaRepository<Supplier, Long> {
     // JpaRepository đã cung cấp sẵn hàm findById(Long id)
     // Bạn không cần viết thêm gì ở đây trừ khi có câu truy vấn đặc biệt
+    boolean existsBySupplierName(String supplierName);
 }

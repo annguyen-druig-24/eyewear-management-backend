@@ -2,6 +2,7 @@ package com.swp391.eyewear_management_backend.controller;
 
 import com.swp391.eyewear_management_backend.dto.request.ProductCreateRequest;
 import com.swp391.eyewear_management_backend.dto.request.ProductUpdateRequest;
+import com.swp391.eyewear_management_backend.dto.response.BrandResponse;
 import com.swp391.eyewear_management_backend.dto.response.ProductDetailResponse;
 import com.swp391.eyewear_management_backend.dto.response.ProductResponse;
 import com.swp391.eyewear_management_backend.service.ProductService;
@@ -41,6 +42,11 @@ public class ProductController {
 
         List<ProductResponse> result = productService.searchProductsByAdmin(name, minPrice, maxPrice, brand);
         return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/brands")
+    public ResponseEntity<List<BrandResponse>> getAllBrands() {
+        return ResponseEntity.ok(productService.getAllBrands());
     }
 
     @GetMapping("/{id}")

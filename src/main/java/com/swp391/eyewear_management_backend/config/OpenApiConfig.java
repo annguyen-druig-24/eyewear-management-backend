@@ -37,7 +37,7 @@ public class OpenApiConfig {
                         "/api/inventory/**",
                         "/api/inventory-receipts/**",
                         "/api/suppliers/**",
-                        "/api/suppliers/**"
+                        "/api/products/{productId}/try-on-config/**"
                 )
                 .packagesToScan("com.swp391.eyewear_management_backend.controller")
                 .build();
