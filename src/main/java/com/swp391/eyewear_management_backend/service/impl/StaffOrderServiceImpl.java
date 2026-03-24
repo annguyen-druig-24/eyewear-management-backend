@@ -646,6 +646,26 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         }
     }
 
+    private boolean isWarrantyReturnExchange(ReturnExchange returnExchange) {
+        return returnExchange != null
+                && "WARRANTY".equals(normalize(returnExchange.getReturnType()));
+    }
+
+    private void validateCompleteRefundAmount(ReturnExchange returnExchange,
+                                              StaffCompleteRefundRequest request) {
+        if (isWarrantyReturnExchange(returnExchange)) {
+            return;
+        }
+
+        BigDecimal expectedRefundAmount = returnExchange.getRefundAmount();
+        if (expectedRefundAmount == null
+                || request == null
+                || request.getRefundAmount() == null
+                || request.getRefundAmount().compareTo(expectedRefundAmount) != 0) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+    }
+
     private void completeRefund(ReturnExchange returnExchange,
                                 StaffCompleteRefundRequest request,
                                 MultipartFile staffEvidenceFile) {
@@ -654,16 +674,17 @@ public class StaffOrderServiceImpl implements StaffOrderService {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
 
-        BigDecimal expectedRefundAmount = returnExchange.getRefundAmount();
-        if (expectedRefundAmount == null || request.getRefundAmount().compareTo(expectedRefundAmount) != 0) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
+        validateCompleteRefundAmount(returnExchange, request);
 
-        String staffEvidenceUrl = uploadStaffRefundEvidence(staffEvidenceFile);
+        String staffEvidenceUrl = isWarrantyReturnExchange(returnExchange)
+                ? null
+                : uploadStaffRefundEvidence(staffEvidenceFile);
 
         returnExchange.setStatus(RETURN_STATUS_COMPLETED);
-        returnExchange.setRefundAmount(request.getRefundAmount());
-        returnExchange.setRefundReferenceCode(request.getRefundReferenceCode());
+        if (!isWarrantyReturnExchange(returnExchange)) {
+            returnExchange.setRefundAmount(request.getRefundAmount());
+            returnExchange.setRefundReferenceCode(request.getRefundReferenceCode());
+        }
         returnExchange.setStaffRefundEvidenceUrl(staffEvidenceUrl);
         returnExchange.setProcessedBy(getCurrentUser());
         returnExchange.setProcessedDate(LocalDateTime.now(APP_ZONE_ID));

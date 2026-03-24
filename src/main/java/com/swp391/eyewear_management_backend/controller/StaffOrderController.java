@@ -184,7 +184,7 @@ public class StaffOrderController {
     public ResponseEntity<ApiResponse<ReturnExchangeResponse>> completeRefund(
             @PathVariable Long returnExchangeId,
             @RequestPart("request") @Valid StaffCompleteRefundRequest request,
-            @RequestPart("staffEvidenceFile") MultipartFile staffEvidenceFile) {
+            @RequestPart(value = "staffEvidenceFile", required = false) MultipartFile staffEvidenceFile) {
         ReturnExchangeResponse response = staffOrderService.completeRefundForSalesStaff(returnExchangeId, request, staffEvidenceFile);
         return ResponseEntity.ok(ApiResponse.<ReturnExchangeResponse>builder()
                 .code(1000)
