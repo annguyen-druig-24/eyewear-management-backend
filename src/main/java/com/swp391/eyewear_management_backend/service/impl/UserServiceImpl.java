@@ -70,7 +70,6 @@ public class UserServiceImpl implements UserService {
     @Override
     public UserRespone createUserByAdmin(AdminCreateUserRequest request) {
         log.info("Admin is creating a new user with username: {}", request.getUsername());
-
         // Normalize và validate các trường bắt buộc
         String username = request.getUsername().trim();
         String email = request.getEmail().trim();
@@ -211,8 +210,8 @@ public class UserServiceImpl implements UserService {
     //hàm normalize để convert "" --> null , check trimOrNull
     private String normalize(String s) {
         if(s == null) return null;
-        String exist = s.trim();
-        return exist.isEmpty() ? s : exist;
+        String trimmed = s.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     @Override
@@ -241,10 +240,7 @@ public class UserServiceImpl implements UserService {
         return String.format("%s, %s, %s, %s", street, ward, district, province);
     }
 
-    // ... các import cũ
-
     @Override
-
     public UserRespone updateUserByAdmin(AdminUpdateUserRequest request) {
         log.info("Admin is updating user with username: {}", request.getUsername());
 
@@ -252,18 +248,31 @@ public class UserServiceImpl implements UserService {
         User user = userRepo.findByUsername(request.getUsername())
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
 
+        String normalizedEmail = normalize(request.getEmail());
+        String normalizedPhone = normalize(request.getPhone());
+        String normalizedAddress = normalize(request.getAddress());
+        String normalizedName = normalize(request.getName());
+        String normalizedRoleName = normalize(request.getRoleName());
+
+        if (normalizedEmail != null
+                && userRepo.existsByEmailAndUserIdNot(normalizedEmail, user.getUserId())) {
+            throw new AppException(ErrorCode.EMAIL_EXISTED);
+        }
+
         // 2. Cập nhật các trường cơ bản (nếu admin có truyền vào)
-        if(request.getPhone() != null) user.setPhone(request.getPhone().trim());
-        if(request.getAddress() != null) user.setAddress(request.getAddress().trim());
-        if(request.getName() != null) user.setName(request.getName().trim());
+        if(normalizedEmail != null) user.setEmail(normalizedEmail);
+        if(normalizedPhone != null) user.setPhone(normalizedPhone);
+        if(normalizedAddress != null) user.setAddress(normalizedAddress);
+        if(normalizedName != null) user.setName(normalizedName);
+
         // 3. Cập nhật Status (Trạng thái làm việc)
         if(request.getStatus() != null) {
             user.setStatus(request.getStatus());
         }
 
         // 4. Cập nhật Role (Vai trò)
-        if (request.getRoleName() != null && !request.getRoleName().trim().isEmpty()) {
-            Role role = roleRepo.findByTypeName(request.getRoleName().trim().toUpperCase())
+        if (normalizedRoleName != null) {
+            Role role = roleRepo.findByTypeName(normalizedRoleName.toUpperCase())
                     .orElseThrow(() -> new AppException(ErrorCode.ROLE_NOT_FOUND));
             user.setRole(role);
         }
