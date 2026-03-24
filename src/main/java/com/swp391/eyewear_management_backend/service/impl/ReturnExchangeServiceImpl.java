@@ -60,6 +60,9 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
     @Autowired
     private PrescriptionOrderRepo prescriptionOrderRepository;
 
+    @Autowired
+    private com.swp391.eyewear_management_backend.service.EmailService emailService;
+
     /**
      * Lấy user hiện tại từ security context
      */
@@ -336,6 +339,29 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
         returnExchange.setStatus("APPROVED");
 
         ReturnExchange updatedReturnExchange = returnExchangeRepository.save(returnExchange);
+
+        // Gửi mail
+        try {
+            // Lấy ra thông tin User của đơn Đổi trả này
+            User customer = updatedReturnExchange.getUser();
+            Order relatedOrder = updatedReturnExchange.getOrder();
+
+            // Chỉ bắn mail nếu đây là yêu cầu REFUND hoặc RETURN (có liên quan đến tiền)
+            if ("REFUND".equalsIgnoreCase(updatedReturnExchange.getReturnType()) ||
+                    "RETURN".equalsIgnoreCase(updatedReturnExchange.getReturnType())) {
+
+                emailService.sendOrderRefundEmail(
+                        customer.getEmail(),
+                        customer.getName(),
+                        relatedOrder.getOrderCode(), // Gửi mã đơn hàng gốc
+                        updatedReturnExchange.getRefundAmount() != null ?
+                                updatedReturnExchange.getRefundAmount().doubleValue() : 0.0
+                );
+            }
+        } catch (Exception ex) {
+            System.err.println("Lỗi khi gửi mail hoàn tiền: " + ex.getMessage());
+        }
+
         return returnExchangeMapper.toReturnExchangeResponse(updatedReturnExchange);
     }
 
