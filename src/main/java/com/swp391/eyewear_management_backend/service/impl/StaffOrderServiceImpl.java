@@ -14,6 +14,7 @@ import com.swp391.eyewear_management_backend.integration.ghn.GhnShippingClient;
 import com.swp391.eyewear_management_backend.mapper.ReturnExchangeMapper;
 import com.swp391.eyewear_management_backend.mapper.StaffOrderMapper;
 import com.swp391.eyewear_management_backend.repository.*;
+import com.swp391.eyewear_management_backend.service.EmailService;
 import com.swp391.eyewear_management_backend.service.ImageUploadService;
 import com.swp391.eyewear_management_backend.service.StaffOrderService;
 import jakarta.persistence.criteria.Predicate;
@@ -63,6 +64,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     private final ImageUploadService imageUploadService;
     private final GhnShippingClient ghnShippingClient;
     private final GhnProperties ghnProperties;
+    private final EmailService emailService;
 
     private static final Set<String> ALLOWED_SORT_FIELDS = Set.of(
             "orderDate", "orderCode", "orderType", "orderStatus", "totalAmount"
@@ -1424,6 +1426,23 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         ReturnExchange savedReturnExchange = returnExchangeRepo.save(returnExchange);
         updateSuccessfulPaymentsToRefunded(returnExchange.getOrder());
         restockCanceledOrderInventory(returnExchange.getOrder());
+
+        //Gửi mail
+        try {
+            User customer = savedReturnExchange.getUser();
+            Order relatedOrder = savedReturnExchange.getOrder();
+            if (customer != null && relatedOrder != null) {
+                emailService.sendOrderRefundEmail(
+                        customer.getEmail(),
+                        customer.getName(),
+                        relatedOrder.getOrderCode(), // Gửi mã đơn hàng gốc
+                        savedReturnExchange.getRefundAmount() != null ? savedReturnExchange.getRefundAmount().doubleValue() : 0.0
+                );
+            }
+        } catch (Exception ex) {
+            System.err.println("Lỗi khi gửi mail hoàn tiền: " + ex.getMessage());
+        }
+
         return returnExchangeMapper.toReturnExchangeResponse(savedReturnExchange);
     }
 
@@ -1464,6 +1483,23 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         returnExchange.setProcessedDate(LocalDateTime.now(APP_ZONE_ID));
 
         ReturnExchange savedReturnExchange = returnExchangeRepo.save(returnExchange);
+
+        //Gửi mail
+        try {
+            User customer = savedReturnExchange.getUser();
+            Order relatedOrder = savedReturnExchange.getOrder();
+            if (customer != null && relatedOrder != null) {
+                emailService.sendOrderRefundEmail(
+                        customer.getEmail(),
+                        customer.getName(),
+                        relatedOrder.getOrderCode(), // Gửi mã đơn hàng gốc
+                        savedReturnExchange.getRefundAmount() != null ? savedReturnExchange.getRefundAmount().doubleValue() : 0.0
+                );
+            }
+        } catch (Exception ex) {
+            System.err.println("Lỗi khi gửi mail hoàn tiền: " + ex.getMessage());
+        }
+
         return returnExchangeMapper.toReturnExchangeResponse(savedReturnExchange);
     }
 
