@@ -26,6 +26,19 @@ spring:
   jackson:
     time-zone: Asia/Ho_Chi_Minh
 
+  # Cấu hình EMAIL
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: tuyetbang120407@gmail.com
+    password: owbj ynsa dvfa mkcn
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
 # Phần cấu hình Server (cho Tomcat)
 server:
   port: 8080 # (Hoặc port bạn đang dùng)

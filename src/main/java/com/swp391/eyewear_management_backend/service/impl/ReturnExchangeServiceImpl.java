@@ -386,12 +386,12 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
 //        if (request.getRefundAccountName() != null) {
 //            returnExchange.setRefundAccountName(trimToNull(request.getRefundAccountName()));
 //        }
-////        if (request.getRefundReferenceCode() != null) {
-////            returnExchange.setRefundReferenceCode(trimToNull(request.getRefundReferenceCode()));
-////        }
-////        if (request.getStaffRefundEvidenceUrl() != null) {
-////            returnExchange.setStaffRefundEvidenceUrl(trimToNull(request.getStaffRefundEvidenceUrl()));
-////        }
+    ////        if (request.getRefundReferenceCode() != null) {
+    ////            returnExchange.setRefundReferenceCode(trimToNull(request.getRefundReferenceCode()));
+    ////        }
+    ////        if (request.getStaffRefundEvidenceUrl() != null) {
+    ////            returnExchange.setStaffRefundEvidenceUrl(trimToNull(request.getStaffRefundEvidenceUrl()));
+    ////        }
 //        if (request.getItems() != null) {
 //            returnExchange.getReturnExchangeItems().clear();
 //            returnExchange.getReturnExchangeItems()

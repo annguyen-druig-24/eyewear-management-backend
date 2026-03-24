@@ -10,11 +10,8 @@ import com.swp391.eyewear_management_backend.entity.*;
 import com.swp391.eyewear_management_backend.exception.AppException;
 import com.swp391.eyewear_management_backend.exception.ErrorCode;
 import com.swp391.eyewear_management_backend.repository.*;
-import com.swp391.eyewear_management_backend.service.CheckoutService;
+import com.swp391.eyewear_management_backend.service.*;
 import com.swp391.eyewear_management_backend.service.ImageUploadService;
-import com.swp391.eyewear_management_backend.service.OrderService;
-import com.swp391.eyewear_management_backend.service.PaymentGatewayService;
-import com.swp391.eyewear_management_backend.service.PaymentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -62,6 +59,8 @@ public class OrderServiceImpl implements OrderService {
     private final PaymentGatewayService paymentGatewayService;
     private final CheckoutCartTrackingService checkoutCartTrackingService;
     private final ImageUploadService imageUploadService;
+
+    private final EmailService emailService;
 
     /*
         Hàm này làm 6 nhóm việc chính trong 1 transaction:
@@ -365,6 +364,16 @@ public class OrderServiceImpl implements OrderService {
                 }
                 redirect = paymentUrl != null;
             }
+        }
+
+        // Gửi mail Xác nhận đơn hàng luông nếu là COD
+        if (!redirect) {
+            emailService.sendOrderSuccessEmail(
+                    request.getRecipientEmail(),
+                    request.getRecipientName(),
+                    savedOrder.getOrderCode(),
+                    preview.getTotalAmount().doubleValue()
+            );
         }
 
         return CreateOrderResponse.builder()
@@ -697,6 +706,13 @@ public class OrderServiceImpl implements OrderService {
             returnExchange.setStatus("COMPLETED");
         }
         returnExchange = returnExchangeRepo.save(returnExchange);
+
+        // Gửi mail khi Hủy đơn
+        emailService.sendOrderCancelEmail(
+                currentUser.getEmail(), // Gửi về email của user đăng nhập
+                currentUser.getName(),
+                order.getOrderCode()
+        );
 
         return CustomerCancelOrderResponse.builder()
                 .orderId(order.getOrderID())

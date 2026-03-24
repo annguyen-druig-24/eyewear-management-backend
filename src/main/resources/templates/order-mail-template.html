@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+
+<head>
+    <meta charset="UTF-8">
+</head>
+
+<body style="font-family: Arial, sans-serif; background-color: #f4f4f5; padding: 20px;">
+    <div
+        style="max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; text-align: center; border-top: 5px solid #0d9488;">
+        <h2 style="color: #0d9488; margin-bottom: 20px;">Thông Báo Từ Eyewear Sora</h2>
+
+        <p style="font-size: 16px; color: #333; text-align: left;">
+            Xin chào <strong th:text="${customerName}">Khách hàng</strong>,
+        </p>
+
+        <p style="font-size: 15px; color: #555; text-align: left;" th:text="${message}">
+            Nội dung thông báo
+        </p>
+
+        <div
+            style="background: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px dashed #cbd5e1; text-align: left;">
+            <p style="margin: 5px 0;">Mã đơn hàng: <strong th:text="${orderId}">#12345</strong></p>
+            <p style="margin: 5px 0;">Giá trị: <strong style="color: #dc2626;" th:text="${totalAmount}">0 đ</strong></p>
+        </div>
+
+        <p style="font-size: 14px; color: #888; margin-top: 30px;">
+            Cảm ơn bạn đã đồng hành cùng Eyewear Sora!<br>
+            <i>Website: eyewear-sora.vn | Hotline: 1900 xxxx</i>
+        </p>
+    </div>
+</body>
+
+</html>
