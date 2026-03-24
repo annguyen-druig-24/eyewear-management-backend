@@ -2,6 +2,7 @@ package com.swp391.eyewear_management_backend.service.impl;
 
 import com.swp391.eyewear_management_backend.dto.request.ProductCreateRequest;
 import com.swp391.eyewear_management_backend.dto.request.ProductUpdateRequest;
+import com.swp391.eyewear_management_backend.dto.response.BrandResponse;
 import com.swp391.eyewear_management_backend.dto.response.ProductDetailResponse;
 import com.swp391.eyewear_management_backend.dto.response.ProductResponse;
 import com.swp391.eyewear_management_backend.dto.response.VirtualTryOnResponse;
@@ -16,12 +17,14 @@ import com.swp391.eyewear_management_backend.repository.*;
 import com.swp391.eyewear_management_backend.service.ImageUploadService;
 import com.swp391.eyewear_management_backend.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -77,6 +80,19 @@ public class ProductServiceImpl implements ProductService {
                 .map(productMapper::toProductResponse)
                 .collect(Collectors.toList());
     }
+
+        @Override
+        public List<BrandResponse> getAllBrands() {
+            return brandRepository.findAll().stream()
+            .sorted(Comparator.comparing(Brand::getBrandName, String.CASE_INSENSITIVE_ORDER))
+            .map(brand -> BrandResponse.builder()
+                .id(brand.getBrandID())
+                .brandName(brand.getBrandName())
+                .description(brand.getDescription())
+                .logoUrl(brand.getLogoUrl())
+                .build())
+            .collect(Collectors.toList());
+        }
 
     @Override
     public ProductDetailResponse getProductById(Long id) {
@@ -189,6 +205,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
     public ProductResponse createProduct(ProductCreateRequest request, List<MultipartFile> imageFiles) throws IOException {
         // 1. Kiểm tra SKU bắt buộc phải nhập
@@ -215,18 +232,16 @@ public class ProductServiceImpl implements ProductService {
         product.setAllowPreorder(request.getAllowPreorder() != null ? request.getAllowPreorder() : false);
         product.setIsActive(request.getIsActive() != null ? request.getIsActive() : true);
         
-        // 5. Xử lý Brand (Thương hiệu) - Tìm hoặc tạo mới
+        // 5. Xử lý Brand (Thương hiệu) - Chỉ tìm trong DB, không tạo mới
         if (request.getBrandName() == null || request.getBrandName().trim().isEmpty()) {
-            throw new RuntimeException("Tên thương hiệu không được để trống");
+            throw new AppException(ErrorCode.INVALID_REQUEST, "Tên thương hiệu không được để trống");
         }
         String brandNameInput = request.getBrandName().trim();
         Brand brand = brandRepository.findByBrandName(brandNameInput)
-                .orElseGet(() -> {
-                    Brand newBrand = new Brand();
-                    newBrand.setBrandName(brandNameInput);
-                    newBrand.setStatus(true);
-                    return brandRepository.save(newBrand);
-                });
+                .orElseThrow(() -> new AppException(
+                        ErrorCode.INVALID_REQUEST,
+                        "Thương hiệu '" + brandNameInput + "' không tồn tại trong hệ thống"
+                ));
         product.setBrand(brand);
         
         // 6. Xử lý Product Type (Loại sản phẩm) - Chỉ tìm trong DB, không tạo mới
@@ -397,13 +412,10 @@ public class ProductServiceImpl implements ProductService {
         if (request.getBrandName() != null && !request.getBrandName().trim().isEmpty()) {
             String brandNameInput = request.getBrandName().trim();
             Brand brand = brandRepository.findByBrandName(brandNameInput)
-                    .orElseGet(() -> {
-                        // Nếu chưa có thì tạo mới
-                        Brand newBrand = new Brand();
-                        newBrand.setBrandName(brandNameInput);
-                        newBrand.setStatus(true); // Set status mặc định là 1 (Active) dựa theo hình ảnh DB của bạn
-                        return brandRepository.save(newBrand);
-                    });
+                    .orElseThrow(() -> new AppException(
+                            ErrorCode.INVALID_REQUEST,
+                            "Thương hiệu '" + brandNameInput + "' không tồn tại trong hệ thống"
+                    ));
             product.setBrand(brand);
         }
 
