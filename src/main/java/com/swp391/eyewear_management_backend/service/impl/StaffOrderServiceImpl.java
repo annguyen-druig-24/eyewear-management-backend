@@ -574,17 +574,21 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         if (returnExchange == null) {
             return false;
         }
-        if (!"REFUND".equals(normalize(returnExchange.getReturnType()))) {
+        String returnType = normalize(returnExchange.getReturnType());
+        boolean validReturnType = "REFUND".equals(returnType) || "CANCEL_ORDER".equals(returnType);
+        if (!validReturnType) {
             return false;
         }
-        if (!"ORDER".equals(normalize(returnExchange.getRequestScope()))) {
+        String requestScope = normalize(returnExchange.getRequestScope());
+        if (StringUtils.hasText(requestScope) && !"ORDER".equals(requestScope)) {
             return false;
         }
-        if (returnExchange.getRefundAmount() == null || returnExchange.getRefundAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            return false;
-        }
+//        if (returnExchange.getRefundAmount() == null
+//                || returnExchange.getRefundAmount().compareTo(BigDecimal.ZERO) <= 0) {
+//            return false;
+//        }
         Order order = returnExchange.getOrder();
-        return order != null && "CANCELED".equals(normalize(order.getOrderStatus()));
+        return order != null && OrderConstants.ORDER_STATUS_CANCELED.equals(normalize(order.getOrderStatus()));
     }
 
     private void validateCancelRefundRequestFlow(ReturnExchange returnExchange) {
@@ -633,7 +637,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 
     private String uploadStaffRefundEvidence(MultipartFile staffEvidenceFile) {
         if (staffEvidenceFile == null || staffEvidenceFile.isEmpty()) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
+            return null;
         }
         try {
             return imageUploadService.uploadImage(staffEvidenceFile);
