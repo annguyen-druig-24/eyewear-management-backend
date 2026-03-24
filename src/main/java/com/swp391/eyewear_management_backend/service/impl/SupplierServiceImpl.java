@@ -113,48 +113,79 @@ public class SupplierServiceImpl implements SupplierService {
         }
 
         if (brands != null && !brands.isEmpty()) {
+            List<Brand> brandsToCreate = new ArrayList<>();
             for (BrandDto brandDto : brands) {
                 Brand newBrand = new Brand();
                 newBrand.setBrandName(brandDto.getBrandName());
                 newBrand.setDescription(brandDto.getDescription());
                 newBrand.setLogoUrl(resolveBrandLogoUrl(brandDto));
                 newBrand.setStatus(brandDto.getStatus() != null ? brandDto.getStatus() : true);
+                brandsToCreate.add(newBrand);
 
-                Brand brandToMap = brandRepo.save(newBrand);
-
-                boolean alreadyMapped = brandSupplierRepo.existsByBrandAndSupplier(brandToMap, supplier);
-
-                if (!alreadyMapped) {
-                    BrandSupplier brandSupplier = new BrandSupplier();
-                    brandSupplier.setSupplier(supplier);
-                    brandSupplier.setBrand(brandToMap);
-
-                    brandSupplierRepo.save(brandSupplier);
-                }
+//                Brand brandToMap = brandRepo.save(newBrand);
+//
+//                boolean alreadyMapped = brandSupplierRepo.existsByBrandAndSupplier(brandToMap, supplier);
+//
+//                if (!alreadyMapped) {
+//                    BrandSupplier brandSupplier = new BrandSupplier();
+//                    brandSupplier.setSupplier(supplier);
+//                    brandSupplier.setBrand(brandToMap);
+//
+//                    brandSupplierRepo.save(brandSupplier);
+//                }
             }
+            List<Brand> savedBrands = brandRepo.saveAll(brandsToCreate);
+
+            List<BrandSupplier> brandSuppliers = new ArrayList<>();
+            for (Brand savedBrand : savedBrands) {
+                BrandSupplier brandSupplier = new BrandSupplier();
+                brandSupplier.setSupplier(supplier);
+                brandSupplier.setBrand(savedBrand);
+                brandSuppliers.add(brandSupplier);
+            }
+
+            brandSupplierRepo.saveAll(brandSuppliers);
         }
     }
 
     private List<String> collectDuplicateBrandNamesInDb(List<BrandDto> brands) {
-        Set<String> duplicatedNames = new LinkedHashSet<>();
+        //Set<String> duplicatedNames = new LinkedHashSet<>();
         if (brands == null || brands.isEmpty()) {
             return new ArrayList<>();
         }
 
+        // Gom tên brand cần kiểm tra (unique, giữ thứ tự xuất hiện)
+        Set<String> candidateNames = new LinkedHashSet<>();
         for (BrandDto brandDto : brands) {
             if (brandDto == null || brandDto.getBrandName() == null || brandDto.getBrandName().isBlank()) {
                 continue;
             }
+            candidateNames.add(brandDto.getBrandName().trim());
+        }
 
-            String brandName = brandDto.getBrandName().trim();
-            if (brandRepo.findByBrandName(brandName).isPresent()) {
-                duplicatedNames.add(brandName);
+        if (candidateNames.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        // Query 1 lần để tránh N query findByBrandName(...)
+        Set<String> existingNames = brandRepo.findByBrandNameIn(candidateNames).stream()
+                .map(Brand::getBrandName)
+                .collect(Collectors.toSet());
+
+//            String brandName = brandDto.getBrandName().trim();
+//            if (brandRepo.findByBrandName(brandName).isPresent()) {
+//                duplicatedNames.add(brandName);
+//            }
+        List<String> duplicatedNames = new ArrayList<>();
+        for (String candidateName : candidateNames) {
+            if (existingNames.contains(candidateName)) {
+                duplicatedNames.add(candidateName);
             }
         }
 
-        return new ArrayList<>(duplicatedNames);
+        //return new ArrayList<>(duplicatedNames);
+        return duplicatedNames;
     }
-
 
 
     private String resolveBrandLogoUrl(BrandDto brandDto) {

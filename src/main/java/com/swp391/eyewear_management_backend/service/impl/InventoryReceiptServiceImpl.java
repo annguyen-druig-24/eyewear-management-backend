@@ -119,11 +119,23 @@ public class InventoryReceiptServiceImpl implements InventoryReceiptService {
                 .map(Product::getProductID)
                 .collect(Collectors.toSet());
 
+        // TỐI ƯU HÓA: preload toàn bộ Product theo danh sách request để tránh N+1 (findById trong vòng lặp)
+        Set<Long> requestedProductIds = request.getDetails().stream()
+                .map(ReceiptDetailRequest::getProductId)
+                .collect(Collectors.toSet());
+
+        Map<Long, Product> requestedProductMap = productRepo.findAllById(requestedProductIds).stream()
+                .collect(Collectors.toMap(Product::getProductID, p -> p));
+
         // 2. Vòng lặp xử lý chi tiết
         for (ReceiptDetailRequest item : request.getDetails()) {
 
-            Product product = productRepo.findById(item.getProductId())
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm ID: " + item.getProductId()));
+//            Product product = productRepo.findById(item.getProductId())
+//                    .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm ID: " + item.getProductId()));
+            Product product = requestedProductMap.get(item.getProductId());
+            if (product == null) {
+                throw new RuntimeException("Không tìm thấy sản phẩm ID: " + item.getProductId());
+            }
 
             // VALIDATE 1: SẢN PHẨM CÓ THUỘC NHÀ CUNG CẤP KHÔNG?
             if (!validProductIdsForSupplier.contains(item.getProductId())) {

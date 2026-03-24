@@ -5,6 +5,7 @@ import com.swp391.eyewear_management_backend.dto.projection.RevenueChartProjecti
 import com.swp391.eyewear_management_backend.entity.Order;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -44,9 +45,15 @@ public interface OrderRepo extends JpaRepository<Order, Long>, JpaSpecificationE
         * Công dụng: Query list orders kèm user ngay từ đầu, Map customerName không phát sinh thêm query
      */
     @Override
-    @EntityGraph(attributePaths = {"user"})
+    @EntityGraph(attributePaths = {"user", "shippingInfo"})
     Page<Order> findAll(@Nullable Specification<Order> spec, Pageable pageable);
 
+    @EntityGraph(attributePaths = {"user", "shippingInfo"})
+    List<Order> findAll(@Nullable Specification<Order> spec, Sort sort);
+
+    default Page<Order> findAllWithUserAndShippingInfo(@Nullable Specification<Order> spec, Pageable pageable) {
+        return findAll(spec, pageable);
+    }
 
     @Query(value = """
         SELECT DISTINCT re.Order_ID

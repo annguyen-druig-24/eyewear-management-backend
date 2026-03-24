@@ -1323,7 +1323,8 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         Pageable pageable = buildPageable(request);
         Specification<Order> specification = buildSpecification(request, false);
 
-        Page<Order> orderPage = orderRepo.findAll(specification, pageable);
+        //Page<Order> orderPage = orderRepo.findAll(specification, pageable);
+        Page<Order> orderPage = orderRepo.findAllWithUserAndShippingInfo(specification, pageable);
         return orderPage.map(staffOrderMapper::toStaffOrderListResponse);
     }
 
@@ -1469,7 +1470,8 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         Pageable pageable = buildPageable(request);
         Specification<Order> specification = buildSpecification(request, true);
 
-        Page<Order> orderPage = orderRepo.findAll(specification, pageable);
+        //Page<Order> orderPage = orderRepo.findAll(specification, pageable);
+        Page<Order> orderPage = orderRepo.findAllWithUserAndShippingInfo(specification, pageable);
         return orderPage.map(staffOrderMapper::toStaffOrderListResponse);
     }
 
