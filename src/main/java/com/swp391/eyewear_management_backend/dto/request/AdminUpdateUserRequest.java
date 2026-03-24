@@ -1,5 +1,7 @@
 package com.swp391.eyewear_management_backend.dto.request;
 
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Pattern;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
@@ -10,6 +12,11 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AdminUpdateUserRequest {
     String username;
+
+    @Email(message = "EMAIL_INVALID")
+    @Pattern(regexp = "^(?!\\s*$).+", message = "EMAIL_INVALID")
+    String email;
+
     String name;
     String phone;
     String address;
