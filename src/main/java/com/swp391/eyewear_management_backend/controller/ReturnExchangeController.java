@@ -35,7 +35,7 @@ public class ReturnExchangeController {
             @RequestPart(value = "itemImages", required = false) List<MultipartFile> itemImages,
             @RequestPart(value = "customerImageQr", required = false) MultipartFile customerImageQr) {
 
-        // Truyền thêm danh sách ảnh xuống Service
+        // Truyền thêm danh sách ảnh xuống Service v1
         returnExchangeService.createReturnExchange(request, itemImages, customerImageQr);
 
         return ResponseEntity.status(HttpStatus.CREATED)
