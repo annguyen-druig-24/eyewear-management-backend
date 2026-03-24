@@ -29,7 +29,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
-
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -49,6 +48,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class StaffOrderServiceImpl implements StaffOrderService {
+
     private static final ZoneId APP_ZONE_ID = ZoneId.of("Asia/Ho_Chi_Minh");
 
     private final OrderRepo orderRepo;
@@ -67,12 +67,21 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     private static final Set<String> ALLOWED_SORT_FIELDS = Set.of(
             "orderDate", "orderCode", "orderType", "orderStatus", "totalAmount"
     );
+
     private static final Set<String> STAFF_ALLOWED_ORDER_TYPES = Set.of(
             OrderConstants.ORDER_TYPE_DIRECT,
             OrderConstants.ORDER_TYPE_PRE,
             OrderConstants.ORDER_TYPE_PRESCRIPTION,
             OrderConstants.ORDER_TYPE_MIX
     );
+
+    private static final List<String> STAFF_ORDER_TYPES_IN_DISPLAY_ORDER = List.of(
+            OrderConstants.ORDER_TYPE_DIRECT,
+            OrderConstants.ORDER_TYPE_PRE,
+            OrderConstants.ORDER_TYPE_PRESCRIPTION,
+            OrderConstants.ORDER_TYPE_MIX
+    );
+
     private static final Set<String> SALES_ALLOWED_ORDER_STATUSES = Set.of(
             OrderConstants.ORDER_STATUS_PENDING,
             OrderConstants.ORDER_STATUS_CONFIRMED,
@@ -83,6 +92,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
             OrderConstants.ORDER_STATUS_COMPLETED,
             OrderConstants.ORDER_STATUS_CANCELED
     );
+
     private static final Set<String> OPERATION_ALLOWED_ORDER_STATUSES = Set.of(
             OrderConstants.ORDER_STATUS_CONFIRMED,
             OrderConstants.ORDER_STATUS_PROCESSING,
@@ -90,6 +100,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
             OrderConstants.ORDER_STATUS_COMPLETED,
             OrderConstants.ORDER_STATUS_CANCELED
     );
+
     private static final Set<String> SALES_CONFIRMABLE_STATUSES = Set.of(
             OrderConstants.ORDER_STATUS_PENDING,
             OrderConstants.ORDER_STATUS_PARTIALLY_PAID,
@@ -105,9 +116,14 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     private static final String RETURN_ACTION_APPROVED = "APPROVED";
     private static final String RETURN_ACTION_REJECT = "REJECT";
     private static final String RETURN_ACTION_REJECTED = "REJECTED";
+
     private static final long RETURN_APPROVAL_WINDOW_DAYS = 7;
 
-    //Hàm này dùng để xác minh/ktra ai là người đang thao tác
+    /* =========================================================
+       Common Methods
+       ========================================================= */
+
+    // Hàm này dùng để xác minh/ktra ai là người đang thao tác
     private User getCurrentUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated()) {
@@ -119,50 +135,22 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
     }
 
-    @Override
-    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
-    public List<StaffOrderListResponse> getOrdersForStaff() {
-        StaffOrderSearchRequest request = StaffOrderSearchRequest.builder().build();
-        Specification<Order> specification = buildSpecification(request, false);
-        List<Order> orders = orderRepo.findAll(specification, Sort.by("orderDate").descending());
-        return orders.stream().map(staffOrderMapper::toStaffOrderListResponse).toList();
+    private Order getOrderByIdFetchStatus(Long orderId) {
+        return orderRepo.findByIdFetchStatus(orderId)
+                .orElseThrow(() -> new AppException(ErrorCode.ORDER_NOT_FOUND));
     }
 
-    @Override
-    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
-    public List<StaffReturnExchangeListResponse> getReturnExchangeOrders() {
-        return returnExchangeRepo.findStaffReturnExchangeSummaries().stream()
-                .map(this::mapToStaffReturnExchangeListResponse)
-                .toList();
-    }
-
-    @Override
-    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
-    public List<StaffReturnExchangeListResponse> getCancelRefundRequestsForSalesStaff() {
-        return returnExchangeRepo.findCancelRefundRequestsForSalesStaff().stream()
-                .map(this::mapToStaffReturnExchangeListResponse)
-                .toList();
-    }
-
-    @Override
-    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
-    public StaffReturnExchangeDetailResponse getCancelRefundRequestDetailForSalesStaff(Long returnExchangeId) {
-        ReturnExchange returnExchange = returnExchangeRepo.findById(returnExchangeId)
+    private ReturnExchange getReturnExchangeByIdOrThrow(Long returnExchangeId) {
+        return returnExchangeRepo.findById(returnExchangeId)
                 .orElseThrow(() -> new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FOUND));
-        if (!"REFUND".equals(normalize(returnExchange.getReturnType()))) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-        if (!"ORDER".equals(normalize(returnExchange.getRequestScope()))) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-        if (returnExchange.getRefundAmount() == null || returnExchange.getRefundAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-        Order order = returnExchange.getOrder();
-        if (order == null || !"CANCELED".equals(normalize(order.getOrderStatus()))) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-        return getReturnExchangeDetailForSalesStaff(returnExchangeId);
+    }
+
+    private String normalize(String value) {
+        return value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private boolean isStatus(String value, String expected) {
+        return expected != null && expected.equalsIgnoreCase(normalize(value));
     }
 
     private String resolveReturnType(ReturnExchange returnExchange) {
@@ -170,151 +158,6 @@ public class StaffOrderServiceImpl implements StaffOrderService {
             return "RETURN";
         }
         return "EXCHANGE";
-    }
-
-    @Override
-    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
-    public Page<StaffOrderListResponse> searchOrdersForStaff(StaffOrderSearchRequest request) {
-        Pageable pageable = buildPageable(request);
-        Specification<Order> specification = buildSpecification(request, false);
-
-        Page<Order> orderPage = orderRepo.findAll(specification, pageable);
-        return orderPage.map(staffOrderMapper::toStaffOrderListResponse);
-    }
-
-    @Override
-    @PreAuthorize("hasAnyAuthority('ROLE_OPERATIONS STAFF','ROLE_ADMIN','ROLE_MANAGER')")
-    public Page<StaffOrderListResponse> searchOrdersForOperationStaff(StaffOrderSearchRequest request) {
-        Pageable pageable = buildPageable(request);
-        Specification<Order> specification = buildSpecification(request, true);
-
-        Page<Order> orderPage = orderRepo.findAll(specification, pageable);
-        return orderPage.map(staffOrderMapper::toStaffOrderListResponse);
-    }
-
-    @Override
-    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
-    public StaffOrderDetailResponse getOrderDetailForSalesStaff(Long orderId) {
-        return getOrderDetailForSalesStaffInternal(orderId);
-    }
-
-    private StaffOrderDetailResponse getOrderDetailForSalesStaffInternal(Long orderId) {
-        Order order = orderRepo.findByIdFetchStatus(orderId)
-                .orElseThrow(() -> new AppException(ErrorCode.ORDER_NOT_FOUND));
-        return buildOrderDetailResponse(order, false);
-    }
-
-    //Hàm này dùng để cập nhật Order_Status cho trang OrderDetail của SALES STAFF
-    @Override
-    @Transactional
-    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
-    public StaffOrderDetailResponse confirmOrderForSalesStaff(Long orderId) {
-        Order order = orderRepo.findByIdFetchStatus(orderId)
-                .orElseThrow(() -> new AppException(ErrorCode.ORDER_NOT_FOUND));
-        String currentStatus = order.getOrderStatus() == null
-                ? ""
-                : order.getOrderStatus().trim().toUpperCase(Locale.ROOT);
-        if (!SALES_CONFIRMABLE_STATUSES.contains(currentStatus)) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-        order.setOrderStatus(OrderConstants.ORDER_STATUS_CONFIRMED);
-        return buildOrderDetailResponse(order, false);
-    }
-
-    @Override
-    @PreAuthorize("hasAnyAuthority('ROLE_OPERATIONS STAFF','ROLE_ADMIN','ROLE_MANAGER')")
-    public StaffOrderDetailResponse getOrderDetailForOperationStaff(Long orderId) {
-        Order order = orderRepo.findByIdFetchStatus(orderId)
-                .orElseThrow(() -> new AppException(ErrorCode.ORDER_NOT_FOUND));
-        return buildOrderDetailResponse(order, true);
-    }
-
-    @Override
-    @Transactional
-    @PreAuthorize("hasAnyAuthority('ROLE_OPERATIONS STAFF','ROLE_ADMIN','ROLE_MANAGER')")
-    public StaffOrderDetailResponse updateOrderForOperationStaff(Long orderId, String action) {
-        Order order = orderRepo.findByIdFetchStatus(orderId)
-                .orElseThrow(() -> new AppException(ErrorCode.ORDER_NOT_FOUND));
-        ShippingInfo shippingInfo = requireShippingInfo(order);
-        PrescriptionOrder prescriptionOrder = prescriptionOrderRepo.findByOrder_OrderID(orderId).orElse(null);
-        boolean hasPrescriptionItem = hasPrescriptionItem(prescriptionOrder);
-        boolean requiresFinalPayment = isRequiresFinalPayment(order);
-
-        String orderStatus = normalize(order.getOrderStatus());
-        String shippingStatus = normalize(shippingInfo.getShippingStatus());
-        if (isReadOnlyStatus(orderStatus, shippingStatus)) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-
-        String normalizedAction = normalize(action);
-        validatePreOrderInventoryForOperationUpdate(order, normalizedAction);
-        switch (normalizedAction) {
-            case OrderConstants.OPERATION_ACTION_START_PROCESSING -> {
-                if (!isStatus(orderStatus, OrderConstants.ORDER_STATUS_CONFIRMED) || !hasPrescriptionItem) {
-                    throw new AppException(ErrorCode.INVALID_REQUEST);
-                }
-                order.setOrderStatus(OrderConstants.ORDER_STATUS_PROCESSING);   //Chỉ cập nhật Order_Status = PROCESSING khi Order_Status = CONFIRMED và hasPrescription = true
-            }
-            case OrderConstants.OPERATION_ACTION_START_PACKING -> { //dành cho đơn thường
-                if (!isStatus(orderStatus, OrderConstants.ORDER_STATUS_CONFIRMED)
-                        || hasPrescriptionItem
-                        || !isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_PENDING)) {
-                    throw new AppException(ErrorCode.INVALID_REQUEST);
-                }
-                shippingInfo.setShippingStatus(OrderConstants.SHIPPING_STATUS_PACKING); //Chỉ cập nhật Shipping_Status = PACKING khi Order_Status = CONFIRMED và hasPrescription = false và Shipping_Status = PENDING
-            }
-            case OrderConstants.OPERATION_ACTION_MOVE_TO_PACKING -> {   //dành cho đơn Prescription
-                if (!isStatus(orderStatus, OrderConstants.ORDER_STATUS_PROCESSING)
-                        || !hasPrescriptionItem
-                        || !isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_PENDING)) {
-                    throw new AppException(ErrorCode.INVALID_REQUEST);
-                }
-                shippingInfo.setShippingStatus(OrderConstants.SHIPPING_STATUS_PACKING); //Chỉ cập nhật Shipping_Status = PACKING khi Order_Status = PROCESSING và hasPrescription = true
-            }
-            case OrderConstants.OPERATION_ACTION_HANDOVER_TO_GHN -> {   //Chuyển giao cho bên GHN
-                if (!isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_PACKING)) {
-                    throw new AppException(ErrorCode.INVALID_REQUEST);
-                }
-                order.setOrderStatus(OrderConstants.ORDER_STATUS_READY);    //Chỉ cập nhật Order_Status = READY khi Shipping_Status = PACKING
-                shippingInfo.setShippingStatus(OrderConstants.SHIPPING_STATUS_SHIPPING);    //Chỉ cập nhật Shipping_Status = SHIPPING khi Shipping_Status = PACKING
-            }
-            case OrderConstants.OPERATION_ACTION_MARK_DELIVERED -> {
-                if (!isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_SHIPPING)) {
-                    throw new AppException(ErrorCode.INVALID_REQUEST);
-                }
-                validateReachedExpectedDeliveryAt(shippingInfo);
-                shippingInfo.setShippingStatus(OrderConstants.SHIPPING_STATUS_DELIVERED);
-                shippingInfo.setDeliveredAt(LocalDateTime.now(APP_ZONE_ID));
-                settlePaymentsAndInvoiceOnDelivered(order);
-            }
-            case OrderConstants.OPERATION_ACTION_MARK_FAILED -> {
-                if (!isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_SHIPPING)) {
-                    throw new AppException(ErrorCode.INVALID_REQUEST);
-                }
-                shippingInfo.setShippingStatus(OrderConstants.SHIPPING_STATUS_FAILED);
-                order.setOrderStatus(OrderConstants.ORDER_STATUS_CANCELED);
-            }
-            case OrderConstants.OPERATION_ACTION_MARK_RETURNED -> {
-                if (!isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_SHIPPING)
-                        && !isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_DELIVERED)) {
-                    throw new AppException(ErrorCode.INVALID_REQUEST);
-                }
-                shippingInfo.setShippingStatus(OrderConstants.SHIPPING_STATUS_RETURNED);
-                order.setOrderStatus(OrderConstants.ORDER_STATUS_RETURNED);
-            }
-            case OrderConstants.OPERATION_ACTION_COMPLETE_ORDER -> {    //Dành cho đơn trả full
-                if (!isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_DELIVERED)
-                ) {
-                    throw new AppException(ErrorCode.INVALID_REQUEST);
-                }
-                validateReachedExpectedDeliveryAt(shippingInfo);
-                settlePaymentsAndInvoiceOnDelivered(order);
-                order.setOrderStatus(OrderConstants.ORDER_STATUS_COMPLETED);    //Chỉ cập nhật Order_Status = COMPLETED khi Shipping_Status = DELIVERED và Order_Status != PARTIALLY_PAID
-            }
-            default -> throw new AppException(ErrorCode.INVALID_REQUEST);   //Các case khác
-        }
-
-        return buildOrderDetailResponse(order, true);
     }
 
     private StaffOrderDetailResponse buildOrderDetailResponse(Order order, boolean operationStaffView) {
@@ -328,6 +171,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         List<OrderDetail> orderDetails = orderDetailRepo.findByOrderIdFetchProduct(orderId);
         PrescriptionOrder prescriptionOrder = prescriptionOrderRepo.findByOrder_OrderID(orderId).orElse(null);
         boolean preOrderInventoryReady = hasSufficientInventoryForOperationUpdate(order, orderDetails, prescriptionOrder);
+
         List<StaffOrderItemResponse> orderItems = orderDetails.stream()
                 .map(this::toOrderItemResponse)
                 .toList();
@@ -335,6 +179,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         List<StaffPrescriptionOrderItemResponse> prescriptionItems = mapPrescriptionItems(prescriptionOrder);
         boolean hasPrescriptionItem = hasPrescriptionItem(prescriptionOrder);
         boolean requiresFinalPayment = isRequiresFinalPayment(order);
+
         List<String> availableActions = operationStaffView
                 ? resolveOperationActions(order.getOrderStatus(), shippingStatus, hasPrescriptionItem, requiresFinalPayment, preOrderInventoryReady)
                 : resolveSalesActions(order.getOrderStatus());
@@ -366,6 +211,520 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                 .build();
     }
 
+    private StaffOrderItemResponse toOrderItemResponse(OrderDetail detail) {
+        Product product = detail.getProduct();
+        Integer quantity = detail.getQuantity() == null ? 0 : detail.getQuantity();
+        BigDecimal unitPrice = detail.getUnitPrice() == null ? BigDecimal.ZERO : detail.getUnitPrice();
+        return StaffOrderItemResponse.builder()
+                .orderDetailId(detail.getOrderDetailID())
+                .productId(product != null ? product.getProductID() : null)
+                .productName(product != null ? product.getProductName() : null)
+                .quantity(quantity)
+                .unitPrice(unitPrice)
+                .totalPrice(unitPrice.multiply(BigDecimal.valueOf(quantity)))
+                .imageUrl(pickPrimaryImage(product))
+                .build();
+    }
+
+    private List<StaffPrescriptionOrderItemResponse> mapPrescriptionItems(PrescriptionOrder prescriptionOrder) {
+        if (prescriptionOrder == null || prescriptionOrder.getPrescriptionOrderDetails() == null) {
+            return List.of();
+        }
+
+        Map<PrescriptionGroupKey, RxAggregate> aggregates = new LinkedHashMap<>();
+        for (PrescriptionOrderDetail detail : prescriptionOrder.getPrescriptionOrderDetails()) {
+            String rightSph = bdToText(detail.getRightEyeSph());
+            String rightCyl = bdToText(detail.getRightEyeCyl());
+            String rightAxis = detail.getRightEyeAxis() == null ? null : String.valueOf(detail.getRightEyeAxis());
+            String rightAdd = detail.getRightEyeAdd() == null ? null : String.valueOf(detail.getRightEyeAdd());
+            String rightPD = bdToText(detail.getPdRight());
+
+            String leftSph = bdToText(detail.getLeftEyeSph());
+            String leftCyl = bdToText(detail.getLeftEyeCyl());
+            String leftAxis = detail.getLeftEyeAxis() == null ? null : String.valueOf(detail.getLeftEyeAxis());
+            String leftAdd = detail.getLeftEyeAdd() == null ? null : String.valueOf(detail.getLeftEyeAdd());
+            String leftPD = bdToText(detail.getPdLeft());
+
+            Long frameId = detail.getFrame() != null ? detail.getFrame().getFrameID() : null;
+            Long lensId = detail.getLens() != null ? detail.getLens().getLensID() : null;
+
+            Product frameProduct = detail.getFrame() != null ? detail.getFrame().getProduct() : null;
+            Product lensProduct = detail.getLens() != null ? detail.getLens().getProduct() : null;
+
+            String frameName = frameProduct != null ? frameProduct.getProductName() : null;
+            String lensName = lensProduct != null ? lensProduct.getProductName() : null;
+
+            BigDecimal framePrice = productPrice(frameProduct);
+            BigDecimal lensPrice = productPrice(lensProduct);
+            BigDecimal lineTotal = detail.getSubTotal() == null ? BigDecimal.ZERO : detail.getSubTotal();
+
+            PrescriptionGroupKey key = new PrescriptionGroupKey(
+                    frameId,
+                    lensId,
+                    rightSph,
+                    rightCyl,
+                    rightAdd,
+                    rightAxis,
+                    rightPD,
+                    leftSph,
+                    leftCyl,
+                    leftAxis,
+                    leftAdd,
+                    leftPD,
+                    bdToText(lineTotal)
+            );
+
+            RxAggregate aggregate = aggregates.computeIfAbsent(key, k -> new RxAggregate(
+                    StaffPrescriptionOrderItemResponse.builder()
+                            .prescriptionOrderDetailId(detail.getPrescriptionOrderDetailID())
+                            .frameId(frameId)
+                            .frameName(frameName)
+                            .framePrice(framePrice)
+                            .frameImg(pickPrimaryImage(frameProduct))
+                            .lensId(lensId)
+                            .lensName(lensName)
+                            .lensPrice(lensPrice)
+                            .lensImg(pickPrimaryImage(lensProduct))
+                            .contactLensId(null)
+                            .contactLensName(null)
+                            .contactLensPrice(BigDecimal.ZERO)
+                            .contactLensImg(null)
+                            .rightEyeSph(rightSph)
+                            .rightEyeCyl(rightCyl)
+                            .rightEyeAxis(rightAxis)
+                            .rightEyeAdd(rightAdd)
+                            .rightPD(rightPD)
+                            .leftEyeSph(leftSph)
+                            .leftEyeCyl(leftCyl)
+                            .leftEyeAxis(leftAxis)
+                            .leftEyeAdd(leftAdd)
+                            .leftPD(leftPD)
+                            .quantity(0)
+                            .totalPrice(BigDecimal.ZERO)
+                            .build()
+            ));
+
+            aggregate.response.setQuantity(aggregate.response.getQuantity() + 1);
+            aggregate.response.setTotalPrice(aggregate.response.getTotalPrice().add(lineTotal));
+        }
+
+        return aggregates.values().stream().map(a -> a.response).toList();
+    }
+
+    private BigDecimal productPrice(Product product) {
+        return product != null && product.getPrice() != null ? product.getPrice() : BigDecimal.ZERO;
+    }
+
+    private String pickPrimaryImage(Product product) {
+        if (product == null || product.getImages() == null || product.getImages().isEmpty()) {
+            return null;
+        }
+        return product.getImages().stream()
+                .filter(Objects::nonNull)
+                .filter(i -> Boolean.TRUE.equals(i.getAvatar()))
+                .findFirst()
+                .map(ProductImage::getImageUrl)
+                .orElseGet(() -> product.getImages().stream()
+                        .filter(Objects::nonNull)
+                        .map(ProductImage::getImageUrl)
+                        .filter(StringUtils::hasText)
+                        .findFirst()
+                        .orElse(null));
+    }
+
+    private String bdToText(BigDecimal value) {
+        return value == null ? null : value.stripTrailingZeros().toPlainString();
+    }
+
+    private String bdToText(Double value) {
+        return value == null ? null : BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
+    }
+
+    private Pageable buildPageable(StaffOrderSearchRequest request) {
+        int page = request.getPage() == null ? 0 : Math.max(request.getPage(), 0);
+        int size = request.getSize() == null ? 50 : Math.min(Math.max(request.getSize(), 1), 100);
+
+        String sortBy = request.getSortBy();
+        if (!StringUtils.hasText(sortBy) || !ALLOWED_SORT_FIELDS.contains(sortBy)) {
+            sortBy = "orderDate";
+        }
+
+        String sortDir = request.getSortDir();
+        Sort sort = "asc".equalsIgnoreCase(sortDir)
+                ? Sort.by(sortBy).ascending()
+                : Sort.by(sortBy).descending();
+
+        return PageRequest.of(page, size, sort);
+    }
+
+    private Specification<Order> buildSpecification(StaffOrderSearchRequest request, boolean operationStaffScope) {
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            Set<String> allowedOrderTypes = STAFF_ALLOWED_ORDER_TYPES;
+            Set<String> allowedOrderStatuses = operationStaffScope
+                    ? OPERATION_ALLOWED_ORDER_STATUSES
+                    : SALES_ALLOWED_ORDER_STATUSES;
+
+            if (StringUtils.hasText(request.getOrderCode())) {
+                String keyword = "%" + request.getOrderCode().trim().toUpperCase() + "%";
+                predicates.add(cb.like(cb.upper(root.get("orderCode")), keyword));
+            }
+
+            if (request.getOrderDate() != null) {
+                LocalDateTime start = request.getOrderDate().atStartOfDay();
+                LocalDateTime end = request.getOrderDate().plusDays(1).atStartOfDay();
+                predicates.add(cb.greaterThanOrEqualTo(root.get("orderDate"), start));
+                predicates.add(cb.lessThan(root.get("orderDate"), end));
+            }
+
+            if (!operationStaffScope && StringUtils.hasText(request.getOrderType())) {
+                String normalizedType = request.getOrderType().trim().toUpperCase();
+                if (!allowedOrderTypes.contains(normalizedType)) {
+                    return cb.disjunction();
+                }
+                predicates.add(cb.equal(cb.upper(root.get("orderType")), normalizedType));
+            }
+
+            boolean hasOrderStatusFilter = StringUtils.hasText(request.getOrderStatus());
+            if (hasOrderStatusFilter) {
+                String normalizedStatus = request.getOrderStatus().trim().toUpperCase(Locale.ROOT);
+                if (!allowedOrderStatuses.contains(normalizedStatus)) {
+                    return cb.disjunction();
+                }
+                predicates.add(cb.equal(cb.upper(root.get("orderStatus")), normalizedStatus));
+            }
+
+            if (!operationStaffScope) {
+                predicates.add(cb.upper(root.get("orderType")).in(allowedOrderTypes));
+            }
+            predicates.add(cb.upper(root.get("orderStatus")).in(allowedOrderStatuses));
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+    }
+
+    private OrderStatusOptionResponse statusOption(String code, String displayName) {
+        return OrderStatusOptionResponse.builder()
+                .code(code)
+                .displayName(displayName)
+                .build();
+    }
+
+    private List<OrderStatusGroupResponse> buildOrderStatusGroups(List<OrderStatusOptionResponse> statuses) {
+        return List.of(
+                OrderStatusGroupResponse.builder()
+                        .groupName("ORDER WORKFLOW")
+                        .orderTypes(STAFF_ORDER_TYPES_IN_DISPLAY_ORDER)
+                        .statuses(statuses)
+                        .build()
+        );
+    }
+
+    private StaffReturnExchangeListResponse mapToStaffReturnExchangeListResponse(StaffReturnExchangeListProjection source) {
+        return StaffReturnExchangeListResponse.builder()
+                .returnExchangeId(source.getReturnExchangeId())
+                .returnCode(source.getReturnCode())
+                .orderId(source.getOrderId())
+                .orderCode(source.getOrderCode())
+                .orderDate(source.getOrderDate())
+                .orderStatus(source.getOrderStatus())
+                .customerName(source.getCustomerName())
+                .customerPhone(source.getCustomerPhone())
+                .customerEmail(source.getCustomerEmail())
+                .returnType(source.getReturnType())
+                .requestScope(source.getRequestScope())
+                .requestDate(source.getRequestDate())
+                .returnExchangeStatus(source.getReturnExchangeStatus())
+                .refundAmount(source.getRefundAmount())
+                .refundMethod(source.getRefundMethod())
+                .refundAccountNumber(source.getRefundAccountNumber())
+                .refundAccountName(source.getRefundAccountName())
+                .requestNote(source.getRequestNote())
+                .rejectReason(source.getRejectReason())
+                .approvedDate(source.getApprovedDate())
+                .processedDate(source.getProcessedDate())
+                .build();
+    }
+
+    private List<ReturnExchangeItemResponse> mapReturnExchangeItems(List<ReturnExchangeItem> items) {
+        if (items == null || items.isEmpty()) {
+            return List.of();
+        }
+        return items.stream()
+                .map(item -> ReturnExchangeItemResponse.builder()
+                        .returnExchangeItemId(item.getReturnExchangeItemID())
+                        .orderDetailId(item.getOrderDetail() == null ? null : item.getOrderDetail().getOrderDetailID())
+                        .productId(item.getOrderDetail() == null || item.getOrderDetail().getProduct() == null
+                                ? null
+                                : item.getOrderDetail().getProduct().getProductID())
+                        .productName(item.getOrderDetail() == null || item.getOrderDetail().getProduct() == null
+                                ? null
+                                : item.getOrderDetail().getProduct().getProductName())
+                        .requestedQuantity(item.getQuantity())
+                        .orderQuantity(item.getOrderDetail() == null ? null : item.getOrderDetail().getQuantity())
+                        .itemSource(item.getItemSource())
+                        .itemEvidenceURL(item.getItemEvidenceUrl())
+                        .prescriptionOrderDetailId(item.getPrescriptionOrderDetail() == null
+                                ? null
+                                : item.getPrescriptionOrderDetail().getPrescriptionOrderDetailID())
+                        .itemReason(item.getItemReason())
+                        .note(item.getNote())
+                        .build())
+                .toList();
+    }
+
+    private Long calculateRemainingTimeValid(LocalDateTime deliveredAt) {
+        if (deliveredAt == null) {
+            return null;
+        }
+        LocalDateTime now = LocalDateTime.now(APP_ZONE_ID);
+        LocalDateTime deadline = deliveredAt.plusDays(RETURN_APPROVAL_WINDOW_DAYS);
+        long remainingDays = ChronoUnit.DAYS.between(now, deadline);
+        return Math.max(remainingDays, 0L);
+    }
+
+    private StaffReturnExchangeDetailResponse buildReturnExchangeDetailResponse(ReturnExchange returnExchange) {
+        Long orderId = returnExchange.getOrder() == null ? null : returnExchange.getOrder().getOrderID();
+        if (orderId == null) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
+        StaffOrderDetailResponse orderDetailResponse = getOrderDetailForSalesStaff(orderId);
+        ShippingInfo shippingInfo = returnExchange.getOrder() == null ? null : returnExchange.getOrder().getShippingInfo();
+        LocalDateTime deliveredAt = shippingInfo == null ? null : shippingInfo.getDeliveredAt();
+
+        return StaffReturnExchangeDetailResponse.builder()
+                .orderId(orderDetailResponse.getOrderId())
+                .orderCode(orderDetailResponse.getOrderCode())
+                .orderStatus(orderDetailResponse.getOrderStatus())
+                .orderType(orderDetailResponse.getOrderType())
+                .orderDate(orderDetailResponse.getOrderDate())
+                .totalAmount(orderDetailResponse.getTotalAmount())
+                .shippingStatus(orderDetailResponse.getShippingStatus())
+                .shippingFee(orderDetailResponse.getShippingFee())
+                .expectedDeliveryAt(orderDetailResponse.getExpectedDeliveryAt())
+                .deliveredAt(deliveredAt)
+                .remainingTimeValid(calculateRemainingTimeValid(deliveredAt))
+                .isPastExpectedDeliveryAt(orderDetailResponse.getIsPastExpectedDeliveryAt())
+                .hasPrescriptionItem(orderDetailResponse.getHasPrescriptionItem())
+                .requiresFinalPayment(orderDetailResponse.getRequiresFinalPayment())
+                .availableActions(orderDetailResponse.getAvailableActions())
+                .customerName(orderDetailResponse.getCustomerName())
+                .customerPhone(orderDetailResponse.getCustomerPhone())
+                .customerEmail(orderDetailResponse.getCustomerEmail())
+                .orderDetail(orderDetailResponse.getOrderDetail())
+                .prescriptionOrderDetail(orderDetailResponse.getPrescriptionOrderDetail())
+                .recipientName(orderDetailResponse.getRecipientName())
+                .recipientPhone(orderDetailResponse.getRecipientPhone())
+                .recipientEmail(orderDetailResponse.getRecipientEmail())
+                .recipientAddress(orderDetailResponse.getRecipientAddress())
+                .note(orderDetailResponse.getNote())
+                .returnExchangeId(returnExchange.getReturnExchangeID())
+                .returnCode(returnExchange.getReturnCode())
+                .requestDate(returnExchange.getRequestDate())
+                .returnExchangeStatus(returnExchange.getStatus())
+                .returnType(returnExchange.getReturnType())
+                .requestScope(returnExchange.getRequestScope())
+                .requestNote(returnExchange.getRequestNote())
+                .returnReason(returnExchange.getReturnReason())
+                .customerAccountQr(returnExchange.getCustomerAccountQr())
+                .refundAmount(returnExchange.getRefundAmount())
+                .refundMethod(returnExchange.getRefundMethod())
+                .refundAccountNumber(returnExchange.getRefundAccountNumber())
+                .refundAccountName(returnExchange.getRefundAccountName())
+                .refundReferenceCode(returnExchange.getRefundReferenceCode())
+                .staffRefundEvidenceUrl(returnExchange.getStaffRefundEvidenceUrl())
+                .approvedDate(returnExchange.getApprovedDate())
+                .approvedByName(returnExchange.getApprovedBy() == null ? null : returnExchange.getApprovedBy().getName())
+                .processedDate(returnExchange.getProcessedDate())
+                .processedByName(returnExchange.getProcessedBy() == null ? null : returnExchange.getProcessedBy().getName())
+                .rejectReason(returnExchange.getRejectReason())
+                .returnExchangeItems(mapReturnExchangeItems(returnExchange.getReturnExchangeItems()))
+                .build();
+    }
+
+    private String resolveReturnStatusAction(String action) {
+        if (RETURN_ACTION_APPROVE.equals(action) || RETURN_ACTION_APPROVED.equals(action)) {
+            return RETURN_STATUS_APPROVED;
+        }
+        if (RETURN_ACTION_REJECT.equals(action) || RETURN_ACTION_REJECTED.equals(action)) {
+            return RETURN_STATUS_REJECTED;
+        }
+        return null;
+    }
+
+    private void validateApproveWithinWindow(ReturnExchange returnExchange) {
+        Order order = returnExchange.getOrder();
+        ShippingInfo shippingInfo = order == null ? null : order.getShippingInfo();
+        LocalDateTime deliveredAt = shippingInfo == null ? null : shippingInfo.getDeliveredAt();
+        if (deliveredAt == null) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
+        LocalDateTime now = LocalDateTime.now(APP_ZONE_ID);
+        LocalDateTime deadline = deliveredAt.plusDays(RETURN_APPROVAL_WINDOW_DAYS);
+        if (now.isBefore(deliveredAt) || now.isAfter(deadline)) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+    }
+
+    private boolean isCancelRefundRequestFlow(ReturnExchange returnExchange) {
+        if (returnExchange == null) {
+            return false;
+        }
+        if (!"REFUND".equals(normalize(returnExchange.getReturnType()))) {
+            return false;
+        }
+        if (!"ORDER".equals(normalize(returnExchange.getRequestScope()))) {
+            return false;
+        }
+        if (returnExchange.getRefundAmount() == null || returnExchange.getRefundAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            return false;
+        }
+        Order order = returnExchange.getOrder();
+        return order != null && "CANCELED".equals(normalize(order.getOrderStatus()));
+    }
+
+    private void validateCancelRefundRequestFlow(ReturnExchange returnExchange) {
+        if (!isCancelRefundRequestFlow(returnExchange)) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+    }
+
+    private void applyReturnExchangeDecision(ReturnExchange returnExchange,
+                                             ReturnExchangeDecisionRequest request,
+                                             boolean validateApprovalWindow) {
+        String action = request == null ? "" : normalize(request.getAction());
+        String targetStatus = resolveReturnStatusAction(action);
+        String currentStatus = normalize(returnExchange.getStatus());
+
+        if (!RETURN_STATUS_PENDING.equals(currentStatus) || targetStatus == null) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
+        User currentUser = getCurrentUser();
+        LocalDateTime now = LocalDateTime.now(APP_ZONE_ID);
+
+        switch (targetStatus) {
+            case RETURN_STATUS_APPROVED -> {
+                if (validateApprovalWindow) {
+                    validateApproveWithinWindow(returnExchange);
+                }
+                returnExchange.setStatus(RETURN_STATUS_APPROVED);
+                returnExchange.setApprovedBy(currentUser);
+                returnExchange.setApprovedDate(now);
+                returnExchange.setRejectReason(null);
+            }
+            case RETURN_STATUS_REJECTED -> {
+                String rejectReason = request == null ? "" : request.getRejectReason();
+                if (!StringUtils.hasText(rejectReason)) {
+                    throw new AppException(ErrorCode.INVALID_REQUEST);
+                }
+                returnExchange.setStatus(RETURN_STATUS_REJECTED);
+                returnExchange.setApprovedBy(currentUser);
+                returnExchange.setApprovedDate(now);
+                returnExchange.setRejectReason(rejectReason.trim());
+            }
+            default -> throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+    }
+
+    private String uploadStaffRefundEvidence(MultipartFile staffEvidenceFile) {
+        if (staffEvidenceFile == null || staffEvidenceFile.isEmpty()) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+        try {
+            return imageUploadService.uploadImage(staffEvidenceFile);
+        } catch (IOException e) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+    }
+
+    private void completeRefund(ReturnExchange returnExchange,
+                                StaffCompleteRefundRequest request,
+                                MultipartFile staffEvidenceFile) {
+        String currentStatus = normalize(returnExchange.getStatus());
+        if (!RETURN_STATUS_APPROVED.equals(currentStatus)) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
+        BigDecimal expectedRefundAmount = returnExchange.getRefundAmount();
+        if (expectedRefundAmount == null || request.getRefundAmount().compareTo(expectedRefundAmount) != 0) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
+        String staffEvidenceUrl = uploadStaffRefundEvidence(staffEvidenceFile);
+
+        returnExchange.setStatus(RETURN_STATUS_COMPLETED);
+        returnExchange.setRefundAmount(request.getRefundAmount());
+        returnExchange.setRefundReferenceCode(request.getRefundReferenceCode());
+        returnExchange.setStaffRefundEvidenceUrl(staffEvidenceUrl);
+        returnExchange.setProcessedBy(getCurrentUser());
+        returnExchange.setProcessedDate(LocalDateTime.now(APP_ZONE_ID));
+    }
+
+    private void updateSuccessfulPaymentsToRefunded(Order order) {
+        if (order == null || order.getPayments() == null || order.getPayments().isEmpty()) {
+            return;
+        }
+
+        List<Payment> successfulPayments = order.getPayments().stream()
+                .filter(Objects::nonNull)
+                .filter(p -> OrderConstants.PAYMENT_STATUS_SUCCESS.equalsIgnoreCase(p.getStatus()))
+                .toList();
+
+        if (successfulPayments.isEmpty()) {
+            return;
+        }
+
+        successfulPayments.forEach(p -> p.setStatus(OrderConstants.PAYMENT_STATUS_REFUNDED));
+        paymentRepo.saveAll(successfulPayments);
+    }
+
+    private void restockCanceledOrderInventory(Order order) {
+        if (order == null || order.getOrderID() == null) {
+            return;
+        }
+
+        List<OrderDetail> orderDetails = orderDetailRepo.findByOrderIdFetchProduct(order.getOrderID());
+        if (orderDetails == null || orderDetails.isEmpty()) {
+            return;
+        }
+
+        Map<Long, Integer> qtyByProductId = new HashMap<>();
+        for (OrderDetail orderDetail : orderDetails) {
+            if (orderDetail == null || orderDetail.getProduct() == null || orderDetail.getProduct().getProductID() == null) {
+                continue;
+            }
+            int quantity = orderDetail.getQuantity() == null ? 0 : orderDetail.getQuantity();
+            if (quantity <= 0) {
+                continue;
+            }
+            qtyByProductId.merge(orderDetail.getProduct().getProductID(), quantity, Integer::sum);
+        }
+
+        if (qtyByProductId.isEmpty()) {
+            return;
+        }
+
+        List<Long> productIds = qtyByProductId.keySet().stream().sorted().toList();
+        List<Product> products = productRepo.findByIdsForUpdate(productIds);
+        if (products.size() != productIds.size()) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
+        for (Product product : products) {
+            int increaseQty = qtyByProductId.getOrDefault(product.getProductID(), 0);
+            if (increaseQty <= 0) {
+                continue;
+            }
+            int onHandBefore = product.getOnHandQuantity() == null ? 0 : product.getOnHandQuantity();
+            product.setOnHandQuantity(onHandBefore + increaseQty);
+        }
+
+        productRepo.saveAll(products);
+    }
+
     private List<String> resolveSalesActions(String orderStatus) {
         String currentStatus = orderStatus == null ? "" : orderStatus.trim().toUpperCase(Locale.ROOT);
         if (SALES_CONFIRMABLE_STATUSES.contains(currentStatus)) {
@@ -374,161 +733,13 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         return List.of();
     }
 
-    private List<String> resolveOperationActions(String orderStatus,
-                                                 String shippingStatus,
-                                                 boolean hasPrescriptionItem,
-                                                 boolean requiresFinalPayment,
-                                                 boolean preOrderInventoryReady) {
-        if (isReadOnlyStatus(orderStatus, shippingStatus)) {
-            return List.of();
-        }
-
-        List<String> actions = new ArrayList<>();
-        if (isStatus(orderStatus, OrderConstants.ORDER_STATUS_CONFIRMED)) {
-            if (hasPrescriptionItem) {
-                actions.add(OrderConstants.OPERATION_ACTION_START_PROCESSING);
-            } else if (isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_PENDING)) {
-                actions.add(OrderConstants.OPERATION_ACTION_START_PACKING);
-            }
-        }
-
-        if (isStatus(orderStatus, OrderConstants.ORDER_STATUS_PROCESSING)
-                && hasPrescriptionItem
-                && isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_PENDING)) {
-            actions.add(OrderConstants.OPERATION_ACTION_MOVE_TO_PACKING);
-        }
-
-        if (isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_PACKING)) {
-            actions.add(OrderConstants.OPERATION_ACTION_HANDOVER_TO_GHN);
-        }
-
-        if (isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_SHIPPING)) {
-            actions.add(OrderConstants.OPERATION_ACTION_MARK_DELIVERED);
-            actions.add(OrderConstants.OPERATION_ACTION_MARK_FAILED);
-            actions.add(OrderConstants.OPERATION_ACTION_MARK_RETURNED);
-        }
-
-        if (isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_DELIVERED)) {
-            actions.add(OrderConstants.OPERATION_ACTION_COMPLETE_ORDER);
-        }
-
-        if (!preOrderInventoryReady) {
-            actions.removeIf(this::requiresPreOrderInventoryValidation);
-        }
-
-        return actions;
-    }
-
-    private void validatePreOrderInventoryForOperationUpdate(Order order, String action) {
-        if (!requiresPreOrderInventoryValidation(action)) {
-            return;
-        }
-        List<OrderDetail> orderDetails = orderDetailRepo.findByOrderIdFetchProduct(order.getOrderID());
-        PrescriptionOrder prescriptionOrder = prescriptionOrderRepo.findByOrder_OrderID(order.getOrderID()).orElse(null);
-        if (hasSufficientInventoryForOperationUpdate(order, orderDetails, prescriptionOrder)) {
-            return;
-        }
-        throw new AppException(ErrorCode.INVENTORY_INSUFFICIENT_QUANTITY);
-    }
-
-    private boolean hasSufficientInventoryForOperationUpdate(Order order,
-                                                             List<OrderDetail> orderDetails,
-                                                             PrescriptionOrder prescriptionOrder) {
-        if (order == null) {
-            return true;
-        }
-        if (!isPreOrderInventoryCheckRequired(order.getOrderType(), prescriptionOrder)) {
-            return true;
-        }
-
-        Map<Long, ProductQuantityRequirement> requiredProducts = new HashMap<>();
-        collectNormalOrderDetailRequirements(requiredProducts, orderDetails);
-        collectPrescriptionOrderRequirements(requiredProducts, prescriptionOrder);
-
-        for (ProductQuantityRequirement requirement : requiredProducts.values()) {
-            if (requirement.availableQuantity() < requirement.requiredQuantity()) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private void collectNormalOrderDetailRequirements(Map<Long, ProductQuantityRequirement> requiredProducts,
-                                                      List<OrderDetail> orderDetails) {
-        if (orderDetails == null) {
-            return;
-        }
-        for (OrderDetail orderDetail : orderDetails) {
-            if (orderDetail == null) {
-                continue;
-            }
-            addRequiredProduct(requiredProducts, orderDetail.getProduct(), orderDetail.getQuantity());
-        }
-    }
-
-    private void collectPrescriptionOrderRequirements(Map<Long, ProductQuantityRequirement> requiredProducts,
-                                                      PrescriptionOrder prescriptionOrder) {
-        if (prescriptionOrder == null || prescriptionOrder.getPrescriptionOrderDetails() == null) {
-            return;
-        }
-        for (PrescriptionOrderDetail detail : prescriptionOrder.getPrescriptionOrderDetails()) {
-            if (detail == null) {
-                continue;
-            }
-            addRequiredProduct(requiredProducts, detail.getFrame() != null ? detail.getFrame().getProduct() : null, 1);
-            addRequiredProduct(requiredProducts, detail.getLens() != null ? detail.getLens().getProduct() : null, 1);
-        }
-    }
-
-    private void addRequiredProduct(Map<Long, ProductQuantityRequirement> requiredProducts,
-                                    Product product,
-                                    Integer quantity) {
-        if (product == null || product.getProductID() == null) {
-            return;
-        }
-        int requiredQuantity = quantity != null ? quantity : 0;
-        if (requiredQuantity <= 0) {
-            return;
-        }
-        int availableQuantity = product.getAvailableQuantity() != null ? product.getAvailableQuantity() : 0;
-        requiredProducts.merge(
-                product.getProductID(),
-                new ProductQuantityRequirement(product, requiredQuantity, availableQuantity),
-                (current, ignored) -> current.increaseRequiredQuantity(requiredQuantity)
-        );
-    }
-
-    private boolean isPreOrderInventoryCheckRequired(String orderType, PrescriptionOrder prescriptionOrder) {
-        return isStatus(orderType, OrderConstants.ORDER_TYPE_PRE)
-                || isStatus(orderType, OrderConstants.ORDER_TYPE_MIX)
-                || isStatus(orderType, OrderConstants.ORDER_TYPE_PRESCRIPTION)
-                || hasPrescriptionItem(prescriptionOrder);
-    }
-
-    private boolean requiresPreOrderInventoryValidation(String action) {
-        return isStatus(action, OrderConstants.OPERATION_ACTION_START_PROCESSING)
-                || isStatus(action, OrderConstants.OPERATION_ACTION_START_PACKING)
-                || isStatus(action, OrderConstants.OPERATION_ACTION_MOVE_TO_PACKING)
-                || isStatus(action, OrderConstants.OPERATION_ACTION_HANDOVER_TO_GHN)
-                || isStatus(action, OrderConstants.OPERATION_ACTION_MARK_DELIVERED)
-                || isStatus(action, OrderConstants.OPERATION_ACTION_COMPLETE_ORDER);
-    }
-
-    private ShippingInfo requireShippingInfo(Order order) {
-        ShippingInfo shippingInfo = order.getShippingInfo();
-        if (shippingInfo == null) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-        return shippingInfo;
-    }
-
     private boolean hasPrescriptionItem(PrescriptionOrder prescriptionOrder) {
         return prescriptionOrder != null
                 && prescriptionOrder.getPrescriptionOrderDetails() != null
                 && !prescriptionOrder.getPrescriptionOrderDetails().isEmpty();
     }
 
-    //Hàm này kiểm tra xem Invoice.Status = PARTIALLY_PAID hoặc Order.Order_Status = PARTIALLY_PAID --> Thỏa trả về true
+    // Hàm này kiểm tra xem Invoice.Status = PARTIALLY_PAID hoặc Order.Order_Status = PARTIALLY_PAID --> Thỏa trả về true
     private boolean isRequiresFinalPayment(Order order) {
         if (order == null) {
             return false;
@@ -540,7 +751,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         return isStatus(order.getOrderStatus(), OrderConstants.ORDER_STATUS_PARTIALLY_PAID);
     }
 
-    //Hàm này cập kiểm tra và cập nhật Payment.Status = SUCCESS khi remainingPayment != null và Payment.Status = PENDING
+    // Hàm này cập kiểm tra và cập nhật Payment.Status = SUCCESS khi remainingPayment != null và Payment.Status = PENDING
     private void markRemainingPaymentSuccess(Order order) {
         Payment remainingPayment = findPayment(order, OrderConstants.PAYMENT_PURPOSE_REMAINING);
         if (remainingPayment == null || !isStatus(remainingPayment.getStatus(), OrderConstants.PAYMENT_STATUS_PENDING)) {
@@ -550,7 +761,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         remainingPayment.setPaymentDate(LocalDateTime.now(APP_ZONE_ID));
     }
 
-    //Hàm này kiểm tra và cập nhật Payment.Status = SUCCESS khi Payment.Payment_Purpose = FULL và Payment.Status = PENDING
+    // Hàm này kiểm tra và cập nhật Payment.Status = SUCCESS khi Payment.Payment_Purpose = FULL và Payment.Status = PENDING
     private void markFullCodPaymentSuccessIfPending(Order order) {
         Payment fullPayment = findPayment(order, OrderConstants.PAYMENT_PURPOSE_FULL);
         if (fullPayment == null) {
@@ -911,157 +1122,152 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                 || isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_CANCELED);
     }
 
-    private String normalize(String value) {
-        return value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+    private void validatePreOrderInventoryForOperationUpdate(Order order, String action) {
+        if (!requiresPreOrderInventoryValidation(action)) {
+            return;
+        }
+        List<OrderDetail> orderDetails = orderDetailRepo.findByOrderIdFetchProduct(order.getOrderID());
+        PrescriptionOrder prescriptionOrder = prescriptionOrderRepo.findByOrder_OrderID(order.getOrderID()).orElse(null);
+        if (hasSufficientInventoryForOperationUpdate(order, orderDetails, prescriptionOrder)) {
+            return;
+        }
+        throw new AppException(ErrorCode.INVENTORY_INSUFFICIENT_QUANTITY);
     }
 
-    private boolean isStatus(String value, String expected) {
-        return expected != null && expected.equalsIgnoreCase(normalize(value));
+    private boolean hasSufficientInventoryForOperationUpdate(Order order,
+                                                             List<OrderDetail> orderDetails,
+                                                             PrescriptionOrder prescriptionOrder) {
+        if (order == null) {
+            return true;
+        }
+        if (!isPreOrderInventoryCheckRequired(order.getOrderType(), prescriptionOrder)) {
+            return true;
+        }
+
+        Map<Long, ProductQuantityRequirement> requiredProducts = new HashMap<>();
+        collectNormalOrderDetailRequirements(requiredProducts, orderDetails);
+        collectPrescriptionOrderRequirements(requiredProducts, prescriptionOrder);
+
+        for (ProductQuantityRequirement requirement : requiredProducts.values()) {
+            if (requirement.availableQuantity() < requirement.requiredQuantity()) {
+                return false;
+            }
+        }
+        return true;
     }
 
-    @Override
-    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
-    public List<OrderStatusGroupResponse> getSalesStaffOrderStatuses() {
-        return List.of(
-                OrderStatusGroupResponse.builder()
-                        .groupName("ORDER WORKFLOW")
-                        .orderTypes(List.of(
-                                OrderConstants.ORDER_TYPE_DIRECT,
-                                OrderConstants.ORDER_TYPE_PRE,
-                                OrderConstants.ORDER_TYPE_PRESCRIPTION,
-                                OrderConstants.ORDER_TYPE_MIX
-                        ))
-                        .statuses(List.of(
-                                statusOption(OrderConstants.ORDER_STATUS_PENDING, "Đang chờ"),
-                                statusOption(OrderConstants.ORDER_STATUS_CONFIRMED, "Đã xác nhận và đang chuẩn bị hàng"),
-                                statusOption(OrderConstants.ORDER_STATUS_PARTIALLY_PAID, "Đã trả cọc 1 phần"),
-                                statusOption(OrderConstants.ORDER_STATUS_PAID, "Đã trả"),
-                                statusOption(OrderConstants.ORDER_STATUS_PROCESSING, "Đang gia công"),
-                                statusOption(OrderConstants.ORDER_STATUS_READY, "Đã chuyển cho đơn vị vận chuyển"),
-                                statusOption(OrderConstants.ORDER_STATUS_COMPLETED, "Hoàn thành"),
-                                statusOption(OrderConstants.ORDER_STATUS_CANCELED, "Đã hủy")
-                        ))
-                        .build()
-        );
+    private void collectNormalOrderDetailRequirements(Map<Long, ProductQuantityRequirement> requiredProducts,
+                                                      List<OrderDetail> orderDetails) {
+        if (orderDetails == null) {
+            return;
+        }
+        for (OrderDetail orderDetail : orderDetails) {
+            if (orderDetail == null) {
+                continue;
+            }
+            addRequiredProduct(requiredProducts, orderDetail.getProduct(), orderDetail.getQuantity());
+        }
     }
 
-    @Override
-    @PreAuthorize("hasAnyAuthority('ROLE_OPERATIONS STAFF','ROLE_ADMIN','ROLE_MANAGER')")
-    public List<OrderStatusGroupResponse> getOperationStaffOrderStatuses() {
-        return List.of(
-                OrderStatusGroupResponse.builder()
-                        .groupName("ORDER WORKFLOW")
-                        .orderTypes(List.of(
-                                OrderConstants.ORDER_TYPE_DIRECT,
-                                OrderConstants.ORDER_TYPE_PRE,
-                                OrderConstants.ORDER_TYPE_PRESCRIPTION,
-                                OrderConstants.ORDER_TYPE_MIX
-                        ))
-                        .statuses(List.of(
-                                statusOption(OrderConstants.ORDER_STATUS_CONFIRMED, "Đã xác nhận và đang chuẩn bị hàng"),
-                                statusOption(OrderConstants.ORDER_STATUS_PROCESSING, "Đang gia công"),
-                                statusOption(OrderConstants.ORDER_STATUS_READY, "Đã chuyển cho đơn vị vận chuyển"),
-                                statusOption(OrderConstants.ORDER_STATUS_COMPLETED, "Hoàn thành"),
-                                statusOption(OrderConstants.ORDER_STATUS_CANCELED, "Đã hủy")
-                        ))
-                        .build()
-        );
-    }
-
-    private StaffOrderItemResponse toOrderItemResponse(OrderDetail detail) {
-        Product product = detail.getProduct();
-        Integer quantity = detail.getQuantity() == null ? 0 : detail.getQuantity();
-        BigDecimal unitPrice = detail.getUnitPrice() == null ? BigDecimal.ZERO : detail.getUnitPrice();
-        return StaffOrderItemResponse.builder()
-                .orderDetailId(detail.getOrderDetailID())
-                .productId(product != null ? product.getProductID() : null)
-                .productName(product != null ? product.getProductName() : null)
-                .quantity(quantity)
-                .unitPrice(unitPrice)
-                .totalPrice(unitPrice.multiply(BigDecimal.valueOf(quantity)))
-                .imageUrl(pickPrimaryImage(product))
-                .build();
-    }
-
-    private List<StaffPrescriptionOrderItemResponse> mapPrescriptionItems(PrescriptionOrder prescriptionOrder) {
+    private void collectPrescriptionOrderRequirements(Map<Long, ProductQuantityRequirement> requiredProducts,
+                                                      PrescriptionOrder prescriptionOrder) {
         if (prescriptionOrder == null || prescriptionOrder.getPrescriptionOrderDetails() == null) {
+            return;
+        }
+        for (PrescriptionOrderDetail detail : prescriptionOrder.getPrescriptionOrderDetails()) {
+            if (detail == null) {
+                continue;
+            }
+            addRequiredProduct(requiredProducts, detail.getFrame() != null ? detail.getFrame().getProduct() : null, 1);
+            addRequiredProduct(requiredProducts, detail.getLens() != null ? detail.getLens().getProduct() : null, 1);
+        }
+    }
+
+    private void addRequiredProduct(Map<Long, ProductQuantityRequirement> requiredProducts,
+                                    Product product,
+                                    Integer quantity) {
+        if (product == null || product.getProductID() == null) {
+            return;
+        }
+        int requiredQuantity = quantity != null ? quantity : 0;
+        if (requiredQuantity <= 0) {
+            return;
+        }
+        int availableQuantity = product.getAvailableQuantity() != null ? product.getAvailableQuantity() : 0;
+        requiredProducts.merge(
+                product.getProductID(),
+                new ProductQuantityRequirement(product, requiredQuantity, availableQuantity),
+                (current, ignored) -> current.increaseRequiredQuantity(requiredQuantity)
+        );
+    }
+
+    private boolean isPreOrderInventoryCheckRequired(String orderType, PrescriptionOrder prescriptionOrder) {
+        return isStatus(orderType, OrderConstants.ORDER_TYPE_PRE)
+                || isStatus(orderType, OrderConstants.ORDER_TYPE_MIX)
+                || isStatus(orderType, OrderConstants.ORDER_TYPE_PRESCRIPTION)
+                || hasPrescriptionItem(prescriptionOrder);
+    }
+
+    private boolean requiresPreOrderInventoryValidation(String action) {
+        return isStatus(action, OrderConstants.OPERATION_ACTION_START_PROCESSING)
+                || isStatus(action, OrderConstants.OPERATION_ACTION_START_PACKING)
+                || isStatus(action, OrderConstants.OPERATION_ACTION_MOVE_TO_PACKING)
+                || isStatus(action, OrderConstants.OPERATION_ACTION_HANDOVER_TO_GHN)
+                || isStatus(action, OrderConstants.OPERATION_ACTION_MARK_DELIVERED)
+                || isStatus(action, OrderConstants.OPERATION_ACTION_COMPLETE_ORDER);
+    }
+
+    private ShippingInfo requireShippingInfo(Order order) {
+        ShippingInfo shippingInfo = order.getShippingInfo();
+        if (shippingInfo == null) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+        return shippingInfo;
+    }
+
+    private List<String> resolveOperationActions(String orderStatus,
+                                                 String shippingStatus,
+                                                 boolean hasPrescriptionItem,
+                                                 boolean requiresFinalPayment,
+                                                 boolean preOrderInventoryReady) {
+        if (isReadOnlyStatus(orderStatus, shippingStatus)) {
             return List.of();
         }
 
-        Map<PrescriptionGroupKey, RxAggregate> aggregates = new LinkedHashMap<>();
-        for (PrescriptionOrderDetail detail : prescriptionOrder.getPrescriptionOrderDetails()) {
-            String rightSph = bdToText(detail.getRightEyeSph());
-            String rightCyl = bdToText(detail.getRightEyeCyl());
-            String rightAxis = detail.getRightEyeAxis() == null ? null : String.valueOf(detail.getRightEyeAxis());
-            String rightAdd = detail.getRightEyeAdd() == null ? null : String.valueOf(detail.getRightEyeAdd());
-            String rightPD = bdToText(detail.getPdRight());
-            String leftSph = bdToText(detail.getLeftEyeSph());
-            String leftCyl = bdToText(detail.getLeftEyeCyl());
-            String leftAxis = detail.getLeftEyeAxis() == null ? null : String.valueOf(detail.getLeftEyeAxis());
-            String leftAdd = detail.getLeftEyeAdd() == null ? null : String.valueOf(detail.getLeftEyeAdd());
-            String leftPD = bdToText(detail.getPdLeft());
-
-            Long frameId = detail.getFrame() != null ? detail.getFrame().getFrameID() : null;
-            Long lensId = detail.getLens() != null ? detail.getLens().getLensID() : null;
-            Product frameProduct = detail.getFrame() != null ? detail.getFrame().getProduct() : null;
-            Product lensProduct = detail.getLens() != null ? detail.getLens().getProduct() : null;
-            String frameName = frameProduct != null ? frameProduct.getProductName() : null;
-            String lensName = lensProduct != null ? lensProduct.getProductName() : null;
-
-            BigDecimal framePrice = productPrice(frameProduct);
-            BigDecimal lensPrice = productPrice(lensProduct);
-            BigDecimal lineTotal = detail.getSubTotal() == null ? BigDecimal.ZERO : detail.getSubTotal();
-
-            PrescriptionGroupKey key = new PrescriptionGroupKey(
-                    frameId,
-                    lensId,
-                    rightSph,
-                    rightCyl,
-                    rightAdd,
-                    rightAxis,
-                    rightPD,
-                    leftSph,
-                    leftCyl,
-                    leftAxis,
-                    leftAdd,
-                    leftPD,
-                    bdToText(lineTotal)
-            );
-
-            RxAggregate aggregate = aggregates.computeIfAbsent(key, k -> new RxAggregate(
-                    StaffPrescriptionOrderItemResponse.builder()
-                            .prescriptionOrderDetailId(detail.getPrescriptionOrderDetailID())
-                            .frameId(frameId)
-                            .frameName(frameName)
-                            .framePrice(framePrice)
-                            .frameImg(pickPrimaryImage(frameProduct))
-                            .lensId(lensId)
-                            .lensName(lensName)
-                            .lensPrice(lensPrice)
-                            .lensImg(pickPrimaryImage(lensProduct))
-                            .contactLensId(null)
-                            .contactLensName(null)
-                            .contactLensPrice(BigDecimal.ZERO)
-                            .contactLensImg(null)
-                            .rightEyeSph(rightSph)
-                            .rightEyeCyl(rightCyl)
-                            .rightEyeAxis(rightAxis)
-                            .rightEyeAdd(rightAdd)
-                            .rightPD(rightPD)
-                            .leftEyeSph(leftSph)
-                            .leftEyeCyl(leftCyl)
-                            .leftEyeAxis(leftAxis)
-                            .leftEyeAdd(leftAdd)
-                            .leftPD(leftPD)
-                            .quantity(0)
-                            .totalPrice(BigDecimal.ZERO)
-                            .build()
-            ));
-
-            aggregate.response.setQuantity(aggregate.response.getQuantity() + 1);
-            aggregate.response.setTotalPrice(aggregate.response.getTotalPrice().add(lineTotal));
+        List<String> actions = new ArrayList<>();
+        if (isStatus(orderStatus, OrderConstants.ORDER_STATUS_CONFIRMED)) {
+            if (hasPrescriptionItem) {
+                actions.add(OrderConstants.OPERATION_ACTION_START_PROCESSING);
+            } else if (isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_PENDING)) {
+                actions.add(OrderConstants.OPERATION_ACTION_START_PACKING);
+            }
         }
-        return aggregates.values().stream().map(a -> a.response).toList();
+
+        if (isStatus(orderStatus, OrderConstants.ORDER_STATUS_PROCESSING)
+                && hasPrescriptionItem
+                && isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_PENDING)) {
+            actions.add(OrderConstants.OPERATION_ACTION_MOVE_TO_PACKING);
+        }
+
+        if (isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_PACKING)) {
+            actions.add(OrderConstants.OPERATION_ACTION_HANDOVER_TO_GHN);
+        }
+
+        if (isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_SHIPPING)) {
+            actions.add(OrderConstants.OPERATION_ACTION_MARK_DELIVERED);
+            actions.add(OrderConstants.OPERATION_ACTION_MARK_FAILED);
+            actions.add(OrderConstants.OPERATION_ACTION_MARK_RETURNED);
+        }
+
+        if (isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_DELIVERED)) {
+            actions.add(OrderConstants.OPERATION_ACTION_COMPLETE_ORDER);
+        }
+
+        if (!preOrderInventoryReady) {
+            actions.removeIf(this::requiresPreOrderInventoryValidation);
+        }
+
+        return actions;
     }
 
     private record ProductQuantityRequirement(Product product, int requiredQuantity, int availableQuantity) {
@@ -1071,130 +1277,6 @@ public class StaffOrderServiceImpl implements StaffOrderService {
             }
             return new ProductQuantityRequirement(product, requiredQuantity + additionalQuantity, availableQuantity);
         }
-    }
-
-    private BigDecimal productPrice(Product product) {
-        return product != null && product.getPrice() != null ? product.getPrice() : BigDecimal.ZERO;
-    }
-
-    private String pickPrimaryImage(Product... products) {
-        if (products == null) {
-            return null;
-        }
-        for (Product product : products) {
-            String image = pickPrimaryImage(product);
-            if (image != null) {
-                return image;
-            }
-        }
-        return null;
-    }
-
-    private String pickPrimaryImage(Product product) {
-        if (product == null || product.getImages() == null || product.getImages().isEmpty()) {
-            return null;
-        }
-        return product.getImages().stream()
-                .filter(Objects::nonNull)
-                .filter(i -> Boolean.TRUE.equals(i.getAvatar()))
-                .findFirst()
-                .map(ProductImage::getImageUrl)
-                .orElseGet(() -> product.getImages().stream()
-                        .filter(Objects::nonNull)
-                        .map(ProductImage::getImageUrl)
-                        .filter(StringUtils::hasText)
-                        .findFirst()
-                        .orElse(null));
-    }
-
-    private String bdToText(BigDecimal value) {
-        return value == null ? null : value.stripTrailingZeros().toPlainString();
-    }
-
-    private String bdToText(Double value) {
-        return value == null ? null : BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
-    }
-
-    private Pageable buildPageable(StaffOrderSearchRequest request) {
-        int page = request.getPage() == null ? 0 : Math.max(request.getPage(), 0);
-        int size = request.getSize() == null ? 50 : Math.min(Math.max(request.getSize(), 1), 100);
-
-        String sortBy = request.getSortBy();
-        if (!StringUtils.hasText(sortBy) || !ALLOWED_SORT_FIELDS.contains(sortBy)) {
-            sortBy = "orderDate";
-        }
-
-        String sortDir = request.getSortDir();
-        Sort sort = "asc".equalsIgnoreCase(sortDir)
-                ? Sort.by(sortBy).ascending()
-                : Sort.by(sortBy).descending();
-
-        return PageRequest.of(page, size, sort);
-    }
-
-    private Specification<Order> buildSpecification(StaffOrderSearchRequest request, boolean operationStaffScope) {
-        return (root, query, cb) -> {
-            List<Predicate> predicates = new ArrayList<>();
-            Set<String> allowedOrderTypes = STAFF_ALLOWED_ORDER_TYPES;
-            Set<String> allowedOrderStatuses = operationStaffScope
-                    ? OPERATION_ALLOWED_ORDER_STATUSES
-                    : SALES_ALLOWED_ORDER_STATUSES;
-
-            if (StringUtils.hasText(request.getOrderCode())) {
-                String keyword = "%" + request.getOrderCode().trim().toUpperCase() + "%";
-                predicates.add(cb.like(cb.upper(root.get("orderCode")), keyword));
-            }
-
-            if (request.getOrderDate() != null) {
-                LocalDateTime start = request.getOrderDate().atStartOfDay();
-                LocalDateTime end = request.getOrderDate().plusDays(1).atStartOfDay();
-                predicates.add(cb.greaterThanOrEqualTo(root.get("orderDate"), start));
-                predicates.add(cb.lessThan(root.get("orderDate"), end));
-            }
-
-            if (!operationStaffScope && StringUtils.hasText(request.getOrderType())) {
-                String normalizedType = request.getOrderType().trim().toUpperCase();
-                if (!allowedOrderTypes.contains(normalizedType)) {
-                    return cb.disjunction();
-                }
-                predicates.add(cb.equal(cb.upper(root.get("orderType")), normalizedType));
-            }
-
-            boolean hasOrderStatusFilter = StringUtils.hasText(request.getOrderStatus());
-            if (hasOrderStatusFilter) {
-                String normalizedStatus = request.getOrderStatus().trim().toUpperCase(Locale.ROOT);
-                if (!allowedOrderStatuses.contains(normalizedStatus)) {
-                    return cb.disjunction();
-                }
-                predicates.add(cb.equal(cb.upper(root.get("orderStatus")), normalizedStatus));
-            }
-            if (!operationStaffScope) {
-                predicates.add(cb.upper(root.get("orderType")).in(allowedOrderTypes));
-            }
-            predicates.add(cb.upper(root.get("orderStatus")).in(allowedOrderStatuses));
-
-            return cb.and(predicates.toArray(new Predicate[0]));
-        };
-    }
-
-    /*
-     * Hàm này dùng để từ 1 dòng dữ liệu trong table Order và kiểm tra xem đơn hàng đó có bao gồm: PRESCRIPTION_ORDER hay không?
-     */
-    private Predicate buildHasPrescriptionPredicate(jakarta.persistence.criteria.Root<Order> root,
-                                                    jakarta.persistence.criteria.CriteriaQuery<?> query,
-                                                    jakarta.persistence.criteria.CriteriaBuilder cb) {
-        Subquery<Long> subquery = query.subquery(Long.class);
-        Root<PrescriptionOrder> prescriptionRoot = subquery.from(PrescriptionOrder.class);
-        subquery.select(prescriptionRoot.get("prescriptionOrderID"));
-        subquery.where(cb.equal(prescriptionRoot.get("order"), root));
-        return cb.exists(subquery);
-    }
-
-    private OrderStatusOptionResponse statusOption(String code, String displayName) {
-        return OrderStatusOptionResponse.builder()
-                .code(code)
-                .displayName(displayName)
-                .build();
     }
 
     private static class RxAggregate {
@@ -1222,165 +1304,114 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     ) {
     }
 
+    /* =========================================================
+       SALES STAFF Methods
+       ========================================================= */
+
     @Override
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
-    public StaffReturnExchangeDetailResponse getReturnExchangeDetailForSalesStaff(Long returnExchangeId) {
-        ReturnExchange returnExchange = returnExchangeRepo.findById(returnExchangeId)
-                .orElseThrow(() -> new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FOUND));
+    public List<StaffOrderListResponse> getOrdersForStaff() {
+        StaffOrderSearchRequest request = StaffOrderSearchRequest.builder().build();
+        Specification<Order> specification = buildSpecification(request, false);
+        List<Order> orders = orderRepo.findAll(specification, Sort.by("orderDate").descending());
+        return orders.stream().map(staffOrderMapper::toStaffOrderListResponse).toList();
+    }
 
-        Long orderId = returnExchange.getOrder() == null ? null : returnExchange.getOrder().getOrderID();
-        if (orderId == null) {
+    @Override
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public Page<StaffOrderListResponse> searchOrdersForStaff(StaffOrderSearchRequest request) {
+        Pageable pageable = buildPageable(request);
+        Specification<Order> specification = buildSpecification(request, false);
+
+        Page<Order> orderPage = orderRepo.findAll(specification, pageable);
+        return orderPage.map(staffOrderMapper::toStaffOrderListResponse);
+    }
+
+    @Override
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public StaffOrderDetailResponse getOrderDetailForSalesStaff(Long orderId) {
+        Order order = getOrderByIdFetchStatus(orderId);
+        return buildOrderDetailResponse(order, false);
+    }
+
+    // Hàm này dùng để cập nhật Order_Status cho trang OrderDetail của SALES STAFF
+    @Override
+    @Transactional
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public StaffOrderDetailResponse confirmOrderForSalesStaff(Long orderId) {
+        Order order = getOrderByIdFetchStatus(orderId);
+        String currentStatus = order.getOrderStatus() == null
+                ? ""
+                : order.getOrderStatus().trim().toUpperCase(Locale.ROOT);
+
+        if (!SALES_CONFIRMABLE_STATUSES.contains(currentStatus)) {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
 
-        StaffOrderDetailResponse orderDetailResponse = getOrderDetailForSalesStaff(orderId);
-        ShippingInfo shippingInfo = returnExchange.getOrder() == null ? null : returnExchange.getOrder().getShippingInfo();
-        LocalDateTime deliveredAt = shippingInfo == null ? null : shippingInfo.getDeliveredAt();
+        order.setOrderStatus(OrderConstants.ORDER_STATUS_CONFIRMED);
+        return buildOrderDetailResponse(order, false);
+    }
 
-        return StaffReturnExchangeDetailResponse.builder()
-                .orderId(orderDetailResponse.getOrderId())
-                .orderCode(orderDetailResponse.getOrderCode())
-                .orderStatus(orderDetailResponse.getOrderStatus())
-                .orderType(orderDetailResponse.getOrderType())
-                .orderDate(orderDetailResponse.getOrderDate())
-                .totalAmount(orderDetailResponse.getTotalAmount())
-                .shippingStatus(orderDetailResponse.getShippingStatus())
-                .shippingFee(orderDetailResponse.getShippingFee())
-                .expectedDeliveryAt(orderDetailResponse.getExpectedDeliveryAt())
-                .deliveredAt(deliveredAt)
-                .remainingTimeValid(calculateRemainingTimeValid(deliveredAt))
-                .isPastExpectedDeliveryAt(orderDetailResponse.getIsPastExpectedDeliveryAt())
-                .hasPrescriptionItem(orderDetailResponse.getHasPrescriptionItem())
-                .requiresFinalPayment(orderDetailResponse.getRequiresFinalPayment())
-                .availableActions(orderDetailResponse.getAvailableActions())
-                .customerName(orderDetailResponse.getCustomerName())
-                .customerPhone(orderDetailResponse.getCustomerPhone())
-                .customerEmail(orderDetailResponse.getCustomerEmail())
-                .orderDetail(orderDetailResponse.getOrderDetail())
-                .prescriptionOrderDetail(orderDetailResponse.getPrescriptionOrderDetail())
-                .recipientName(orderDetailResponse.getRecipientName())
-                .recipientPhone(orderDetailResponse.getRecipientPhone())
-                .recipientEmail(orderDetailResponse.getRecipientEmail())
-                .recipientAddress(orderDetailResponse.getRecipientAddress())
-                .note(orderDetailResponse.getNote())
-                .returnExchangeId(returnExchange.getReturnExchangeID())
-                .returnCode(returnExchange.getReturnCode())
-                .requestDate(returnExchange.getRequestDate())
-                .returnExchangeStatus(returnExchange.getStatus())
-                .returnType(returnExchange.getReturnType())
-                .requestScope(returnExchange.getRequestScope())
-                .requestNote(returnExchange.getRequestNote())
-                .returnReason(returnExchange.getReturnReason())
-                .customerAccountQr(returnExchange.getCustomerAccountQr())
-                .refundAmount(returnExchange.getRefundAmount())
-                .refundMethod(returnExchange.getRefundMethod())
-                .refundAccountNumber(returnExchange.getRefundAccountNumber())
-                .refundAccountName(returnExchange.getRefundAccountName())
-                .refundReferenceCode(returnExchange.getRefundReferenceCode())
-                .staffRefundEvidenceUrl(returnExchange.getStaffRefundEvidenceUrl())
-                .approvedDate(returnExchange.getApprovedDate())
-                .approvedByName(returnExchange.getApprovedBy() == null ? null : returnExchange.getApprovedBy().getName())
-                .processedDate(returnExchange.getProcessedDate())
-                .processedByName(returnExchange.getProcessedBy() == null ? null : returnExchange.getProcessedBy().getName())
-                .rejectReason(returnExchange.getRejectReason())
-                .returnExchangeItems(mapReturnExchangeItems(returnExchange.getReturnExchangeItems()))
-                .build();
+    @Override
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public List<OrderStatusGroupResponse> getSalesStaffOrderStatuses() {
+        return buildOrderStatusGroups(List.of(
+                statusOption(OrderConstants.ORDER_STATUS_PENDING, "Đang chờ"),
+                statusOption(OrderConstants.ORDER_STATUS_CONFIRMED, "Đã xác nhận và đang chuẩn bị hàng"),
+                statusOption(OrderConstants.ORDER_STATUS_PARTIALLY_PAID, "Đã trả cọc 1 phần"),
+                statusOption(OrderConstants.ORDER_STATUS_PAID, "Đã trả"),
+                statusOption(OrderConstants.ORDER_STATUS_PROCESSING, "Đang gia công"),
+                statusOption(OrderConstants.ORDER_STATUS_READY, "Đã chuyển cho đơn vị vận chuyển"),
+                statusOption(OrderConstants.ORDER_STATUS_COMPLETED, "Hoàn thành"),
+                statusOption(OrderConstants.ORDER_STATUS_CANCELED, "Đã hủy")
+        ));
+    }
+
+    @Override
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public List<StaffReturnExchangeListResponse> getReturnExchangeOrders() {
+        return returnExchangeRepo.findStaffReturnExchangeSummaries().stream()
+                .map(this::mapToStaffReturnExchangeListResponse)
+                .toList();
+    }
+
+    @Override
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public List<StaffReturnExchangeListResponse> getCancelRefundRequestsForSalesStaff() {
+        return returnExchangeRepo.findCancelRefundRequestsForSalesStaff().stream()
+                .map(this::mapToStaffReturnExchangeListResponse)
+                .toList();
+    }
+
+    @Override
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public StaffReturnExchangeDetailResponse getCancelRefundRequestDetailForSalesStaff(Long returnExchangeId) {
+        ReturnExchange returnExchange = getReturnExchangeByIdOrThrow(returnExchangeId);
+        validateCancelRefundRequestFlow(returnExchange);
+        return buildReturnExchangeDetailResponse(returnExchange);
+    }
+
+    @Override
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public StaffReturnExchangeDetailResponse getReturnExchangeDetailForSalesStaff(Long returnExchangeId) {
+        ReturnExchange returnExchange = getReturnExchangeByIdOrThrow(returnExchangeId);
+        return buildReturnExchangeDetailResponse(returnExchange);
     }
 
     @Override
     public ReturnExchangeResponse getReturnExchangeById(Long returnExchangeId) {
-        ReturnExchange returnExchange = returnExchangeRepo.findById(returnExchangeId)
-                .orElseThrow(() -> new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FOUND));
+        ReturnExchange returnExchange = getReturnExchangeByIdOrThrow(returnExchangeId);
         return returnExchangeMapper.toReturnExchangeResponse(returnExchange);
     }
 
     @Override
     @Transactional
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
-    public ReturnExchangeResponse updateCancelRefundRequestStatusForSalesStaff(Long returnExchangeId, ReturnExchangeDecisionRequest request) {
-        ReturnExchange returnExchange = returnExchangeRepo.findById(returnExchangeId)
-                .orElseThrow(() -> new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FOUND));
-        if (!"REFUND".equals(normalize(returnExchange.getReturnType()))) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-        if (!"ORDER".equals(normalize(returnExchange.getRequestScope()))) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-        if (returnExchange.getRefundAmount() == null || returnExchange.getRefundAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-        Order order = returnExchange.getOrder();
-        if (order == null || !"CANCELED".equals(normalize(order.getOrderStatus()))) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-
-        String action = request == null ? "" : normalize(request.getAction());
-        String targetStatus = resolveReturnStatusAction(action);
-        String currentStatus = normalize(returnExchange.getStatus());
-        if (!RETURN_STATUS_PENDING.equals(currentStatus) || targetStatus == null) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-
-        switch (targetStatus) {
-            case RETURN_STATUS_APPROVED -> {
-                returnExchange.setStatus(RETURN_STATUS_APPROVED);
-                returnExchange.setApprovedBy(getCurrentUser());
-                returnExchange.setApprovedDate(LocalDateTime.now(APP_ZONE_ID));
-                returnExchange.setRejectReason(null);
-            }
-            case RETURN_STATUS_REJECTED -> {
-                String rejectReason = request == null ? "" : request.getRejectReason();
-                if (!StringUtils.hasText(rejectReason)) {
-                    throw new AppException(ErrorCode.INVALID_REQUEST);
-                }
-                returnExchange.setStatus(RETURN_STATUS_REJECTED);
-                returnExchange.setApprovedBy(getCurrentUser());
-                returnExchange.setApprovedDate(LocalDateTime.now(APP_ZONE_ID));
-                returnExchange.setRejectReason(rejectReason.trim());
-            }
-            default -> throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-        ReturnExchange savedReturnExchange = returnExchangeRepo.save(returnExchange);
-        return returnExchangeMapper.toReturnExchangeResponse(savedReturnExchange);
-    }
-
-    @Override
-    @Transactional
-    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
-    public ReturnExchangeResponse updateReturnExchangeStatusForSalesStaff(Long returnExchangeId, ReturnExchangeDecisionRequest request) {
-        ReturnExchange returnExchange = returnExchangeRepo.findById(returnExchangeId)
-                .orElseThrow(() -> new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FOUND));
-
-        String action = request == null ? "" : normalize(request.getAction());
-        String targetStatus = resolveReturnStatusAction(action);
-        String currentStatus = normalize(returnExchange.getStatus());
-        if (!RETURN_STATUS_PENDING.equals(currentStatus)) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-        if (targetStatus == null) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-
-        switch (targetStatus) {
-            case RETURN_STATUS_APPROVED -> {
-                validateApproveWithinWindow(returnExchange);
-                returnExchange.setStatus(RETURN_STATUS_APPROVED);
-                returnExchange.setApprovedBy(getCurrentUser());
-                returnExchange.setApprovedDate(LocalDateTime.now(APP_ZONE_ID));
-                returnExchange.setRejectReason(null);
-            }
-            case RETURN_STATUS_REJECTED -> {
-                String rejectReason = request == null ? "" : request.getRejectReason();
-                if (!StringUtils.hasText(rejectReason)) {
-                    throw new AppException(ErrorCode.INVALID_REQUEST);
-                }
-                returnExchange.setStatus(RETURN_STATUS_REJECTED);
-                returnExchange.setApprovedBy(getCurrentUser());
-                returnExchange.setApprovedDate(LocalDateTime.now(APP_ZONE_ID));
-                returnExchange.setRejectReason(rejectReason.trim());
-            }
-            default -> throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
+    public ReturnExchangeResponse updateCancelRefundRequestStatusForSalesStaff(Long returnExchangeId,
+                                                                               ReturnExchangeDecisionRequest request) {
+        ReturnExchange returnExchange = getReturnExchangeByIdOrThrow(returnExchangeId);
+        validateCancelRefundRequestFlow(returnExchange);
+        applyReturnExchangeDecision(returnExchange, request, false);
 
         ReturnExchange savedReturnExchange = returnExchangeRepo.save(returnExchange);
         return returnExchangeMapper.toReturnExchangeResponse(savedReturnExchange);
@@ -1389,242 +1420,162 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     @Override
     @Transactional
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
-    public ReturnExchangeResponse completeCancelRefundRequestForSalesStaff(Long returnExchangeId, StaffCompleteRefundRequest request, MultipartFile staffEvidenceFile) {
-        ReturnExchange returnExchange = returnExchangeRepo.findById(returnExchangeId)
-                .orElseThrow(() -> new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FOUND));
-        if (!isCancelRefundRequestFlow(returnExchange)) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-        if (!RETURN_STATUS_APPROVED.equals(normalize(returnExchange.getStatus()))) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
+    public ReturnExchangeResponse updateReturnExchangeStatusForSalesStaff(Long returnExchangeId,
+                                                                          ReturnExchangeDecisionRequest request) {
+        ReturnExchange returnExchange = getReturnExchangeByIdOrThrow(returnExchangeId);
+        applyReturnExchangeDecision(returnExchange, request, true);
 
-        BigDecimal expectedRefundAmount = returnExchange.getRefundAmount();
-        if (expectedRefundAmount == null || request.getRefundAmount().compareTo(expectedRefundAmount) != 0) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-        if (staffEvidenceFile == null || staffEvidenceFile.isEmpty()) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
+        ReturnExchange savedReturnExchange = returnExchangeRepo.save(returnExchange);
+        return returnExchangeMapper.toReturnExchangeResponse(savedReturnExchange);
+    }
 
-        String staffEvidenceUrl;
-        try {
-            staffEvidenceUrl = imageUploadService.uploadImage(staffEvidenceFile);
-        } catch (IOException e) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-
-        returnExchange.setStatus(RETURN_STATUS_COMPLETED);
-        returnExchange.setRefundAmount(request.getRefundAmount());
-        returnExchange.setRefundReferenceCode(request.getRefundReferenceCode());
-        returnExchange.setStaffRefundEvidenceUrl(staffEvidenceUrl);
-        returnExchange.setProcessedBy(getCurrentUser());
-        returnExchange.setProcessedDate(LocalDateTime.now(APP_ZONE_ID));
+    @Override
+    @Transactional
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public ReturnExchangeResponse completeCancelRefundRequestForSalesStaff(Long returnExchangeId,
+                                                                           StaffCompleteRefundRequest request,
+                                                                           MultipartFile staffEvidenceFile) {
+        ReturnExchange returnExchange = getReturnExchangeByIdOrThrow(returnExchangeId);
+        validateCancelRefundRequestFlow(returnExchange);
+        completeRefund(returnExchange, request, staffEvidenceFile);
 
         ReturnExchange savedReturnExchange = returnExchangeRepo.save(returnExchange);
         updateSuccessfulPaymentsToRefunded(returnExchange.getOrder());
         restockCanceledOrderInventory(returnExchange.getOrder());
+
         return returnExchangeMapper.toReturnExchangeResponse(savedReturnExchange);
     }
 
     @Override
     @Transactional
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
-    public ReturnExchangeResponse completeRefundForSalesStaff(Long returnExchangeId, StaffCompleteRefundRequest request, MultipartFile staffEvidenceFile) {
-        ReturnExchange returnExchange = returnExchangeRepo.findById(returnExchangeId)
-                .orElseThrow(() -> new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FOUND));
-
-        String currentStatus = normalize(returnExchange.getStatus());
-        if (!RETURN_STATUS_APPROVED.equals(currentStatus)) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-
-        BigDecimal expectedRefundAmount = returnExchange.getRefundAmount();
-        if (expectedRefundAmount == null || request.getRefundAmount().compareTo(expectedRefundAmount) != 0) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-        if (staffEvidenceFile == null || staffEvidenceFile.isEmpty()) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-        String staffEvidenceUrl;
-        try {
-            staffEvidenceUrl = imageUploadService.uploadImage(staffEvidenceFile);
-        } catch (IOException e) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-
-        // Cập nhật thông tin hoàn tiền
-        returnExchange.setStatus(RETURN_STATUS_COMPLETED);
-        returnExchange.setRefundAmount(request.getRefundAmount());
-        returnExchange.setRefundReferenceCode(request.getRefundReferenceCode());
-        returnExchange.setStaffRefundEvidenceUrl(staffEvidenceUrl);
-
-        // Cập nhật người thực hiện và ngày thực hiện
-        returnExchange.setProcessedBy(getCurrentUser());
-        returnExchange.setProcessedDate(LocalDateTime.now(APP_ZONE_ID));
+    public ReturnExchangeResponse completeRefundForSalesStaff(Long returnExchangeId,
+                                                              StaffCompleteRefundRequest request,
+                                                              MultipartFile staffEvidenceFile) {
+        ReturnExchange returnExchange = getReturnExchangeByIdOrThrow(returnExchangeId);
+        completeRefund(returnExchange, request, staffEvidenceFile);
 
         ReturnExchange savedReturnExchange = returnExchangeRepo.save(returnExchange);
         return returnExchangeMapper.toReturnExchangeResponse(savedReturnExchange);
     }
 
-    private boolean isCancelRefundRequestFlow(ReturnExchange returnExchange) {
-        if (returnExchange == null) {
-            return false;
-        }
-        if (!"REFUND".equals(normalize(returnExchange.getReturnType()))) {
-            return false;
-        }
-        if (!"ORDER".equals(normalize(returnExchange.getRequestScope()))) {
-            return false;
-        }
-        if (returnExchange.getRefundAmount() == null || returnExchange.getRefundAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            return false;
-        }
-        Order order = returnExchange.getOrder();
-        return order != null && "CANCELED".equals(normalize(order.getOrderStatus()));
+    /* =========================================================
+       OPERATIONS STAFF Methods
+       ========================================================= */
+
+    @Override
+    @PreAuthorize("hasAnyAuthority('ROLE_OPERATIONS STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public Page<StaffOrderListResponse> searchOrdersForOperationStaff(StaffOrderSearchRequest request) {
+        Pageable pageable = buildPageable(request);
+        Specification<Order> specification = buildSpecification(request, true);
+
+        Page<Order> orderPage = orderRepo.findAll(specification, pageable);
+        return orderPage.map(staffOrderMapper::toStaffOrderListResponse);
     }
 
-    private void updateSuccessfulPaymentsToRefunded(Order order) {
-        if (order == null || order.getPayments() == null || order.getPayments().isEmpty()) {
-            return;
-        }
-        List<Payment> successfulPayments = order.getPayments().stream()
-                .filter(Objects::nonNull)
-                .filter(p -> OrderConstants.PAYMENT_STATUS_SUCCESS.equalsIgnoreCase(p.getStatus()))
-                .toList();
-        if (successfulPayments.isEmpty()) {
-            return;
-        }
-        successfulPayments.forEach(p -> p.setStatus(OrderConstants.PAYMENT_STATUS_REFUNDED));
-        paymentRepo.saveAll(successfulPayments);
+    @Override
+    @PreAuthorize("hasAnyAuthority('ROLE_OPERATIONS STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public StaffOrderDetailResponse getOrderDetailForOperationStaff(Long orderId) {
+        Order order = getOrderByIdFetchStatus(orderId);
+        return buildOrderDetailResponse(order, true);
     }
 
-    private void restockCanceledOrderInventory(Order order) {
-        if (order == null || order.getOrderID() == null) {
-            return;
-        }
-        List<OrderDetail> orderDetails = orderDetailRepo.findByOrderIdFetchProduct(order.getOrderID());
-        if (orderDetails == null || orderDetails.isEmpty()) {
-            return;
-        }
+    @Override
+    @Transactional
+    @PreAuthorize("hasAnyAuthority('ROLE_OPERATIONS STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public StaffOrderDetailResponse updateOrderForOperationStaff(Long orderId, String action) {
+        Order order = getOrderByIdFetchStatus(orderId);
+        ShippingInfo shippingInfo = requireShippingInfo(order);
+        PrescriptionOrder prescriptionOrder = prescriptionOrderRepo.findByOrder_OrderID(orderId).orElse(null);
+        boolean hasPrescriptionItem = hasPrescriptionItem(prescriptionOrder);
+        boolean requiresFinalPayment = isRequiresFinalPayment(order);
 
-        Map<Long, Integer> qtyByProductId = new HashMap<>();
-        for (OrderDetail orderDetail : orderDetails) {
-            if (orderDetail == null || orderDetail.getProduct() == null || orderDetail.getProduct().getProductID() == null) {
-                continue;
-            }
-            int quantity = orderDetail.getQuantity() == null ? 0 : orderDetail.getQuantity();
-            if (quantity <= 0) {
-                continue;
-            }
-            qtyByProductId.merge(orderDetail.getProduct().getProductID(), quantity, Integer::sum);
-        }
-        if (qtyByProductId.isEmpty()) {
-            return;
-        }
-
-        List<Long> productIds = qtyByProductId.keySet().stream().sorted().toList();
-        List<Product> products = productRepo.findByIdsForUpdate(productIds);
-        if (products.size() != productIds.size()) {
+        String orderStatus = normalize(order.getOrderStatus());
+        String shippingStatus = normalize(shippingInfo.getShippingStatus());
+        if (isReadOnlyStatus(orderStatus, shippingStatus)) {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
 
-        for (Product product : products) {
-            int increaseQty = qtyByProductId.getOrDefault(product.getProductID(), 0);
-            if (increaseQty <= 0) {
-                continue;
+        String normalizedAction = normalize(action);
+        validatePreOrderInventoryForOperationUpdate(order, normalizedAction);
+
+        switch (normalizedAction) {
+            case OrderConstants.OPERATION_ACTION_START_PROCESSING -> {
+                if (!isStatus(orderStatus, OrderConstants.ORDER_STATUS_CONFIRMED) || !hasPrescriptionItem) {
+                    throw new AppException(ErrorCode.INVALID_REQUEST);
+                }
+                order.setOrderStatus(OrderConstants.ORDER_STATUS_PROCESSING);
             }
-            int onHandBefore = product.getOnHandQuantity() == null ? 0 : product.getOnHandQuantity();
-            product.setOnHandQuantity(onHandBefore + increaseQty);
+            case OrderConstants.OPERATION_ACTION_START_PACKING -> {
+                if (!isStatus(orderStatus, OrderConstants.ORDER_STATUS_CONFIRMED)
+                        || hasPrescriptionItem
+                        || !isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_PENDING)) {
+                    throw new AppException(ErrorCode.INVALID_REQUEST);
+                }
+                shippingInfo.setShippingStatus(OrderConstants.SHIPPING_STATUS_PACKING);
+            }
+            case OrderConstants.OPERATION_ACTION_MOVE_TO_PACKING -> {
+                if (!isStatus(orderStatus, OrderConstants.ORDER_STATUS_PROCESSING)
+                        || !hasPrescriptionItem
+                        || !isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_PENDING)) {
+                    throw new AppException(ErrorCode.INVALID_REQUEST);
+                }
+                shippingInfo.setShippingStatus(OrderConstants.SHIPPING_STATUS_PACKING);
+            }
+            case OrderConstants.OPERATION_ACTION_HANDOVER_TO_GHN -> {
+                if (!isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_PACKING)) {
+                    throw new AppException(ErrorCode.INVALID_REQUEST);
+                }
+                order.setOrderStatus(OrderConstants.ORDER_STATUS_READY);
+                shippingInfo.setShippingStatus(OrderConstants.SHIPPING_STATUS_SHIPPING);
+            }
+            case OrderConstants.OPERATION_ACTION_MARK_DELIVERED -> {
+                if (!isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_SHIPPING)) {
+                    throw new AppException(ErrorCode.INVALID_REQUEST);
+                }
+                validateReachedExpectedDeliveryAt(shippingInfo);
+                shippingInfo.setShippingStatus(OrderConstants.SHIPPING_STATUS_DELIVERED);
+                shippingInfo.setDeliveredAt(LocalDateTime.now(APP_ZONE_ID));
+                settlePaymentsAndInvoiceOnDelivered(order);
+            }
+            case OrderConstants.OPERATION_ACTION_MARK_FAILED -> {
+                if (!isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_SHIPPING)) {
+                    throw new AppException(ErrorCode.INVALID_REQUEST);
+                }
+                shippingInfo.setShippingStatus(OrderConstants.SHIPPING_STATUS_FAILED);
+                order.setOrderStatus(OrderConstants.ORDER_STATUS_CANCELED);
+            }
+            case OrderConstants.OPERATION_ACTION_MARK_RETURNED -> {
+                if (!isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_SHIPPING)
+                        && !isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_DELIVERED)) {
+                    throw new AppException(ErrorCode.INVALID_REQUEST);
+                }
+                shippingInfo.setShippingStatus(OrderConstants.SHIPPING_STATUS_RETURNED);
+                order.setOrderStatus(OrderConstants.ORDER_STATUS_RETURNED);
+            }
+            case OrderConstants.OPERATION_ACTION_COMPLETE_ORDER -> {
+                if (!isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_DELIVERED)) {
+                    throw new AppException(ErrorCode.INVALID_REQUEST);
+                }
+                validateReachedExpectedDeliveryAt(shippingInfo);
+                settlePaymentsAndInvoiceOnDelivered(order);
+                order.setOrderStatus(OrderConstants.ORDER_STATUS_COMPLETED);
+            }
+            default -> throw new AppException(ErrorCode.INVALID_REQUEST);
         }
-        productRepo.saveAll(products);
+
+        return buildOrderDetailResponse(order, true);
     }
 
-    private String resolveReturnStatusAction(String action) {
-        if (RETURN_ACTION_APPROVE.equals(action) || RETURN_ACTION_APPROVED.equals(action)) {
-            return RETURN_STATUS_APPROVED;
-        }
-        if (RETURN_ACTION_REJECT.equals(action) || RETURN_ACTION_REJECTED.equals(action)) {
-            return RETURN_STATUS_REJECTED;
-        }
-        return null;
-    }
-
-    private void validateApproveWithinWindow(ReturnExchange returnExchange) {
-        Order order = returnExchange.getOrder();
-        ShippingInfo shippingInfo = order == null ? null : order.getShippingInfo();
-        LocalDateTime deliveredAt = shippingInfo == null ? null : shippingInfo.getDeliveredAt();
-        if (deliveredAt == null) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-
-        LocalDateTime now = LocalDateTime.now(APP_ZONE_ID);
-        LocalDateTime deadline = deliveredAt.plusDays(RETURN_APPROVAL_WINDOW_DAYS);
-        if (now.isBefore(deliveredAt) || now.isAfter(deadline)) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-    }
-
-    private Long calculateRemainingTimeValid(LocalDateTime deliveredAt) {
-        if (deliveredAt == null) {
-            return null;
-        }
-        LocalDateTime now = LocalDateTime.now(APP_ZONE_ID);
-        LocalDateTime deadline = deliveredAt.plusDays(RETURN_APPROVAL_WINDOW_DAYS);
-        long remainingDays = ChronoUnit.DAYS.between(now, deadline);
-        return Math.max(remainingDays, 0L);
-    }
-
-    private StaffReturnExchangeListResponse mapToStaffReturnExchangeListResponse(StaffReturnExchangeListProjection source) {
-        return StaffReturnExchangeListResponse.builder()
-                .returnExchangeId(source.getReturnExchangeId())
-                .returnCode(source.getReturnCode())
-                .orderId(source.getOrderId())
-                .orderCode(source.getOrderCode())
-                .orderDate(source.getOrderDate())
-                .orderStatus(source.getOrderStatus())
-                .customerName(source.getCustomerName())
-                .customerPhone(source.getCustomerPhone())
-                .customerEmail(source.getCustomerEmail())
-                .returnType(source.getReturnType())
-                .requestScope(source.getRequestScope())
-                .requestDate(source.getRequestDate())
-                .returnExchangeStatus(source.getReturnExchangeStatus())
-                .refundAmount(source.getRefundAmount())
-                .refundMethod(source.getRefundMethod())
-                .refundAccountNumber(source.getRefundAccountNumber())
-                .refundAccountName(source.getRefundAccountName())
-                .requestNote(source.getRequestNote())
-                .rejectReason(source.getRejectReason())
-                .approvedDate(source.getApprovedDate())
-                .processedDate(source.getProcessedDate())
-                .build();
-    }
-
-    private List<ReturnExchangeItemResponse> mapReturnExchangeItems(List<ReturnExchangeItem> items) {
-        if (items == null || items.isEmpty()) {
-            return List.of();
-        }
-        return items.stream()
-                .map(item -> ReturnExchangeItemResponse.builder()
-                        .returnExchangeItemId(item.getReturnExchangeItemID())
-                        .orderDetailId(item.getOrderDetail() == null ? null : item.getOrderDetail().getOrderDetailID())
-                        .productId(item.getOrderDetail() == null || item.getOrderDetail().getProduct() == null
-                                ? null
-                                : item.getOrderDetail().getProduct().getProductID())
-                        .productName(item.getOrderDetail() == null || item.getOrderDetail().getProduct() == null
-                                ? null
-                                : item.getOrderDetail().getProduct().getProductName())
-                        .requestedQuantity(item.getQuantity())
-                        .orderQuantity(item.getOrderDetail() == null ? null : item.getOrderDetail().getQuantity())
-                        .itemSource(item.getItemSource())
-                        .itemEvidenceURL(item.getItemEvidenceUrl())
-                        .prescriptionOrderDetailId(item.getPrescriptionOrderDetail() == null
-                                ? null
-                                : item.getPrescriptionOrderDetail().getPrescriptionOrderDetailID())
-                        .itemReason(item.getItemReason())
-                        .note(item.getNote())
-                        .build())
-                .toList();
+    @Override
+    @PreAuthorize("hasAnyAuthority('ROLE_OPERATIONS STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    public List<OrderStatusGroupResponse> getOperationStaffOrderStatuses() {
+        return buildOrderStatusGroups(List.of(
+                statusOption(OrderConstants.ORDER_STATUS_CONFIRMED, "Đã xác nhận và đang chuẩn bị hàng"),
+                statusOption(OrderConstants.ORDER_STATUS_PROCESSING, "Đang gia công"),
+                statusOption(OrderConstants.ORDER_STATUS_READY, "Đã chuyển cho đơn vị vận chuyển"),
+                statusOption(OrderConstants.ORDER_STATUS_COMPLETED, "Hoàn thành"),
+                statusOption(OrderConstants.ORDER_STATUS_CANCELED, "Đã hủy")
+        ));
     }
 }
