@@ -66,6 +66,13 @@ public interface ReturnExchangeRepo extends JpaRepository<ReturnExchange, Long> 
             Pageable pageable
     );
 
+    List<ReturnExchange> findByOrder_OrderIDAndReturnTypeIgnoreCaseAndStatusIn(
+            Long orderId,
+            String returnType,
+            List<String> statuses
+    );
+
+
     @Query(value = """
         SELECT re.Return_Exchange_ID AS returnExchangeId,
                re.Return_Code AS returnCode,

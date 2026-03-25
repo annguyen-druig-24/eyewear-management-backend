@@ -26,18 +26,19 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
 @Transactional
 public class ReturnExchangeServiceImpl implements ReturnExchangeService {
+
+    private static final List<String> OPEN_RETURN_EXCHANGE_STATUSES = List.of("PENDING", "APPROVED");
 
     @Autowired
     private ReturnExchangeRepo returnExchangeRepository;
@@ -119,10 +120,14 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
     @Override
     public String createReturnExchange(ReturnExchangeRequest request, List<MultipartFile> itemImages, MultipartFile customerImageQr) {
         User currentUser = getCurrentUser();
+        String returnType = normalizeReturnType(request.getReturnType());
+        String requestScope = normalizeRequestScope(request.getRequestScope(), returnType);
 
         // 1. Kiểm tra Đơn hàng
         Order order = orderRepository.findById(request.getOrderId())
                 .orElseThrow(() -> new AppException(ErrorCode.ORDER_NOT_FOUND)); // Đổi mã lỗi tương ứng ORDER_NOT_FOUND
+
+        validateOpenRequestConflict(order.getOrderID(), returnType, requestScope);
 
         if (!"COMPLETED".equalsIgnoreCase(order.getOrderStatus())) {
             throw new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FIT);
@@ -136,7 +141,7 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
             }
         }
 
-        if ("RETURN".equalsIgnoreCase(request.getReturnType()) || "REFUND".equalsIgnoreCase(request.getReturnType())) {
+        if ("RETURN".equalsIgnoreCase(returnType) || "REFUND".equalsIgnoreCase(returnType)) {
             // Nếu là Trả hàng / Hoàn tiền thì 3 trường này BẮT BUỘC phải có
             if (request.getRefundMethod() == null || request.getRefundMethod().trim().isEmpty()) {
                 throw new AppException(ErrorCode.RETURN_EXCHANGE_REFUND_METHOD_NOT_FOUND);
@@ -149,16 +154,20 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
             }
         }
 
+        if ("ITEM".equals(requestScope) && (request.getItems() == null || request.getItems().isEmpty())) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
         // 2. Khởi tạo đối tượng Cha (Return_Exchange)
         ReturnExchange returnExchange = new ReturnExchange();
         returnExchange.setOrder(order);
         returnExchange.setUser(currentUser);
-        returnExchange.setReturnCode(generateReturnCode(request.getReturnType()));
+        returnExchange.setReturnCode(generateReturnCode(returnType));
         returnExchange.setRequestDate(LocalDateTime.now());
         returnExchange.setRequestNote(request.getRequestNote());
         returnExchange.setReturnReason(request.getReturnReason());
-        returnExchange.setReturnType(request.getReturnType());
-        returnExchange.setRequestScope(request.getRequestScope());
+        returnExchange.setReturnType(returnType);
+        returnExchange.setRequestScope(requestScope);
 
         // Set thông tin hoàn tiền nếu có
         returnExchange.setRefundMethod(request.getRefundMethod());
@@ -168,12 +177,20 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
 
         // 3. Chuẩn bị danh sách chi tiết đơn hàng để dò tìm tự động
         List<OrderDetail> normalDetails = order.getOrderDetails() != null ? order.getOrderDetails() : new ArrayList<>();
+        Map<Long, OrderDetail> normalDetailMap = normalDetails.stream()
+            .collect(Collectors.toMap(OrderDetail::getOrderDetailID, detail -> detail));
+
         List<PrescriptionOrderDetail> prescriptionDetails = new ArrayList<>();
 
         // Entity Order có @OneToOne PrescriptionOrder, lấy ra danh sách chi tiết kính thuốc nếu có
         if (order.getPrescriptionOrder() != null && order.getPrescriptionOrder().getPrescriptionOrderDetails() != null) {
             prescriptionDetails = order.getPrescriptionOrder().getPrescriptionOrderDetails();
         }
+        Map<Long, PrescriptionOrderDetail> prescriptionDetailMap = prescriptionDetails.stream()
+            .collect(Collectors.toMap(PrescriptionOrderDetail::getPrescriptionOrderDetailID, detail -> detail));
+
+        Map<String, Integer> openRequestedQtyByItem = getOpenRequestedQtyByItem(order.getOrderID(), returnType);
+        Map<String, Integer> currentRequestedQtyByItem = new HashMap<>();
 
         // 4. Xử lý các Items con
         List<ReturnExchangeItem> items = new ArrayList<>();
@@ -185,15 +202,8 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
                 Long targetId = itemReq.getOrderDetailId();
 
                 // Tự động dò tìm ID này thuộc về loại nào trong đơn hàng hiện tại
-                OrderDetail matchedNormal = normalDetails.stream()
-                        .filter(nd -> nd.getOrderDetailID().equals(targetId))
-                        .findFirst()
-                        .orElse(null);
-
-                PrescriptionOrderDetail matchedPrescription = prescriptionDetails.stream()
-                        .filter(pd -> pd.getPrescriptionOrderDetailID().equals(targetId))
-                        .findFirst()
-                        .orElse(null);
+                OrderDetail matchedNormal = normalDetailMap.get(targetId);
+                PrescriptionOrderDetail matchedPrescription = prescriptionDetailMap.get(targetId);
 
                 // Validation 1: Không tìm thấy ID này trong cả 2 danh sách
                 if (matchedNormal == null && matchedPrescription == null) {
@@ -218,23 +228,39 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
                         throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
                     }
 
+                    String itemKey = buildItemKey("ORDER_DETAIL", matchedNormal.getOrderDetailID());
+                    int qtyInOpenRequests = openRequestedQtyByItem.getOrDefault(itemKey, 0);
+                    int qtyInCurrentRequest = currentRequestedQtyByItem.getOrDefault(itemKey, 0) + itemReq.getQuantity();
+                    if (qtyInOpenRequests + qtyInCurrentRequest > matchedNormal.getQuantity()) {
+                        throw new AppException(ErrorCode.INVALID_REQUEST);
+                    }
+                    currentRequestedQtyByItem.put(itemKey, qtyInCurrentRequest);
+
                     returnItem.setOrderDetail(matchedNormal);
                     returnItem.setItemSource("ORDER_DETAIL");
                     returnItem.setQuantity(itemReq.getQuantity());
 
                     // Cộng dồn tiền
-                    if ("RETURN".equalsIgnoreCase(request.getReturnType()) || "REFUND".equalsIgnoreCase(request.getReturnType())) {
+                    if ("RETURN".equalsIgnoreCase(returnType) || "REFUND".equalsIgnoreCase(returnType)) {
                         BigDecimal itemRefund = matchedNormal.getUnitPrice().multiply(BigDecimal.valueOf(itemReq.getQuantity()));
                         refundAmount = refundAmount.add(itemRefund);
                     }
                 } else {
                     // ---> ĐÂY LÀ ĐƠN KÍNH THUỐC
+                    String itemKey = buildItemKey("PRESCRIPTION_ORDER_DETAIL", matchedPrescription.getPrescriptionOrderDetailID());
+                    int qtyInOpenRequests = openRequestedQtyByItem.getOrDefault(itemKey, 0);
+                    int qtyInCurrentRequest = currentRequestedQtyByItem.getOrDefault(itemKey, 0) + 1;
+                    if (qtyInOpenRequests + qtyInCurrentRequest > 1) {
+                        throw new AppException(ErrorCode.INVALID_REQUEST);
+                    }
+                    currentRequestedQtyByItem.put(itemKey, qtyInCurrentRequest);
+
                     returnItem.setPrescriptionOrderDetail(matchedPrescription);
                     returnItem.setItemSource("PRESCRIPTION_ORDER_DETAIL");
                     returnItem.setQuantity(1); // Mặc định kính thuốc tính là 1 bộ
 
                     // Cộng dồn tiền
-                    if ("RETURN".equalsIgnoreCase(request.getReturnType()) || "REFUND".equalsIgnoreCase(request.getReturnType())) {
+                    if ("RETURN".equalsIgnoreCase(returnType) || "REFUND".equalsIgnoreCase(returnType)) {
                         if (matchedPrescription.getSubTotal() != null) {
                             refundAmount = refundAmount.add(matchedPrescription.getSubTotal());
                         }
@@ -258,7 +284,7 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
                 itemIndex++;
             }
         }
-        if ("ORDER".equalsIgnoreCase(request.getRequestScope())) {
+        if ("ORDER".equalsIgnoreCase(requestScope)) {
             // Nếu trả nguyên toàn bộ đơn hàng (Scope là ORDER)
             refundAmount = order.getTotalAmount();
         }
@@ -283,6 +309,66 @@ public class ReturnExchangeServiceImpl implements ReturnExchangeService {
         returnExchangeRepository.save(returnExchange);
 
         return "Return exchange request created successfully";
+    }
+
+    private void validateOpenRequestConflict(Long orderId, String returnType, String requestScope) {
+        boolean hasOpenOrderScopeRequest = returnExchangeRepository.existsByOrder_OrderIDAndReturnTypeAndRequestScopeAndStatusIn(
+                orderId,
+                returnType,
+                "ORDER",
+                OPEN_RETURN_EXCHANGE_STATUSES
+        );
+        boolean hasOpenItemScopeRequest = returnExchangeRepository.existsByOrder_OrderIDAndReturnTypeAndRequestScopeAndStatusIn(
+                orderId,
+                returnType,
+                "ITEM",
+                OPEN_RETURN_EXCHANGE_STATUSES
+        );
+
+        if ("ORDER".equals(requestScope)) {
+            if (hasOpenOrderScopeRequest || hasOpenItemScopeRequest) {
+                throw new AppException(ErrorCode.INVALID_REQUEST);
+            }
+            return;
+        }
+
+        if (hasOpenOrderScopeRequest) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+    }
+
+    private Map<String, Integer> getOpenRequestedQtyByItem(Long orderId, String returnType) {
+        List<ReturnExchange> openRequests = returnExchangeRepository.findByOrder_OrderIDAndReturnTypeIgnoreCaseAndStatusIn(
+                orderId,
+                returnType,
+                OPEN_RETURN_EXCHANGE_STATUSES
+        );
+
+        Map<String, Integer> requestedQtyByItem = new HashMap<>();
+        for (ReturnExchange openRequest : openRequests) {
+            if (!"ITEM".equalsIgnoreCase(openRequest.getRequestScope()) || openRequest.getReturnExchangeItems() == null) {
+                continue;
+            }
+
+            for (ReturnExchangeItem item : openRequest.getReturnExchangeItems()) {
+                if (item.getOrderDetail() != null) {
+                    String key = buildItemKey("ORDER_DETAIL", item.getOrderDetail().getOrderDetailID());
+                    requestedQtyByItem.merge(key, item.getQuantity(), Integer::sum);
+                    continue;
+                }
+
+                if (item.getPrescriptionOrderDetail() != null) {
+                    String key = buildItemKey("PRESCRIPTION_ORDER_DETAIL", item.getPrescriptionOrderDetail().getPrescriptionOrderDetailID());
+                    int qty = item.getQuantity() == null ? 1 : item.getQuantity();
+                    requestedQtyByItem.merge(key, qty, Integer::sum);
+                }
+            }
+        }
+        return requestedQtyByItem;
+    }
+
+    private String buildItemKey(String source, Long itemId) {
+        return source + ":" + itemId;
     }
 
 
