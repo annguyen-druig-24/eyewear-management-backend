@@ -19,6 +19,7 @@ public interface ProductRepo extends JpaRepository<Product,Long> {
             "LEFT JOIN FETCH p.frame f " +
             "LEFT JOIN FETCH p.lens l " +
             "LEFT JOIN FETCH l.lensType lt " +
+            "LEFT JOIN FETCH p.images pi " +
             "LEFT JOIN FETCH p.contactLens cl " +
             "WHERE p.isActive = true AND " +
             "(:name IS NULL OR p.productName LIKE %:name%) AND " +
@@ -37,6 +38,7 @@ public interface ProductRepo extends JpaRepository<Product,Long> {
             "LEFT JOIN FETCH p.frame f " +
             "LEFT JOIN FETCH p.lens l " +
             "LEFT JOIN FETCH l.lensType lt " +
+            "LEFT JOIN FETCH p.images pi " +
             "LEFT JOIN FETCH p.contactLens cl " +
             "WHERE (:name IS NULL OR p.productName LIKE %:name%) AND " +
             "(:minPrice IS NULL OR p.price >= :minPrice) AND " +

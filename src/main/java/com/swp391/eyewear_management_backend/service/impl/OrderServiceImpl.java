@@ -13,6 +13,7 @@ import com.swp391.eyewear_management_backend.repository.*;
 import com.swp391.eyewear_management_backend.service.*;
 import com.swp391.eyewear_management_backend.service.ImageUploadService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -34,6 +35,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
     private static final ZoneId APP_ZONE_ID = ZoneId.of("Asia/Ho_Chi_Minh");
+    private static final List<String> TRACKING_RETURN_TYPES = List.of("REFUND", "RETURN", "WARRANTY", "CANCEL_ORDER");
+    private static final List<String> TRACKING_REQUEST_SCOPES = List.of("ORDER", "ITEM");
 
     private final UserRepo userRepo;
     private final CartItemRepo cartItemRepo;
@@ -1079,6 +1082,7 @@ public class OrderServiceImpl implements OrderService {
                         "ORDER"
                 )
                 .orElse(null);
+        ReturnExchange latestReturnExchange = findLatestTrackableReturnExchange(orderEntityId);
         String cancelScenario = resolveCancelScenario(order.getOrderStatus(), refundableAmount, latestOrderRefund);
 
         return StaffOrderDetailResponse.builder()
@@ -1101,12 +1105,12 @@ public class OrderServiceImpl implements OrderService {
                 .refundableAmount(refundableAmount)
                 .cancelScenario(cancelScenario)
                 .hasOpenRefundRequest(hasOpenRefundRequest)
-                .latestReturnExchangeId(latestOrderRefund != null ? latestOrderRefund.getReturnExchangeID() : null)
-                .latestReturnExchangeCode(latestOrderRefund != null ? latestOrderRefund.getReturnCode() : null)
-                .latestReturnExchangeStatus(latestOrderRefund != null ? latestOrderRefund.getStatus() : null)
-                .latestReturnExchangeRefundAmount(latestOrderRefund != null ? latestOrderRefund.getRefundAmount() : null)
-                .latestStaffRefundEvidenceUrl(latestOrderRefund != null ? latestOrderRefund.getStaffRefundEvidenceUrl() : null)
-                .latestRejectReason(latestOrderRefund != null ? latestOrderRefund.getRejectReason() : null)
+                .latestReturnExchangeId(latestReturnExchange != null ? latestReturnExchange.getReturnExchangeID() : null)
+                .latestReturnExchangeCode(latestReturnExchange != null ? latestReturnExchange.getReturnCode() : null)
+                .latestReturnExchangeStatus(latestReturnExchange != null ? latestReturnExchange.getStatus() : null)
+                .latestReturnExchangeRefundAmount(latestReturnExchange != null ? latestReturnExchange.getRefundAmount() : null)
+                .latestStaffRefundEvidenceUrl(latestReturnExchange != null ? latestReturnExchange.getStaffRefundEvidenceUrl() : null)
+                .latestRejectReason(latestReturnExchange != null ? latestReturnExchange.getRejectReason() : null)
                 .customerName(order.getUser() != null ? order.getUser().getName() : null)
                 .customerPhone(order.getUser() != null ? order.getUser().getPhone() : null)
                 .customerEmail(order.getUser() != null ? order.getUser().getEmail() : null)
@@ -1118,6 +1122,17 @@ public class OrderServiceImpl implements OrderService {
                 .recipientAddress(shippingInfo != null ? shippingInfo.getRecipientAddress() : null)
                 .note(shippingInfo != null ? shippingInfo.getNote() : null)
                 .build();
+    }
+
+    private ReturnExchange findLatestTrackableReturnExchange(Long orderId) {
+        return returnExchangeRepo.findByOrderIdAndReturnTypesAndRequestScopesOrderByLatest(
+                        orderId,
+                        TRACKING_RETURN_TYPES,
+                        TRACKING_REQUEST_SCOPES,
+                        PageRequest.of(0, 1)
+                ).stream()
+                .findFirst()
+                .orElse(null);
     }
 
     private BigDecimal sumSuccessfulPayments(Order order) {

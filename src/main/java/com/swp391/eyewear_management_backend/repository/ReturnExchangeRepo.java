@@ -3,6 +3,7 @@ package com.swp391.eyewear_management_backend.repository;
 import com.swp391.eyewear_management_backend.dto.projection.ReturnExchangeOrderSummaryProjection;
 import com.swp391.eyewear_management_backend.dto.projection.StaffReturnExchangeListProjection;
 import com.swp391.eyewear_management_backend.entity.ReturnExchange;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -48,6 +49,21 @@ public interface ReturnExchangeRepo extends JpaRepository<ReturnExchange, Long> 
             Long orderId,
             String returnType,
             String requestScope
+    );
+
+    @Query("""
+        SELECT re
+        FROM ReturnExchange re
+        WHERE re.order.orderID = :orderId
+          AND UPPER(re.returnType) IN :returnTypes
+          AND UPPER(re.requestScope) IN :requestScopes
+        ORDER BY re.requestDate DESC, re.returnExchangeID DESC
+    """)
+    List<ReturnExchange> findByOrderIdAndReturnTypesAndRequestScopesOrderByLatest(
+            @Param("orderId") Long orderId,
+            @Param("returnTypes") List<String> returnTypes,
+            @Param("requestScopes") List<String> requestScopes,
+            Pageable pageable
     );
 
     @Query(value = """
