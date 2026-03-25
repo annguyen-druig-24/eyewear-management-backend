@@ -81,14 +81,15 @@ public interface ReturnExchangeRepo extends JpaRepository<ReturnExchange, Long> 
         FROM Return_Exchange re
         JOIN [Order] o ON o.Order_ID = re.Order_ID
         JOIN [User] u ON u.User_ID = re.User_ID
-        WHERE NOT (
-            (UPPER(re.Return_Type) = 'REFUND'
-            AND UPPER(re.Request_Scope) = 'ORDER'
-            AND re.Refund_Amount IS NOT NULL
-            AND re.Refund_Amount > 0
-            AND UPPER(o.Order_Status) = 'CANCELED')
-            OR UPPER(re.Return_Type) = 'CANCEL_ORDER'
-        )
+        WHERE UPPER(o.Order_Status) = 'COMPLETED'
+                   AND NOT (
+                     (UPPER(re.Return_Type) = 'REFUND'
+                      AND UPPER(re.Request_Scope) = 'ORDER'
+                      AND re.Refund_Amount IS NOT NULL
+                      AND re.Refund_Amount > 0
+                      AND UPPER(o.Order_Status) = 'CANCELED')
+                     OR UPPER(re.Return_Type) = 'CANCEL_ORDER'
+                   )
         ORDER BY re.Request_Date DESC
     """, nativeQuery = true)
     List<StaffReturnExchangeListProjection> findStaffReturnExchangeSummaries();
@@ -118,11 +119,16 @@ public interface ReturnExchangeRepo extends JpaRepository<ReturnExchange, Long> 
         FROM Return_Exchange re
         JOIN [Order] o ON o.Order_ID = re.Order_ID
         JOIN [User] u ON u.User_ID = re.User_ID
-        WHERE UPPER(re.Return_Type) = 'REFUND'
-          AND UPPER(re.Request_Scope) = 'ORDER'
-          AND re.Refund_Amount IS NOT NULL
-          AND re.Refund_Amount > 0
-          AND UPPER(o.Order_Status) = 'CANCELED'
+        WHERE UPPER(o.Order_Status) = 'CANCELED'
+            AND (
+                UPPER(re.Return_Type) = 'CANCEL_ORDER'
+                OR (
+                UPPER(re.Return_Type) = 'REFUND'
+                AND UPPER(re.Request_Scope) = 'ORDER'
+                AND re.Refund_Amount IS NOT NULL
+                AND re.Refund_Amount > 0
+                )
+            )
         ORDER BY re.Request_Date DESC
     """, nativeQuery = true)
     List<StaffReturnExchangeListProjection> findCancelRefundRequestsForSalesStaff();

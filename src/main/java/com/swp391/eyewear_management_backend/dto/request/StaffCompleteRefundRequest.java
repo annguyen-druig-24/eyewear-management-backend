@@ -12,8 +12,9 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 public class StaffCompleteRefundRequest {
 
-    @NotNull(message = "Refund amount is required")
-    @DecimalMin(value = "0.0", inclusive = false, message = "Refund amount must be greater than 0")
+//    @NotNull(message = "Refund amount is required")
+//    @DecimalMin(value = "0.0", inclusive = false, message = "Refund amount must be greater than 0")
+    @DecimalMin(value = "0.0", inclusive = true, message = "Refund amount must be greater than or equal to 0")
     private BigDecimal refundAmount;
 
     private String refundReferenceCode;
