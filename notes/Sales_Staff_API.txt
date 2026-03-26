@@ -1,0 +1,728 @@
+SALES STAFF
+
+### OrderList page for SALES STAFF ###
+1) API show toàn bộ order (DIRECT, PRE, PRESCRIPTION):
+POST http://localhost:8080/api/staff/orders/search
+	a) Chuỗi JSON truyền vào:
+		{
+		  "orderCode": "ORD-2026-03-02-E2833C70",
+		  "orderDate": "2026-03-02",
+		  "orderType": "MIX_ORDER",
+		  "orderStatus": "PENDING",
+		  "page": 0,
+		  "size": 10,
+		  "sortBy": "orderDate",
+		  "sortDir": "desc"
+		}
+		--> Có thể chỉ truyền 1 field duy nhất cũng trả ra kết quả được
+	b) Chuỗi JSON trả ra:
+		{
+			"code": 1000,
+			"message": "OK",
+			"result": {
+				"content": [
+					{
+						"orderId": 5,
+						"orderCode": "ORD-2026-03-02-E2833C70",
+						"customerName": "Lê Đức Lợi",
+						"orderType": "MIX_ORDER",
+						"orderStatus": "PENDING",
+						"orderDate": "2026-03-02T09:39:01.72",
+						"totalAmount": 43421002.00
+					}
+				],
+				"empty": false,
+				"first": true,
+				"last": true,
+				"number": 0,
+				"numberOfElements": 1,
+				"pageable": {
+					"offset": 0,
+					"pageNumber": 0,
+					"pageSize": 10,
+					"paged": true,
+					"sort": {
+						"empty": false,
+						"sorted": true,
+						"unsorted": false
+					},
+					"unpaged": false
+				},
+				"size": 10,
+				"sort": {
+					"empty": false,
+					"sorted": true,
+					"unsorted": false
+				},
+				"totalElements": 1,
+				"totalPages": 1
+			}
+		}
+	c) Lưu ý: Phải truyền token vào mới có thể gọi được API này
+	==> Đã phân quyền dưới BE (chỉ có SALES STAFF, MANAGER, ADMIN mới gọi và sử dụng được API này)
+	
+2) API show drop down OrderStatusList:
+GET: http://localhost:8080/api/staff/orders/status-options
+	* Lưu ý: Phải truyền token vào mới có thể gọi được API này	==> Đã phân quyền dưới BE (chỉ có SALES STAFF, MANAGER, ADMIN mới gọi và sử dụng được API này)
+	* Công dụng: show drop down Order Status List dành cho các loại đơn:
+		- Đối với đơn PRESCRIPTION_ORDER thì sẽ có các status:...
+		- Đối với đơn DIRECT/PRE_ORDER thì sẽ có các status:...
+		- Đối với đơn MIX_ORDER thì sẽ có các status:...
+		--> Xem chuỗi JSON ví dụ bên dưới
+	* Các Status khi bấm drop down hiển thị:
+		- PENDING: "Đang chờ"
+		- CONFIRMED: "Đã xác nhận và đang chuẩn bị hàng"
+		- PARTIALLY_PAID: "Đã trả cọc 1 phần"
+		- PAID: "Đã trả"
+		- PROCESSING: "Đang gia công"
+		- READY: "Đã chuyển cho đơn vị vận chuyển"
+		- COMPLETED: "Hoàn thành"
+		- CANCELED: "Đã hủy"
+	* Các OrderType khi bấm drop down hiển thị:
+		- DIRECT_ORDER
+		- PRE_ORDER
+		- PRESCRIPTION_ORDER
+		- MIX_ORDER
+	
+	* Ví dụ:
+		1) Chuỗi JSON truyền vào: {} 
+		2) Chuỗi JSON trả ra:
+			{
+				"code": 1000,
+				"message": "OK",
+				"result": [
+					{
+						"groupName": "ORDER WORKFLOW",
+						"orderTypes": [
+							"DIRECT_ORDER",
+							"PRE_ORDER",
+							"PRESCRIPTION_ORDER",
+							"MIX_ORDER"
+						],
+						"statuses": [
+							{
+								"code": "PENDING",
+								"displayName": "Đang chờ"
+							},
+							{
+								"code": "CONFIRMED",
+								"displayName": "Đã xác nhận và đang chuẩn bị hàng"
+							},
+							{
+								"code": "PARTIALLY_PAID",
+								"displayName": "Đã trả cọc 1 phần"
+							},
+							{
+								"code": "PAID",
+								"displayName": "Đã trả"
+							},
+							{
+								"code": "PROCESSING",
+								"displayName": "Đang gia công"
+							},
+							{
+								"code": "READY",
+								"displayName": "Đã chuyển cho đơn vị vận chuyển"
+							},
+							{
+								"code": "COMPLETED",
+								"displayName": "Hoàn thành"
+							},
+							{
+								"code": "CANCELED",
+								"displayName": "Đã hủy"
+							}
+						]
+					}
+				]
+			}
+		
+		
+	
+### OrderDetail page for SALES STAFF ###
+1) API show dữ liệu cho OrderDetail của SALES STAFF và bắt truyền vào orderId
+GET: http://localhost:8080/api/staff/orders/24
+	* Lưu ý: Phải truyền token vào mới có thể gọi được API này	==> Đã phân quyền dưới BE (chỉ có SALES STAFF, MANAGER, ADMIN mới gọi và sử dụng được API này)
+	* Công dụng: show dữ liệu cho OrderDetail của SALES STAFF
+	a) Chuỗi JSON truyền vào: {}
+	b) Chuỗi JSON trả ra:
+		{
+			"code": 1000,
+			"message": "OK",
+			"result": {
+				"orderId": 24,
+				"orderCode": "ORD-2026-03-03-143C50C0",
+				"orderStatus": "PENDING",
+				"orderType": "MIX_ORDER",
+				"orderDate": "2026-03-03T16:14:02.58",
+				"totalAmount": 7821001.00,
+				"customerName": "Lê Đức Lợi",
+				"customerPhone": "0839158168",
+				"customerEmail": "leducloi@gmail.com",
+				"orderDetail": [
+					{
+						"productId": 2,
+						"productName": "Gọng Kính Tròn Cổ Điển",
+						"quantity": 1,
+						"unitPrice": 1200000.00,
+						"totalPrice": 1200000.00,
+						"imageUrl": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1772382822/Frame_02_r2ytlh.jpg"
+					},
+					{
+						"productId": 3,
+						"productName": "Tròng Kính Chống Ánh Sáng Xanh",
+						"quantity": 1,
+						"unitPrice": 800000.00,
+						"totalPrice": 800000.00,
+						"imageUrl": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1772383014/Lens_01_i3cmlm.jpg"
+					},
+					{
+						"productId": 15,
+						"productName": "Kính Áp Tròng Seed 1dayPure (Hộp 32 miếng)",
+						"quantity": 1,
+						"unitPrice": 650000.00,
+						"totalPrice": 650000.00,
+						"imageUrl": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1772383015/Contact_Lens_01_yecoec.jpg"
+					}
+				],
+				"prescriptionOrderDetail": [
+					{
+						"frameId": 2,
+						"frameName": "Gọng Kính Tròn Cổ Điển",
+						"framePrice": 1200000.00,
+						"frameImg": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1772382822/Frame_02_r2ytlh.jpg",
+						"lensId": 1,
+						"lensName": "Tròng Kính Chống Ánh Sáng Xanh",
+						"lensPrice": 800000.00,
+						"lensImg": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1772383014/Lens_01_i3cmlm.jpg",
+						"contactLensId": null,
+						"contactLensName": null,
+						"contactLensPrice": 0,
+						"contactLensImg": null,
+						"rightEyeSph": "2",
+						"rightEyeCyl": "0",
+						"rightEyeAxis": "0",
+						"leftEyeSph": "2",
+						"leftEyeCyl": "0",
+						"leftEyeAxis": "0",
+						"quantity": 1,
+						"totalPrice": 2000000.00
+					},
+					{
+						"frameId": null,
+						"frameName": null,
+						"framePrice": 0,
+						"frameImg": null,
+						"lensId": 2,
+						"lensName": "Tròng Kính Đổi Màu Transitions Gen 8",
+						"lensPrice": 2500000.00,
+						"lensImg": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1772383014/Lens_01_i3cmlm.jpg",
+						"contactLensId": null,
+						"contactLensName": null,
+						"contactLensPrice": 0,
+						"contactLensImg": null,
+						"rightEyeSph": "2",
+						"rightEyeCyl": null,
+						"rightEyeAxis": null,
+						"leftEyeSph": "2",
+						"leftEyeCyl": null,
+						"leftEyeAxis": null,
+						"quantity": 1,
+						"totalPrice": 2500000.00
+					},
+					{
+						"frameId": null,
+						"frameName": null,
+						"framePrice": 0,
+						"frameImg": null,
+						"lensId": null,
+						"lensName": null,
+						"lensPrice": 0,
+						"lensImg": null,
+						"contactLensId": null,
+						"contactLensName": null,
+						"contactLensPrice": 0,
+						"contactLensImg": null,
+						"rightEyeSph": "2",
+						"rightEyeCyl": null,
+						"rightEyeAxis": null,
+						"leftEyeSph": "2",
+						"leftEyeCyl": null,
+						"leftEyeAxis": null,
+						"quantity": 1,
+						"totalPrice": 650000.00
+					}
+				],
+				"recipientName": "Lê Đức Lợi",
+				"recipientPhone": "0839158168",
+				"recipientEmail": "leducloi@gmail.com",
+				"recipientAddress": "1A Nguyễn Huệ, Phường Bến Nghé, Quận 1, Hồ Chí Minh",
+				"note": null
+			}
+		}
+		
+2) API cập nhật Order_Status cho trang OrderDetail của SALES STAFF:
+PUT http://localhost:8080/api/staff/orders/{orderId}/confirm
+	* Ví dụ: http://localhost:8080/api/staff/orders/48/confirm
+	* Lưu ý: Phải truyền token vào mới có thể gọi được API này	==> Đã phân quyền dưới BE (chỉ có SALES STAFF, MANAGER, ADMIN mới gọi và sử dụng được API này)
+	* Chỉ hiển thị nút cập nhật status cho 3 Order_Status: PENDING, PARTIALLY_PAID, PAID --> Hiện nút cập nhật Order_Status = CONFIRMED
+	* Chuỗi JSON truyền vào: truyền vào orderId trên thanh URL
+	* Chuỗi JSON trả ra: 
+	{
+		"code": 1000,
+		"message": "OK",
+		"result": {
+			"orderId": 48,
+			"orderCode": "ORD-2026-03-04-1B4E136B",
+			"orderStatus": "CONFIRMED",		--> Từ PENDING thành CONFIRMED
+			"orderType": "MIX_ORDER",
+			"orderDate": "2026-03-04T14:09:43.763",
+			"totalAmount": 6821001.00,
+			"shippingStatus": "PENDING",
+			"hasPrescriptionItem": true,
+			"requiresFinalPayment": false,
+			"availableActions": [],
+			"customerName": "Lê Đức Lợi",
+			"customerPhone": "0839158168",
+			"customerEmail": "leducloi@gmail.com",
+			"orderDetail": [
+				{
+					"productId": 3,
+					"productName": "Tròng Kính Chống Ánh Sáng Xanh",
+					"quantity": 1,
+					"unitPrice": 800000.00,
+					"totalPrice": 800000.00,
+					"imageUrl": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1772383014/Lens_01_i3cmlm.jpg"
+				}
+			],
+			"prescriptionOrderDetail": [
+				{
+					"frameId": 1,
+					"frameName": "Gọng Kính Mát Thời Trang Ray-Ban",
+					"framePrice": 100000.00,
+					"frameImg": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1772382822/Frame_01_ox1yjd.jpg",
+					"lensId": 2,
+					"lensName": "Tròng Kính Đổi Màu Transitions Gen 8",
+					"lensPrice": 2500000.00,
+					"lensImg": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1772383014/Lens_01_i3cmlm.jpg",
+					"contactLensId": null,
+					"contactLensName": null,
+					"contactLensPrice": 0,
+					"contactLensImg": null,
+					"rightEyeSph": "2",
+					"rightEyeCyl": "0",
+					"rightEyeAxis": "0",
+					"rightEyeAdd": null,
+					"rightPD": null,
+					"leftEyeSph": "2",
+					"leftEyeCyl": "0",
+					"leftEyeAxis": "0",
+					"leftEyeAdd": null,
+					"leftPD": null,
+					"quantity": 1,
+					"totalPrice": 6000000.00
+				}
+			],
+			"recipientName": "Lê Đức Lợi",
+			"recipientPhone": "0839158168",
+			"recipientEmail": "leducloi@gmail.com",
+			"recipientAddress": "1A Nguyễn Huệ, Phường Bến Nghé, Quận 1, Hồ Chí Minh",
+			"returnExchangeId": 1,
+			"returnCode": "",
+			"requestDate": "",
+			"returnExchangeStatus": "WARRANTY" hoặc "RETURN",
+			"returnReason": "",
+			"returnImgUrl": ""
+		}
+	}
+	
+	
+###ReturnExchange Page for SALES STAFF:
+1) ReturnExchangeList:
+	API GET http://localhost:8080/api/staff/return-exchange
+	* Lưu ý: Phải truyền token vào mới có thể gọi được API này	==> Đã phân quyền dưới BE (chỉ có SALES STAFF, MANAGER, ADMIN mới gọi và sử dụng được API này)
+	* Công dụng: Hiển thị dữ liệu các đơn hàng có yêu cầu Return Exchange
+	* Chuỗi JSON truyền vào: {}
+	* Chuỗi JSON trả ra:
+		{
+			"code": 1000,
+			"message": "OK",
+			"result": [
+				{
+					"returnExchangeId": 3,
+					"returnCode": "REQ-RET-ORD-00048-PEN",
+					"orderId": 48,
+					"orderCode": "ORD-2026-03-04-1B4E136B",
+					"orderDate": "2026-03-04T14:09:43.763",
+					"orderStatus": "COMPLETED",
+					"customerName": "Lê Đức Lợi",
+					"customerPhone": "0839158168",
+					"customerEmail": "leducloi@gmail.com",
+					"returnType": "RETURN",
+					"requestScope": "ITEM",
+					"requestDate": "2026-03-15T13:58:34.377",
+					"returnExchangeStatus": "PENDING",
+					"refundAmount": null,
+					"refundMethod": null,
+					"refundAccountNumber": null,
+					"refundAccountName": null,
+					"requestNote": "Khách gửi yêu cầu trả lại 1 item trong đơn đã hoàn tất.",
+					"rejectReason": null,
+					"approvedDate": null,
+					"processedDate": null
+				},
+				{
+					"returnExchangeId": 2,
+					"returnCode": "REQ-REF-ORD-00041-APP",
+					"orderId": 41,
+					"orderCode": "ORD-2026-03-04-6B71DCFC",
+					"orderDate": "2026-03-04T10:19:14.28",
+					"orderStatus": "PARTIALLY_PAID",
+					"customerName": "Lê Đức Lợi",
+					"customerPhone": "0839158168",
+					"customerEmail": "leducloi@gmail.com",
+					"returnType": "REFUND",
+					"requestScope": "ORDER",
+					"requestDate": "2026-03-15T10:58:34.337",
+					"returnExchangeStatus": "APPROVED",
+					"refundAmount": null,
+					"refundMethod": "EWALLET",
+					"refundAccountNumber": "0909123456",
+					"refundAccountName": "NGUYEN THI B",
+					"requestNote": "Khách yêu cầu hủy đơn đã đặt cọc; staff đã duyệt và đang chờ hoàn tiền.",
+					"rejectReason": null,
+					"approvedDate": "2026-03-15T16:58:34.337",
+					"processedDate": null
+				},
+				{
+					"returnExchangeId": 4,
+					"returnCode": "REQ-WAR-ORD-00100-APP",
+					"orderId": 100,
+					"orderCode": "ORD-2026-03-11-64D01A45",
+					"orderDate": "2026-03-11T14:44:13.1",
+					"orderStatus": "COMPLETED",
+					"customerName": "Lê Đức Lợi",
+					"customerPhone": "0839158168",
+					"customerEmail": "leducloi@gmail.com",
+					"returnType": "WARRANTY",
+					"requestScope": "ITEM",
+					"requestDate": "2026-03-14T18:58:34.42",
+					"returnExchangeStatus": "APPROVED",
+					"refundAmount": null,
+					"refundMethod": null,
+					"refundAccountNumber": null,
+					"refundAccountName": null,
+					"requestNote": "Khách gửi yêu cầu bảo hành cho 1 item trong đơn đã hoàn tất.",
+					"rejectReason": null,
+					"approvedDate": "2026-03-15T08:58:34.42",
+					"processedDate": null
+				},
+				{
+					"returnExchangeId": 1,
+					"returnCode": "REQ-REF-ORD-00016-COMP",
+					"orderId": 16,
+					"orderCode": "ORD-2026-03-03-AB35D0EF",
+					"orderDate": "2026-03-03T18:28:26.533",
+					"orderStatus": "PAID",
+					"customerName": "Lê Đức Lợi",
+					"customerPhone": "0839158168",
+					"customerEmail": "leducloi@gmail.com",
+					"returnType": "REFUND",
+					"requestScope": "ORDER",
+					"requestDate": "2026-03-13T18:58:34.29",
+					"returnExchangeStatus": "COMPLETED",
+					"refundAmount": 1221001.00,
+					"refundMethod": "BANK_TRANSFER",
+					"refundAccountNumber": "9704222233334444",
+					"refundAccountName": "NGUYEN VAN A",
+					"requestNote": "Khách hủy đơn trước khi SALES STAFF xác nhận; staff đã hoàn tiền thủ công.",
+					"rejectReason": null,
+					"approvedDate": "2026-03-14T18:58:34.29",
+					"processedDate": "2026-03-14T18:58:34.29"
+				}
+			]
+		}
+		
+2) ReturnExchangeDetail:
+	API GET http://localhost:8080/api/staff/return-exchange/{returnExchangeId} --> Ví dụ returnExchangeId = 3
+	* Lưu ý: Phải truyền token vào mới có thể gọi được API này	==> Đã phân quyền dưới BE (chỉ có SALES STAFF, MANAGER, ADMIN mới gọi và sử dụng được API này)
+	* Công dụng: Hiển thị dữ liệu các đơn hàng có yêu cầu Return Exchange
+	* Chuỗi JSON truyền vào: {}
+	* Chuỗi JSON trả ra:
+		{
+			"code": 1000,
+			"message": "Return exchange retrieved successfully",
+			"result": {
+				"orderId": 49,
+				"orderCode": "ORD-2026-03-04-D69B48AA",
+				"orderStatus": "COMPLETED",
+				"orderType": "MIX_ORDER",
+				"orderDate": "2026-03-04T09:25:48.71",
+				"totalAmount": 5771001.00,
+				"shippingStatus": "DELIVERED",
+				"shippingFee": 21001.00,
+				"expectedDeliveryAt": "2026-03-05T23:59:59",
+				"deliveredAt": null,
+				"remainingTimeValid": null,
+				"isPastExpectedDeliveryAt": true,
+				"hasPrescriptionItem": true,
+				"requiresFinalPayment": false,
+				"availableActions": [],
+				"customerName": "Test1234",
+				"customerPhone": "0987123655",
+				"customerEmail": "Test1@gmail.com",
+				"orderDetail": [
+					{
+						"orderDetailId": 37,
+						"productId": 16,
+						"productName": "Contact Lens Blue Ocean (3 Tháng)",
+						"quantity": 1,
+						"unitPrice": 250000.00,
+						"totalPrice": 250000.00,
+						"imageUrl": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1772383015/Contact_Lens_01_yecoec.jpg"
+					},
+					{
+						"orderDetailId": 38,
+						"productId": 1,
+						"productName": "Gọng Kính Mát Thời Trang Ray-Ban",
+						"quantity": 1,
+						"unitPrice": 3500000.00,
+						"totalPrice": 3500000.00,
+						"imageUrl": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1772382822/Frame_01_ox1yjd.jpg"
+					}
+				],
+				"prescriptionOrderDetail": [
+					{
+						"prescriptionOrderDetailId": 24,
+						"frameId": 2,
+						"frameName": "Gọng Kính Tròn Cổ Điển",
+						"framePrice": 1200000.00,
+						"frameImg": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1772382822/Frame_02_r2ytlh.jpg",
+						"lensId": 1,
+						"lensName": "Tròng Kính Chống Ánh Sáng Xanh",
+						"lensPrice": 800000.00,
+						"lensImg": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1772383014/Lens_01_i3cmlm.jpg",
+						"contactLensId": null,
+						"contactLensName": null,
+						"contactLensPrice": 0,
+						"contactLensImg": null,
+						"rightEyeSph": "0",
+						"rightEyeCyl": "0",
+						"rightEyeAxis": "0",
+						"rightEyeAdd": null,
+						"rightPD": null,
+						"leftEyeSph": "0",
+						"leftEyeCyl": "0",
+						"leftEyeAxis": "0",
+						"leftEyeAdd": null,
+						"leftPD": null,
+						"quantity": 1,
+						"totalPrice": 2000000.00
+					}
+				],
+				"recipientName": "Test1234",
+				"recipientPhone": "0987123657",
+				"recipientEmail": "Test1@gmail.com",
+				"recipientAddress": "102/42A Trần Quang Khải, Phường Tân Định, Quận 1, Hồ Chí Minh",
+				"note": null,
+				"returnExchangeId": 12,
+				"returnCode": "RT2603170003",
+				"requestDate": "2026-03-17T21:32:07.087",
+				"returnExchangeStatus": "PENDING",
+				"returnType": "RETURN",
+				"requestScope": "ITEM",
+				"requestNote": "",
+				"returnReason": "Lens hết hạn rồi, trả hàng, hoàn tiền đêi",
+				"refundAmount": 250000.00,
+				"refundMethod": "MOMO",
+				"refundAccountNumber": "090123456",
+				"customerAccountQr": null,
+				"refundAccountName": "TEST1234",
+				"refundReferenceCode": null,
+				"staffRefundEvidenceUrl": null,
+				"approvedDate": null,
+				"approvedByName": null,
+				"processedDate": null,
+				"processedByName": null,
+				"rejectReason": null,
+				"returnExchangeItems": [
+					{
+						"returnExchangeItemId": 7,
+						"orderDetailId": 37,
+						"productId": 16,
+						"productName": "Contact Lens Blue Ocean (3 Tháng)",
+						"requestedQuantity": 1,
+						"orderQuantity": 1,
+						"itemSource": "ORDER_DETAIL",
+						"itemEvidenceURL": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1773757927/return_items/dfxjb1vg71slnjobo3j3.webp",
+						"prescriptionOrderDetailId": null,
+						"itemReason": null,
+						"note": null
+					}
+				]
+			}
+		}
+		
+		
+3) Cập nhật Status (Xác nhận, Từ chối, Hoàn thành):
+	API PUT http://localhost:8080/api/staff/return-exchange/{returnExchangeId}/status
+	* Lưu ý: Phải truyền token vào mới có thể gọi được API này	==> Đã phân quyền dưới BE (chỉ có SALES STAFF, MANAGER, ADMIN mới gọi và sử dụng được API này)
+	* Công dụng: Cập nhật Status (Xác nhận, Từ chối, Hoàn thành) cho table Return_Exchange
+	* Chuỗi JSON truyền vào: 
+		{
+			"action": "REJECT",
+			"rejectReason": "Mắt kính lỗi"
+		}
+	* Chuỗi JSON trả ra:
+		{
+			"code": 1000,
+			"message": "Return exchange status updated successfully",
+			"result": {
+				"return_exchange_id": 3,
+				"return_code": "REQ-RET-ORD-00048-PEN",
+				"order_id": 48,
+				"user_id": 13,
+				"return_type": "RETURN",
+				"request_scope": "ITEM",
+				"request_note": "Khách gửi yêu cầu trả lại 1 item trong đơn đã hoàn tất.",
+				"return_reason": "Sản phẩm không phù hợp nhu cầu sau khi nhận hàng.",
+				"status": "REJECTED",
+				"request_date": "2026-03-15T13:58:34.377",
+				"approved_date": "2026-03-17T00:58:37.2175203",
+				"approved_by_id": 25,
+				"reject_reason": "Tình trạng đơn hàng không đạt yêu cầu hoàn tiền"
+			}
+		}	
+		
+4) Cập nhật Status (APPROVED --> COMPLETED):
+	API PUT http://localhost:8080/api/staff/return-exchange/{returnExchangeId}/complete-refund
+	* Lưu ý: Phải truyền token vào mới có thể gọi được API này	==> Đã phân quyền dưới BE (chỉ có SALES STAFF, MANAGER, ADMIN mới gọi và sử dụng được API này)
+	* Công dụng: Khi SALES STAFF xác nhận (APPROVED) đơn đổi trả thì sẽ sử dụng API này để hoàn thành (COMPLETED) đơn đổi trả
+	* Khi upload file ảnh upload đúng với key "staffEvidenceFile"
+	* Chuỗi JSON truyền vào:
+		{
+		  "refundAmount": 1221001,
+		  "staffRefundEvidenceUrl": "https://example.com/refund-proof.png"
+		}
+	* Chuỗi JSON trả ra:
+		{
+			"code": 1000,
+			"message": "Refund completed successfully",
+			"result": {
+				"return_exchange_id": 17,
+				"return_code": "RT2603180001",
+				"order_id": 221,
+				"user_id": 11,
+				"return_type": "RETURN",
+				"request_scope": "ITEM",
+				"return_reason": "Kính dỏm, trả tiền đây",
+				"refund_amount": 750000,
+				"refund_method": "TP bank",
+				"refund_account_number": "012345678",
+				"refund_account_name": "TEST 1234",
+				"staff_refund_evidence_url": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1773774852/return_items/iovsy8ebyvpxbbpzvapr.jpg",
+				"status": "COMPLETED",
+				"request_date": "2026-03-18T01:05:16.17",
+				"approved_date": "2026-03-18T01:48:29.37",
+				"approved_by_id": 25,
+				"processed_date": "2026-03-18T02:14:13.3654256",
+				"processed_by_id": 25
+			}
+		}
+	
+		
+		
+### Trang Inventory cho STAFF ###			
+* Các field cần có cho trang Inventory của STAFF
+	- productId
+	- productName
+	- SKU
+	- brandName
+	- frameMaterialName (Gọng)
+	- frameShapeName	(Gọng)
+	- lensTypeName		(Tròng)
+	- indexValue		(Tròng)
+	- isBlueLightBlock	(Tròng)
+	- isPhotochromic	(Tròng)
+	- usageType			(Kính áp tròng)
+	- lensMaterial		(Kính áp tròng)
+	- baseCurve			(Kính áp tròng)
+	- waterContent		(Kính áp tròng)
+	- replacementSchedule (hạn sử dụng)	(Kính áp tròng)
+	- availableQuantity
+
+1) Hiển thị dữ liệu các sản phẩm (Gọng, Tròng, Kính áp tròng):
+API GET http://localhost:8080/api/inventory/products
+	* Lưu ý: Phải truyền token vào mới có thể gọi được API này ==> Đã phân quyền dưới BE (chỉ có OPERATIONS STAFF, SALES STAFF, MANAGER, ADMIN mới gọi và sử dụng được API này)
+	* Công dụng: Hiển thị thông tin sản phẩm và số lượng tồn kho
+	* Giải thích các quantity:
+		- onHandQuantity: là số lượng hàng thực tế
+		- reservedQuantity: là số lượng hàng được đặt nhưng đang chờ thanh toán thành công
+		- availableQuantity = onHandQuantity - reservedQuantity
+		==> FE chỉ lấy 1 quantity để hiển thị lên UI. Có thể lấy onHandQuantity hoặc availableQuantity để hiển thị lên UI đều được (ưu tiên lấy availableQuantity)
+	* Chuỗi JSON truyền vào : {}
+	* Chuỗi JSON trả ra:
+		{
+			"code": 1000,
+			"message": "OK",
+			"result": [
+				{
+					"productId": 1,
+					"productName": "Gọng Kính Mát Thời Trang Ray-Ban",
+					"productTypeName": "Gọng kính",
+					"SKU": "RB-001",
+					"brandName": "Ray-Ban",
+					"frameMaterialName": "Kim loại",
+					"frameShapeName": "Phi công (Aviator)",
+					"onHandQuantity": 50,
+					"reservedQuantity": 0,
+					"availableQuantity": 50,
+					"isActive": true
+				},
+				{
+					"productId": 2,
+					"productName": "Gọng Kính Tròn Cổ Điển",
+					"productTypeName": "Gọng kính",
+					"SKU": "RN-002",
+					"brandName": "Oakley",
+					"frameMaterialName": "Titanium",
+					"frameShapeName": "Tròn (Round)",
+					"onHandQuantity": 30,
+					"reservedQuantity": 0,
+					"availableQuantity": 30,
+					"isActive": true
+				},
+				{
+					"productId": 3,
+					"productName": "Tròng Kính Chống Ánh Sáng Xanh",
+					"productTypeName": "Tròng kính",
+					"SKU": "TK-001",
+					"brandName": "Essilor",
+					"lensTypeName": "Đơn tròng",
+					"indexValue": 1.67,
+					"isBlueLightBlock": true,
+					"isPhotochromic": false,
+					"onHandQuantity": 18,		
+					"reservedQuantity": 0,
+					"availableQuantity": 18,
+					"isActive": true
+				},
+				{
+					"productId": 4,
+					"productName": "Kính Áp Tròng Màu Xám Khói",
+					"productTypeName": "Kính áp tròng",
+					"SKU": "AT-001",
+					"brandName": "Seed",
+					"usageType": "Thẩm mỹ & Cận",
+					"lensMaterial": "Silicone Hydrogel",
+					"baseCurve": 8.60,
+					"waterContent": 38.00,
+					"replacementSchedule": "1 Tháng",
+					"onHandQuantity": 35,
+					"reservedQuantity": 0,
+					"availableQuantity": 35,
+					"isActive": true
+				},
+				...
+			]
+		}

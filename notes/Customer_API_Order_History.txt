@@ -1,0 +1,150 @@
+###OrderHistory của CUSTOMER
+1) API GET http://localhost:8080/orders/history
+	* Công dụng: Hiển thị dữ liệu các OrderHistoryList của CUSTOMER
+	* Chuỗi JSON truyền vào: {}
+	* Chuỗi JSON trả ra:
+		{
+			"code": 1000,
+			"message": "OK",
+			"result": [
+				{
+					"orderId": 265,
+					"orderCode": "ORD-2026-03-18-C30C2935",
+					"orderType": "DIRECT_ORDER",
+					"orderStatus": "CANCELED",
+					"orderDate": "2026-03-18T13:12:55.327",
+					"totalAmount": 3820900.00,
+					"shippingStatus": "CANCELED"
+				},
+				{
+					"orderId": 264,
+					"orderCode": "ORD-2026-03-18-728602B8",
+					"orderType": "DIRECT_ORDER",
+					"orderStatus": "CANCELED",
+					"orderDate": "2026-03-18T13:09:46.703",
+					"totalAmount": 5220900.00,
+					"shippingStatus": "CANCELED"
+				},
+				...
+			]
+		}
+		
+2) API GET http://localhost:8080/orders/{orderId}/detail
+	* Công dụng: Hiển thị dữ liệu OrderDetail của CUSTOMER
+	* Chuỗi JSON truyền vào: {}
+	* Chuỗi JSON trả ra: 
+		{
+			"code": 1000,
+			"message": "OK",
+			"result": {
+				"orderId": 267,
+				"prescriptionOrderId": 178,
+				"orderCode": "ORD-2026-03-18-53E6597C",
+				"orderStatus": "PARTIALLY_PAID",
+				"orderType": "MIX_ORDER",
+				"orderDate": "2026-03-18T13:19:16.133",
+				"totalAmount": 4620900.00,
+				"shippingStatus": "PENDING",
+				"shippingFee": 20900.00,
+				"expectedDeliveryAt": "2026-03-19T23:59:59",
+				"isPastExpectedDeliveryAt": false,
+				"hasPrescriptionItem": true,
+				"requiresFinalPayment": true,
+				"availableActions": [],
+				"canCancelOrder": true,
+				"requiresRefundInfoOnCancel": true,
+				"refundableAmount": 740000.00,
+				"cancelScenario": "CANCEL_WITH_MANUAL_REFUND",
+				"hasOpenRefundRequest": false,
+				"latestReturnExchangeId": null,
+				"latestReturnExchangeCode": null,
+				"latestReturnExchangeStatus": null,
+				"latestReturnExchangeRefundAmount": null,
+				"latestStaffRefundEvidenceUrl": null,
+				"latestRejectReason": null,
+				"customerName": "Lê Đức Lợi",
+				"customerPhone": "0839158168",
+				"customerEmail": "leducloi@gmail.com",
+				"orderDetail": [
+					{
+						"orderDetailId": 137,
+						"productId": 14,
+						"productName": "Tròng Râm Cận Màu Trà",
+						"quantity": 1,
+						"unitPrice": 900000.00,
+						"totalPrice": 900000.00,
+						"imageUrl": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1772383014/Lens_01_i3cmlm.jpg"
+					}
+				],
+				"prescriptionOrderDetail": [
+					{
+						"prescriptionOrderDetailId": 119,
+						"frameId": 2,
+						"frameName": "Gọng Kính Tròn Cổ Điển",
+						"framePrice": 1200000.00,
+						"frameImg": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1772382822/Frame_02_r2ytlh.jpg",
+						"lensId": 2,
+						"lensName": "Tròng Kính Đổi Màu Transitions Gen 8",
+						"lensPrice": 2500000.00,
+						"lensImg": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1772383014/Lens_01_i3cmlm.jpg",
+						"contactLensId": null,
+						"contactLensName": null,
+						"contactLensPrice": 0,
+						"contactLensImg": null,
+						"rightEyeSph": "0.5",
+						"rightEyeCyl": "-1.25",
+						"rightEyeAxis": "80",
+						"rightEyeAdd": "2.0",
+						"rightPD": "0",
+						"leftEyeSph": "-0.5",
+						"leftEyeCyl": "-1.5",
+						"leftEyeAxis": "120",
+						"leftEyeAdd": "2.0",
+						"leftPD": "0",
+						"quantity": 1,
+						"totalPrice": 3700000.00
+					}
+				],
+				"recipientName": "Lê Đức Lợi",
+				"recipientPhone": "0839158168",
+				"recipientEmail": "leducloi@gmail.com",
+				"recipientAddress": "Số 2, đường số 43, Phường An Phú, Thành Phố Thủ Đức, Hồ Chí Minh",
+				"note": "Giao hàng từ website"
+			}
+		}
+		
+		
+3) API POST http://localhost:8080/orders/{orderId}/cancel
+	* Công dụng tạo yêu cầu hủy đơn hàng:
+	* Chuỗi JSON truyền vào:
+		- Case 1: Đơn không phải hoàn tiền chỉ cần truyền vào:
+			{
+			  "cancelReason": "Đổi nhu cầu mua hàng",
+			  "requestNote": "Nhờ shop xử lý sớm"
+			}
+		- Case 2: Đơn phải hoàn tiền cần truyền vào:
+			{
+			  "cancelReason": "Đổi nhu cầu mua hàng",
+			  "requestNote": "Nhờ shop xử lý sớm",
+			  "refundMethod": "VCB",
+			  "refundAccountNumber": "9965379303",
+			  "refundAccountName": "NGUYEN TRAN DAT AN"
+			}
+	* Khi "requiresRefundInfoOnCancel": true hoặc "refundableAmount": 740000.00 (refundableAmount>0) thì ngoài việc truyền chuỗi JSON đầy đủ như case 2, có thêm nút upload file ảnh QR ngân hàng từ CUSTOMER(ko bắt buộc)
+		--> Gửi ảnh với key là : customerAccountQrFile
+	* Chuỗi JSON trả ra:
+		{
+			"code": 1000,
+			"message": "OK",
+			"result": {
+				"cancelScenario": "CANCEL_WITH_MANUAL_REFUND",
+				"orderCode": "ORD-2026-03-18-53E6597C",
+				"orderId": 267,
+				"orderStatus": "CANCELED",
+				"refundAmount": 740000.00,
+				"refundRequired": true,
+				"returnExchangeCode": "RF2603180006",
+				"returnExchangeId": 32,
+				"returnExchangeStatus": "PENDING"
+			}
+		}

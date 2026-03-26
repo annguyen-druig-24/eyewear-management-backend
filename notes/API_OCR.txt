@@ -1,0 +1,31 @@
+*** API đọc dữ liệu từ hình ảnh và trả ra số độ cận, loạn, viễn,... 
+- Sử dụng OCR.space
+- API POST http://localhost:8080/api/prescriptions/parse-image
+- Cần truyền vào 1 file ảnh
+- Dạng JSON trả ra:
+{
+    "code": 1000,
+    "message": "Prescription parsed successfully",
+    "result": {
+        "rightEyeSph": "-2",
+        "rightEyeCyl": "-2.5",
+        "rightEyeAxis": "23",
+        "rightEyeAdd": null,
+        "leftEyeSph": "-2.25",
+        "leftEyeCyl": "-2.25",
+        "leftEyeAxis": "1",
+        "leftEyeAdd": null,
+        "pd": null,
+        "pdRight": null,
+        "pdLeft": null,
+        "confidence": 1.0,
+        "requiresReview": true,
+        "warnings": [
+            "Không nhận diện được PD rõ ràng."
+        ],
+        "rawText": "THUHA\nCINHTHUOC\nKÍNH MẮT THU HÀ\n134 - 140 Bà Triệu, Q.Hai Bà Trưng, HN\nĐiện thoại:\nPax:\nĐƠN KÍNH\nNgày sinh: 23/01/2003\nGiới tính: Nam\nHọ tên:\nLê Đỗ Tiền Anh\nĐiện thoại:\nĐịa chi:\nSố 10 ngõ 2 Hàng Chuối, HN\nKÉT QUẢ ĐO MÁT\nMắt phải\nTL không kính: 20/200\nTS kính cũ:\nSPH:-2\nCYL:\nTL kính cũ:\n20/50\nTS cấp kính:\nSPH:-2.5 CYL:\nTL cấp kính:\n20/20\nKCĐT:\n60\nMắt trái\nAX:\nAX: °\n20/200\nSPH: -2.25 CYL:\n20/50\nSPH: -2.75 CYL:\n20/20\nGhi chú: Đã tư vấn khách hàng đồng ý đeo số kính trên.\nKhám lại sau 3 tháng và nhớ màng theo đơn kính này .\nAX: •\nAX: •\nNgày khám: 19/11/2014\nCHUYÊN VIÊN TƯ VẤN"
+    }
+}
+
+* Các field null là hình ảnh không đọc được, cho phép người dùng nhập tay
+* Cho phép người dùng nhập tay chỉnh sửa lại các thông số (dù đã upload ảnh và đọc được dữ liệu)

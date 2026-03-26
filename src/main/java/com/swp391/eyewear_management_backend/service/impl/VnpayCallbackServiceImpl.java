@@ -45,6 +45,7 @@ public class VnpayCallbackServiceImpl implements VnpayCallbackService {
 //    private final PrescriptionOrderRepo prescriptionOrderRepo;
 //    private final InventoryTransactionRepo inventoryTransactionRepo;
     private final CheckoutCartTrackingService checkoutCartTrackingService;
+    private final OrderEmailNotificationService orderEmailNotificationService;
 
     /*
         3 mục tiêu chính của hàm handleCallback:
@@ -109,6 +110,7 @@ public class VnpayCallbackServiceImpl implements VnpayCallbackService {
                     }
                     checkoutCartTrackingService.cleanupTrackedCartItems(order);
                 }
+                orderEmailNotificationService.sendOrderSuccessEmailSafely(order, payment);
             } else {
 //                releaseReservedInventoryForOrder(order);
                 order.setOrderStatus(OrderConstants.ORDER_STATUS_CANCELED);

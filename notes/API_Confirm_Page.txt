@@ -1,0 +1,131 @@
+#TỔNG HỢP CÁC API LOAD TỈNH/THÀNH PHỐ; QUẬN/HUYỆN; PHƯỜNG/XÃ
+1) API load Tỉnh/Thành phố: GET http://localhost:8080/ghn/provinces
+2) API load Quận/Huyện: GET http://localhost:8080/ghn/districts?provinceId=202  (202 là TPHCM, có thể thay provinceId = các code load được từ API Tỉnh/Thành phố)
+3) API load Phường/Xã: GET http://localhost:8080/ghn/wards?districtId=3695  (3695 là Thủ đức, có thể thay districtId = các code load được từ API Quận/Huyện)
+
+#API CẬP NHẬT User.Address = fullAddress = street, ward_name, district_name, province_name:
+	PUT http://localhost:8080/users/my-address
+ *Lưu ý:
+1) API này phải đăng nhập mới sử dụng được: POST http://localhost:8080/auth/token 
+   Nhập username, password lấy được token và nhập token vô phần Authorization để test được API cập nhật User.Address
+   
+#API POST http://localhost:8080/checkout/preview: Nhận các id của Cart_Item -> Đọc các id -> Dùng để load dữ liệu các Cart_Item từ trang Cart chuyển qua trang ConfirmPage
+												  tính phí các Cart_Item (base, số tiền giảm)
+												  các Available_Promotion, Recommend_Promotion
+												  tính Deposit_Amount(tiền cọc), Remaining_Amount(số tiền còn lại), Discount_Amount(số tiền giảm giá), Shipping_Fee, Sub_Total, Total_Amount
+												  tính được Expected_Delivery_At
+	 *Lưu ý:
+		1) API này phải đăng nhập mới sử dụng được: POST http://localhost:8080/auth/token 
+	*Chuỗi JSON cần truyền vào
+		1) Trường hợp người dùng không nhập "+ Thêm địa chỉ mới" --> Sử dụng thông tin địa chỉ mặc định
+			{
+			  "cartItemIds": [87, 88, 89, 92],
+			  "promotionId": 1,
+			  "paymentMethod": "COD"    
+			}
+		2) Trường hợp người dùng muốn nhập "+ Thêm địa chỉ mới" --> Truyền vào "districtCode", "wardCode"
+			{
+			  "cartItemIds": [87, 88, 89, 92],
+			  "promotionId": 1,
+			  "paymentMethod": "COD",
+			  "address": {
+				"districtCode": 1442,
+				"wardCode": "20101"
+			  }
+			}
+		
+	
+#API POST http://localhost:8080/orders
+	*Mục tiêu: Lưu xuống database: Order, Order_Detail, Prescription_Order, Prescription_Order_Detail, Shipping_Info, Payment, Invoice
+	*Cách dùng: Gắn vô nút "Đặt hàng"
+	*Lưu ý:
+		1) API này phải đăng nhập mới sử dụng được: POST http://localhost:8080/auth/token 
+	*Chuỗi JSON cần truyền vào:
+		{
+		  "cartItemIds": [453],
+		  "promotionId": null,
+		  "recipientName": "Nguyen Van A",
+		  "recipientPhone": "0901234567",
+		  "recipientEmail": "a@example.com",
+		  "note": "Giao giờ hành chính",
+		  "address": {
+			"street": "123 Le Loi",
+			"provinceCode": 202,
+			"provinceName": "Hồ Chí Minh",
+			"districtCode": 1442,
+			"districtName": "Quận 1",
+			"wardCode": "20110",
+			"wardName": "Phường Tân Định"
+		  },
+		  "paymentMethod": "PAYOS",
+		  "payStrategy": "DEPOSIT",
+		  "depositPaymentMethod": "PAYOS"
+		}
+	*Chuỗi JSON nhận được:
+		{
+			"code": 1000,
+			"message": "OK",
+			"result": {
+				"appliedPromotionId": 1,
+				"depositAmount": 4654200,
+				"depositRequired": true,
+				"discountAmount": 350000,
+				"expectedDeliveryAt": "2026-03-03T23:59:59",
+				"orderCode": "ORD-2026-03-03-6DEF2511",
+				"orderId": 9,
+				"orderStatus": "PENDING",
+				"paymentId": 14,
+				"paymentRedirectRequired": true,
+				"paymentUrl": "http://localhost:8080/payments/vnpay/mock?orderId=9&paymentId=14&amount=4654200",	--> Đang là đường link mock, đợi tích hợp API VNPAY hoặc MOMO mới có đường link thật, nhưng hiện tại vẫn chạy test được
+				"remainingAmount": 18616801,
+				"shippingFee": 21001,
+				"subTotal": 23600000,
+				"totalAmount": 23271001
+			}
+		}
+		
+		
+#API GET http://localhost:8080/orders/{orderId}
+*Lưu ý:
+	1) API này phải đăng nhập mới sử dụng được: POST http://localhost:8080/auth/token 
+*Ko cần chuỗi JSON đầu vào
+*Chuỗi JSON đầu ra: ví dụ http://localhost:8080/orders/15
+	{
+		"code": 1000,
+		"message": "OK",
+		"result": {
+			"orderId": 15,
+			"orderCode": "ORD-2026-03-03-C6BF144D",
+			"orderStatus": "PENDING",
+			"orderType": "PRE_ORDER",
+			"subTotal": 1200000.00,
+			"discountAmount": 0.00,
+			"shippingFee": 21001.00,
+			"totalAmount": 1221001.00,
+			"invoiceStatus": "UNPAID",
+			"expectedDeliveryAt": "2026-03-04T23:59:59",
+			"payments": [
+				{
+					"paymentId": 22,
+					"paymentPurpose": "FULL",
+					"paymentMethod": "VNPAY",
+					"status": "PENDING",
+					"amount": 1221001.00,
+					"paymentDate": null
+				}
+			]
+		}
+	}
+
+*Mục tiêu:
+	- Đọc được trạng thái đơn hàng
+	--> Check "payments": [ "status": "SUCCESS" ], "orderStatus": "PARTIALLY_PAID" hoặc "PAID", "invoiceStatus": "PARTIALLY_PAID" hoặc "PAID" ==> Chuyển qua trang /orders-success "Đặt hàng thành công"
+	--> Ngược lại ==> Thông báo "Đặt hàng thất bại"
+	
+	
+	// 13) Load managed cart items rồi xóa bằng JPA remove (cascade/orphanRemoval sẽ chạy)
+        var managedCartItems = cartItemRepo.findByCartItemIdIn(ids);
+        if (managedCartItems.size() != ids.size()) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+        cartItemRepo.deleteAll(managedCartItems);

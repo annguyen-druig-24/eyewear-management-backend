@@ -1,0 +1,36 @@
+### CUSTOMER gửi yêu cầu HỦY ĐƠN HÀNG trước khi STAFF xác nhận (CONFIRMED) ###
+1) Ý tưởng thiết kế UI dành cho CUSTOMERS:
+ 1.1: CUSTOMER bấm vào OrderHistoryList
+ 1.2: CUSTOMER bấm vào xem OrderDetail
+ 1.3: Chỉ đối với đơn hàng có Order_Status = [PENDING, PARTIALLY_PAID, PAID] mới hiển thị nút "Hủy đơn hàng" ở cuối phần OrderDetail
+ 1.4: Khi CUSTOMER bấm "Hủy đơn hàng" sẽ có 2 trường hợp:
+	*Lưu ý: khi bấm Hủy sẽ có 1 thông báo "Bạn có chắc chắn muốn hủy không? Có hoặc Không"
+	1.4.1: Đơn hàng không cần hoàn tiền (thanh toán COD, chưa trả tiền):
+		- CUSTOMER bấm vào "Hủy đơn hàng" nếu CUSTOMER chọn "Có" thì sẽ hủy đơn hàng thành công --> Cập nhật lại trong OrderDetail có Order_Status = CANCELED (Đã hủy)
+		- 			''					  nếu CUSTOMER chọn "Không" thì sẽ không hủy đơn hàng --> Trong OrderDetail vẫn giữ nguyên Order_Status = PENDING hoặc PARTIALLY_PAID, PAID 
+	1.4.2: Đơn hàng phải hoàn tiền (CUSTOMER đã trả 1 phần - PARTIALLY_PAID; CUSTOMER đã trả full - PAID):
+		- Khi bấm vào "Hủy đơn hàng" sẽ hiển thị form nhập:
+			+ refundMethod (bắt buộc)
+			+ refundAccountNumber (bắt buộc) 
+			+ refundAccountName (tùy chọn có thể nhập hoặc không) 
+			+ upload file ảnh customerAccountQR (tùy chọn có thể nhập hoặc không)
+		-> Chỉ khi CUSTOMER nhập đầy đủ các thông tin thì bắt buộc thì mới gửi thông báo đến SALES STAFF để xử lý yêu cầu hủy và hoàn tiền
+ 1.5: Thêm phần hiển thị Return_Exchange.Status để CUSTOMER theo dõi được đơn hủy và đã hoàn tiền chưa.
+	1.5.1: Nếu theo case 1.4.1 -> Hiển thị Return_Exchange.Status = COMPLETED (Hủy đơn hàng thành công)
+	1.5.2: Nếu theo case 1.4.2 -> Hiển thị Return_Exchange.Status theo từng giai đoạn (PENDING -> APPROVED -> COMPLETED) --> Sẽ hiển thị ảnh bằng chứng chuyển khoản (Staff_Refund_Evidence_URL)	
+																					  (PEDNGIN -> REJECTED) --> Sẽ hiển thị ra Reject_Reason (Lý do từ chối) do SALES STAFF phản hồi
+	--> Sau khi tạo yêu cầu hủy đơn hàng thì CUSTOMER chỉ có thể xem và theo dõi Return_Exchange.Status chứ không làm được gì.
+	
+	
+
+2) Ý tưởng thiết kế UI dành cho SALES STAFF:
+- Có tab "Đơn yêu cầu hủy cần hoàn tiền": sẽ hiển thị các đơn hàng CUSTOMER gửi yêu cầu hủy mà cần hoàn tiền (BE sẽ viết API hiển thị List)
+- Bấm vào xem Detail của từng đơn
+- Trong Detail sẽ có các field cơ bản: thông tin đơn hoàn (Return_Exchange)
+- SALES có thể từ chối (REJECT) hoặc chấp nhận (APPROVE):
+	+ CASE REJECT: bắt SALES STAFF phải nhập Reject_Reason (Lý do từ chối) mới có thể bấm "Từ chối"
+	+ CASE APPROVE: 
+		#SALES bấm "Chấp nhận" (APPROVE) sẽ có phần upload file ảnh bằng chứng chuyển khoản (Staff_Refund_Evidence_URL) để SALES upload ảnh	
+			--> Chỉ khi đã upload file ảnh bằng chứng mới được bấm "Hoàn thành"
+				--> Nếu Return_Exchange.Status = COMPLETED hệ thống sẽ tự động lưu xuống DB, cập nhật cộng lại số lượng Product.Available_Qauntity (BE lo)
+==> Trang Detail này sẽ hiển thị Return_Exchange.Status theo từng bước cho SALES quan sát

@@ -1,0 +1,153 @@
+Sprint 2 - SWP391
+
+I. API Tạo đơn hàng (Create Order) & Lưu log thanh toán:
+1) TODO:
+ #THÔNG TIN GIAO HÀNG
+	1.1: Người dùng bấm vào trang Confirm Page
+	1.2: Xây dựng api tự động fill (name, email, phone, thành phố, quận, phường, address detail - tên đường, số nhà chi tiết) theo field Address trong table User. 
+		1.2.1: Load tỉnh/thành khi mở trang  GET https://provinces.open-api.vn/api/v2/p/  --> trả về list province (code, name)
+		1.2.2: User chọn Province → load Districts tương ứng  GET https://provinces.open-api.vn/api/v2/p/{provinceCode}?depth=2  --> trả về province + mảng districts[] (mỗi district có code/name)
+		1.2.3: User chọn District → load Wards tương ứng  GET https://provinces.open-api.vn/api/v2/d/{districtCode}?depth=2  --> trả về district + mảng wards[]
+			==> Khi đổi tỉnh → reset district/ward; khi đổi district → reset ward.
+		Đường link demo Provinces Open API: https://provinces.open-api.vn/?utm_source=chatgpt.com
+	1.3: Người dùng có thể thay đổi địa chỉ lúc đặt hàng (vì có thể đặt tới địa chỉ khác)
+	1.4: Có nút chọn "Đặt làm địa chỉ mặc định" sau khi thay đổi địa chỉ 
+		1.4.1: Nếu người dùng chọn "Đặt làm địa chỉ mặc định" thì sẽ buildFullAddress theo format {Recipient_Address}, {Ward_Name}, {District_Name}, {Province_Name} trong table Shipping_Info
+		1.4.2: Cập nhật User.Address thành buildFullAddress
+		
+	*Chi tiết về phần Address:
+	1.1: Confirm Page – Hiển thị địa chỉ
+		1.1.1: Trên Confirm Page chỉ hiển thị 1 ô “Địa chỉ”:
+		- Nếu User.Address != NULL → autofill vào ô “Địa chỉ” (hiển thị dạng chuỗi fullAddress).
+		- Nếu User.Address == NULL → ô “Địa chỉ” để trống.
+		1.1.2: Ô “Địa chỉ” chỉ hiển thị (readonly), không cho user gõ trực tiếp để tránh dữ liệu không chuẩn.
+	1.2: Nút “Thêm địa chỉ mới” (Modal/Popup):
+		1.2.1: Bên dưới ô “Địa chỉ” có nút “Thêm địa chỉ mới”.
+		1.2.2: Khi bấm, mở 1 cửa sổ (Modal/Popup) gồm các field:
+			a) Recipient_Address (Tên đường, số nhà chi tiết) – input text
+			b) Province – dropdown (tỉnh/thành)
+			c) District – dropdown (quận/huyện) phụ thuộc Province
+			d) Ward – dropdown (phường/xã) phụ thuộc District
+			e) Checkbox / toggle: “Đặt làm địa chỉ mặc định” (saveAsDefaultAddress)
+		1.2.3: Modal có 3 nút:
+			a) Đặt làm địa chỉ mặc định (toggle on/off, có dấu tick xanh)
+			b) Xong
+			c) Hủy
+	1.3: Load dữ liệu tỉnh/quận/phường (Provinces Open API v2):
+		1.3.1: Load tỉnh/thành khi mở modal: GET https://provinces.open-api.vn/api/v2/p/ → list province (code, name)
+		1.3.2: Khi user chọn Province → load District: GET https://provinces.open-api.vn/api/v2/p/{provinceCode}?depth=2 → province + districts[]
+		1.3.3: Khi user chọn District → load Ward: GET https://provinces.open-api.vn/api/v2/d/{districtCode}?depth=2 → district + wards[]
+		1.3.4: Rule UI:
+			- Đổi Province → reset District/Ward
+			- Đổi District → reset Ward
+	1.4: Validate trong modal:
+		1.4.1: Khi user bấm “Xong”:
+			a) Nếu thiếu bất kỳ field nào trong modal (Recipient_Address, Province, District, Ward) → hiển thị lỗi “Không được để trống” ngay dưới field đó, modal không đóng.
+			b) Nếu đủ thông tin → modal đóng và Confirm Page cập nhật ô “Địa chỉ” theo format:	fullAddress = {Recipient_Address}, {Ward_Name}, {District_Name}, {Province_Name}
+				VÍ dụ: 12 Nguyễn Trãi, Phường Bến Nghé, Quận 1, TP Hồ Chí Minh
+	1.5: Hành vi nút “Hủy”:
+		1.5.1: Nếu bấm “Hủy”:
+			- Đóng modal
+			- Không lưu gì vào DB
+			- Không thay đổi ô “Địa chỉ” trên Confirm Page (giữ nguyên trạng thái trước đó)
+	1.6: Payload địa chỉ khi tạo đơn (BE nhận): 
+		Khi bấm “Đặt hàng”, FE gửi lên BE 2 trường hợp:
+		1.6.1: User dùng địa chỉ mặc định (không mở modal)
+			a) FE chỉ gửi shippingAddressText = User.Address (chuỗi fullAddress)
+			b) Không có province/district/ward code+name.
+		1.6.2: User nhập địa chỉ mới trong modal: 
+			FE gửi:
+				a) Recipient_Address
+				b) Province_Code, Province_Name
+				c) District_Code, District_Name
+				d) Ward_Code, Ward_Name
+				e) saveAsDefaultAddress (true/false) 
+	1.7: Logic BE lưu Shipping_Info + update User.Address:
+		Chỉ khi user bấm “Đặt hàng” (submit Create Order) thì BE mới lưu DB.
+		1.7.1: Lưu Shipping_Info (snapshot theo đơn)
+			a) Nếu Trường hợp A (dùng User.Address):
+				- Shipping_Info.Recipient_Address = User.Address (chuỗi)
+				- Province/District/Ward Code+Name = NULL (do user không chọn modal)
+			b) Nếu Trường hợp B (modal):
+				- Shipping_Info.Recipient_Address = Recipient_Address (line)
+				- Lưu đầy đủ Province/District/Ward Code+Name
+		1.7.2: Update User.Address theo rule
+			a) Nếu User.Address == NULL và user nhập modal:
+				- Sau khi build fullAddress → UPDATE User.Address = fullAddress (để lần sau autofill)
+			b) Nếu User.Address != NULL:
+				- Chỉ khi saveAsDefaultAddress == true → UPDATE User.Address = fullAddress
+				- Nếu saveAsDefaultAddress == false → không update User.Address (chỉ dùng cho đơn hiện tại)
+			* Lưu ý: thao tác với User luôn là UPDATE cột Address (không “INSERT user”).
+	1.8: Validate BE khi create order (bắt buộc):
+		1.8.1: Nếu User.Address == NULL và FE không gửi dữ liệu modal → reject 400: “Địa chỉ không được để trống”
+		1.8.2: Nếu FE gửi dữ liệu modal → bắt buộc đủ 4 field (Recipient_Address, Province, District, Ward) + code/name đi kèm (nếu bạn dùng).	
+	
+ #THÔNG TIN VẬN CHUYỂN
+	1.5: Xây dựng api hiển thị Shipping_Method theo dạng drop down: "Tiết kiệm", "Tiêu chuẩn", "Hỏa tốc" 
+	1.6: Xây dựng api lưu và hiển thị Expected_Delivery_Date và Shipping_Fee theo Shipping_Method tương ứng: 
+		1.6.1: "Tiết kiệm" : 10 ngày - 10k
+		1.6.1: "Tiêu chuẩn" : 7 ngày - 15k
+		1.6.1: "Hỏa tốc" : 3 ngày - 25k
+		==> Nên xây dựng tính năng nâng cao tích hợp api GHN để tính Shipping_Fee theo địa chỉ xa gần sẽ chính xác nghiệp vụ hơn
+ #HÌNH THỨC THANH TOÁN
+	1.7: Xây dựng api hiển thị các Payment_Method: "Thanh toán khi nhận hàng" - lưu xuống db map với Payment_Method=COD, "Momo", "VNPay"
+ #GIỎ HÀNG
+	1.8: Xây dựng api hiển thị thông tin sản phẩm (tên, hình ảnh, số lượng, giá) được chọn "Đặt hàng" 
+	1.9: Xây dựng api hiển thị các Promotion 
+	1.10: Các Case đặt cọc:
+		Note: Nếu đơn hàng có PRESCRIPTION_ORDER → Luôn bắt cọc 20% phần giá trị PRESCRIPTION_ORDER
+		1.10.1: Nếu đơn hàng có PRESCRIPTION_ORDER và MIX_ORDER và Tổng đơn ≥ 5.000.000đ → Cọc = 20% Tổng đơn
+		1.10.2: Nếu đơn hàng có PRESCRIPTION_ORDER và MIX_ORDER và Tổng đơn < 5.000.000đ → Cọc = 20% giá trị của PRESCRIPTION_ORDER
+		1.10.3: Nếu đơn hàng ko có PRESCRIPTION_ORDER và Tổng đơn < 5.000.000đ -> Ko Cọc
+		1.10.4: Nếu đơn hàng ko có PRESCRIPTION_ORDER và Tổng đơn >= 5.000.000đ -> Cọc = 20% Tổng đơn
+	==> Ở phần Tính tiền có:
+		a) Tạm tính
+		b) Phí giao hàng
+		c) Giảm giá
+		d) Phí đặt cọc (Nếu đơn hàng > 5 triệu phải đặt cọc trước 20%)
+		e) TỔNG TIỀN
+	1.10: Xây dựng api tính tiền: Giá trước giảm, Giá sau khi giảm, Phí giao hàng, Tổng tiền
+==>	API Insert dữ liệu vào table Order, Shipping_Info, Order_Detail (hoặc Prescription_Order_Detail), Payment, Invoice
+		Khi STAFF đã duyệt đơn hàng --> Update table Promotion, Inventory
+	
+2) Nâng cao:
+ - idempotencyKey (rất nên có để tránh bấm 2 lần tạo 2 order)
+ - Tích hợp api GHN để tính Shipping_Fee
+
+
+{
+	"productId" : 1,
+    "productName" : "",
+	"quantity" : 1,
+	"productPrice" : 100000,
+	"imageUrl" : "",
+	"frameId": 1,
+	"lensId" : 1,
+	
+}
+
+PRES = 5tr
+PRE = 1tr
+DIR = 1tr
+TỔNG = 7tr
+--> Giảm 20% tổng đơn:
+	PRES_DEPOSIT = 20% * 5tr = 1tr
+	PRE_DEPOSIT = 20% * 1tr = 200k
+	DIR_DEPOSIT = 20% * 1tr = 200k
+	--> TỔNG DEPOSIT = 1tr400
+	
+	
+1.2) Trong table Payment tôi sẽ thêm field "Payment_Purpose", vậy khi khách hàng dùng phương thức thanh toán là COD, phương thức thanh toán cọc là VNPAY thì sẽ INSERT 2 records vào table Payment đúng không. 
+   Ví dụ: 
+   a) Case 1: Khách hàng chọn hình thức thanh toán là COD, và hình thức thanh toán cọc là VNPAY
+   - Khi khách hàng chọn hình thức thanh toán cọc là VNPAY: Payment_Id = 1; Order_Id = 1; Payment_Date = 03-24-2026; Payment_Method = VNPAY; Payment_Purpose = DEPOSIT; Amount = 1.000.000; Status = SUCCESS
+   - Khi khách hàng chọn hình thức thanh toán là COD: Payment_Id = 2; Order_Id = 1; Payment_Date = 03-27-2026 (null khi khách hàng chưa thanh toán, hiển thị ngày khi khách hàng đã thanh toán); Payment_Method = COD; Payment_Purpose = REMAINING; Amount = 4.000.000; Status = PENDING (khi khách hàng chưa thanh toán là PENDING, khi khách hàng đã thanh toán là SUCCESS)
+   b) Case 2: Khách hàng chọn hình thức thanh toán là VNPAY, và hình thức thanh toán cọc là VNPAY
+   - Khi khách hàng chọn hình thức thanh toán cọc là VNPAY: Payment_Id = 3; Order_Id = 2; Payment_Date = 03-24-2026; Payment_Method = VNPAY; Payment_Purpose = DEPOSIT; Amount = 1.000.000; Status = SUCCESS
+   - Khi khách hàng đã thanh toán cọc thì số tiền còn lại cần trả là 4.000.000 thì khi đó chúng ta làm cách nào để người dùng sẽ trả 4.000.000 còn lại sau khi đã nhận hàng? Hay chúng ta sẽ bắt buộc người dùng phải trả COD hoặc chuyển khoản cho bên Shipper và Shipper sẽ trả lại 4.000.000 cho cửa hàng và khi đó chúng ta sẽ thông qua API GHN và kiểm tra đã xác nhận nhận đủ tiền thì Staff sẽ nhấn nút "Xác nhận đã nhận đủ" thì sẽ INSERT vào table Payment 1 record: Payment_Id = 4; Order_Id = 2; Payment_Date = 03-28-2026; Payment_Method = VNPAY (Ở đây tôi không biết nên lưu VNPAY hay COD, vì tôi không biết khi khách hàng thanh toán số tiền còn lại thông qua shipper GHN sẽ thanh toán bằng hình thức nào, vậy nên chúng ta nên lưu VNPAY hay COD là hợp lí hơn?) ; Payment_Purpose = REMAINING; Amount = 4.000.000; Status = SUCCESS
+   c) Case 3: 
+   - Khách hàng chọn hình thức thanh toán là VNPAY, và phải cọc, nhưng khách hàng chọn "Thanh toán toàn bộ" thì sẽ INSERT vào table Payment 1 records: Payment_Id = 5; Order_Id = 3; Payment_Date = 03-28-2026; Payment_Method = VNPAY; Payment_Purpose = FULL; Amount = 5.000.000; Status = SUCCESS
+
+2) Tôi đã có quyết định là sẽ không cho cộng dồn Promotion, 1 đơn hàng thì người dùng chỉ được chọn 1 Promotion, và mỗi khi 1 Promotion được người dùng chọn sử dụng thì Used_Count + 1, Promotion sẽ bị turn off khi Used_Count >= Usage_Limit. 
+    Ví dụ: Có 2 chương trình khuyến mãi: "Mua gọng kính A giảm 10%", "Giá trị đơn hàng trên 5.000.000 giảm 5%" 
+   - Người dùng mua gọng kính A và tổng giá trị đơn hàng là 6.000.000đ thì khi đó hệ thống sẽ hiển thị 2 Promotion khả dụng trong phần "Chọn mã giảm giá" và người dùng sẽ chỉ có thể chọn được 1 Promotion, hệ thống sẽ tự động recommend 1 Promotion tối ưu nhất

@@ -1,0 +1,32 @@
+* FLow case order status chi tiết:
+1) Case 1: COD, Không cần gia công đặc biệt (DIRECT_ORDER hoặc PRE_ORDER hoặc MIX_ORDER mà không có thành phần là PRESCRIPTION_ORDER):
+	- Đặt hàng: Order=PENDING, Shipping=PENDING.
+	- Sales Staff bấm xác nhận: Order=CONFIRMED.
+	- Operations Staff đóng gói: Shipping=PACKING.
+	- Bàn giao GHN: Order=READY, Shipping=SHIPPING
+	- GHN giao thành công: Shipping=DELIVERED → Order=COMPLETED.
+	
+2) Case 2: online trả đủ ngay, không cần gia công đặc biệt (DIRECT_ORDER hoặc PRE_ORDER hoặc MIX_ORDER mà không có thành phần là PRESCRIPTION_ORDER):
+	- Đặt + thanh toán thành công: Order=PAID, Shipping=PENDING.
+	- Sales Staff bấm xác nhận: Order=CONFIRMED.
+	- Operations Staff xử lý:  Shipping=PACKING.
+	- Bàn giao GHN: Order=READY, Shipping=SHIPPING.
+	- GHN giao thành công: Shipping=DELIVERED → Order=COMPLETED.
+	
+3) Case 3: đơn cần cọc, nhưng không cần gia công đặc biệt (DIRECT_ORDER hoặc PRE_ORDER hoặc MIX_ORDER mà không có thành phần là PRESCRIPTION_ORDER) -> Đơn hàng trên 5 triệu không có PRESCRIPTION_ORDER:
+	- Đặt + thanh toán thành công: Order=PARTIALLY_PAID, Shipping=PENDING.
+	- Sales Staff bấm xác nhận: Order=CONFIRMED.
+	- Operations Staff xử lý:  Shipping=PACKING.
+	- Bàn giao GHN: Order=READY, Shipping=SHIPPING.
+	- GHN giao thành công: Shipping=DELIVERED →  Order=PAID -> Order=COMPLETED.
+
+4) Case 4: đơn cần cọc, nhưng cần gia công đặc biệt (PRESCRIPTION_ORDER hoặc MIX_ORDER có chứa PRESCRIPTION_ORDER):
+	- Đặt + thanh toán thành công: Order=PARTIALLY_PAID, Shipping=PENDING.
+	- Sales Staff bấm xác nhận: Order=CONFIRMED.
+	- Operations Staff xử lý:  Order=PROCESSING --> Shipping=PACKING.
+	- Bàn giao GHN: Order=READY, Shipping=SHIPPING.
+	- GHN giao thành công: Shipping=DELIVERED →  Order=PAID -> Order=COMPLETED.
+
+5) Case 5: Khách hàng hủy:
+	- Đặt hàng: Order=PENDING, Shipping=PENDING, hoặc Đặt + thanh toán thành công: Order=PARTIALLY_PAID hoặc PAID, Shipping=PENDING.
+	- Khách hàng chỉ có thể hủy khi Order=PENDING hoặc Shipping=PENDING: Người dùng bấm "Hủy đơn hàng" thì lúc đó: Order=CANCELED, Shipping=CANCELED

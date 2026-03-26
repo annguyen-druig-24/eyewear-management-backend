@@ -1,0 +1,48 @@
+BUSINESS RULE - MÃ GIẢM GIÁ
+1) Có 2 loại giảm giá:
+ - Order_Promotion: Giảm giá theo đơn hàng (Cố định). VD: Tổng giá trị đơn hàng > 1.000.000 vnd sẽ giảm 10%,...
+ - Product_Promotion: Giảm giá theo sản phẩm (Có start_date và end_date). VD: Loại gọng kính Rayban sẽ giảm 15%,...
+ 
+2) Áp dụng Product_Promotion trước, Order_Promotion sau:
+ - VD: Khi người dùng mua loại gọng kính Rayban và tổng giá trị đơn hàng là 1.250.000 (> 1.000.000 vnd) thì sẽ áp dụng giảm giá như sau:
+	+ Áp dụng Product_Promotion: giảm 15% của 1.150.000 vnd --> Tổng giá sau khi áp dụng Product_Promotion: 977.500 vnd (< 1.000.000 vnd) --> Không được áp dụng Order_Promotion nữa.
+	==> CHỈ KHI TỔNG GIÁ TRỊ ĐƠN HÀNG SAU KHI ĐÃ ÁP DỤNG Product_Promotion vẫn > 1.000.000 vnd thì mới có thể áp dụng Order_Promotion
+	
+3) Trên UI:
+	a) Giá trước khi giảm:...
+	b) Giá sau khi giảm (Tự động áp dụng Product_Promotion):...
+	c) Nút "Chọn mã giảm giá": Sẽ có nhiều Order_Promotion --> Hiển thị những Order_Promotion khả dụng cho người dùng chọn, những Order_Promotion không khả dụng thì disable --> Chỉ được chọn 1 mã giảm giá
+	--> Ở phần "Chọn mã giảm giá" hệ thống sẽ tự động chọn mã giảm giá tốt nhất (người dùng có thể chọn các mã giảm giá thấp hơn để tiết kiệm/để dành mã giảm giá tốt nhất)
+	
+4) Ví dụ thực tế:
+ Real Case: 
+ 1. Product_Promotion: 
+	a) Gọng kính Rayban giảm 15% 
+	b) Tròng kính Essilor giảm 20% 
+	c) .... 
+ 2. Order_Promotion: 
+	a) Đơn hàng trên 1.000.000 vnd giảm 5% 
+	b) Đơn hàng trên 2.000.000 vnd giảm 10% 
+	c) Đơn hàng mua lần đầu giảm 30% 
+	d) .... 
+ Đơn hàng của tôi: 
+	- 1 gọng kính Rayban giá 700.000 vnd 
+	- 1 tròng kính Essilor giá 800.000 vnd 
+ Business rule của việc áp dụng mã giảm giá: Sẽ áp dụng giảm giá Product_Promotion trước, rồi sẽ có phần chọn mã giảm giá, chỉ được chọn 1 mã giảm giá 
+ Như vậy thì tổng giá trị đơn hàng của tôi sau khi áp dụng mã giảm giá sẽ là bao nhiêu?
+ 
+ Handle:
+	- Áp Product_Promotion trước (tự động).
+	- Sau đó user chọn 1 mã giảm giá (Order_Promotion).
+ 1) Tính Product_Promotion (tự động):
+	Gọng Rayban 700.000 giảm 15%:
+	- Giá sau giảm: 700.000 − 105.000 = 595.000 vnd
+	Tròng Essilor 800.000 giảm 20%:
+	- Giá sau giảm: 800.000 − 160.000 = 640.000 vnd
+	--> Tổng sau Product_Promotion:595.000 + 640.000 = 1.235.000 VND
+ 2) Chọn 1 mã Order_Promotion (voucher):
+	a. Đơn > 1.000.000 giảm 5% ✅ áp dụng được
+		--> Tổng cuối: 1.235.000 − 61.750 = 1.173.250 VND
+	b. Đơn > 2.000.000 giảm 10% ❌ không đủ điều kiện (1.235.000 < 2.000.000)
+	c. Mua lần đầu giảm 30% ✅ nếu đúng là đơn đầu tiên của user
+		--> Tổng cuối: 1.235.000 − 370.500 = 864.500 VND

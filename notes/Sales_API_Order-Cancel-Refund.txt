@@ -1,0 +1,222 @@
+### Các API dành cho SALES STAFF về "Danh sách đơn yêu cầu hủy hoàn tiền" ###
+
+1) API GET http://localhost:8080/api/staff/return-exchange/cancel-refund-requests
+	* Công dụng: Lấy toàn bộ danh sách đơn yêu cầu hủy hoàn tiền:
+	* Các điều kiện để xuất hiện được ở trang này:
+		- Return_Type = REFUND
+		- Request_Scope = ORDER
+		- Refund_Amount > 0
+		- Order_Status = CANCELED
+	* Chuỗi JSON truyền vào: {}
+	* Chuỗi JSON trả ra:
+		{
+			"code": 1000,
+			"message": "OK",
+			"result": [
+				{
+					"returnExchangeId": 33,
+					"returnCode": "RF2603180007",
+					"orderId": 244,
+					"orderCode": "ORD-2026-03-17-1285D4D8",
+					"orderDate": "2026-03-17T22:20:47.88",
+					"orderStatus": "CANCELED",
+					"customerName": "Lê Đức Lợi",
+					"customerPhone": "0839158168",
+					"customerEmail": "leducloi@gmail.com",
+					"returnType": "REFUND",
+					"requestScope": "ORDER",
+					"requestDate": "2026-03-18T15:12:02.87",
+					"returnExchangeStatus": "PENDING",
+					"refundAmount": 1770900.00,
+					"refundMethod": "MOMO",
+					"refundAccountNumber": "0969733823",
+					"refundAccountName": "Phạm Trung Kiên",
+					"requestNote": null,
+					"rejectReason": null,
+					"approvedDate": null,
+					"processedDate": null
+				},
+				{
+					"returnExchangeId": 32,
+					"returnCode": "RF2603180006",
+					"orderId": 267,
+					"orderCode": "ORD-2026-03-18-53E6597C",
+					"orderDate": "2026-03-18T13:19:16.133",
+					"orderStatus": "CANCELED",
+					"customerName": "Lê Đức Lợi",
+					"customerPhone": "0839158168",
+					"customerEmail": "leducloi@gmail.com",
+					"returnType": "REFUND",
+					"requestScope": "ORDER",
+					"requestDate": "2026-03-18T13:27:26.933",
+					"returnExchangeStatus": "PENDING",
+					"refundAmount": 740000.00,
+					"refundMethod": "VCB",
+					"refundAccountNumber": "9965379303",
+					"refundAccountName": "NGUYEN TRAN DAT AN",
+					"requestNote": "Nhờ shop xử lý sớm",
+					"rejectReason": null,
+					"approvedDate": null,
+					"processedDate": null
+				},
+				...
+			]
+		}
+		
+		
+2) API GET http://localhost:8080/api/staff/return-exchange/cancel-refund-requests/{returnExchangeId}
+	* Công dụng: Xem được chi tiết đơn yêu cầu hủy hoàn tiền
+	* Chuỗi JSON truyền vào: {}
+	* Chuỗi JSON trả ra:
+		{
+			"code": 1000,
+			"message": "Cancel refund request detail retrieved successfully",
+			"result": {
+				"orderId": 244,
+				"orderCode": "ORD-2026-03-17-1285D4D8",
+				"orderStatus": "CANCELED",
+				"orderType": "PRESCRIPTION_ORDER",
+				"orderDate": "2026-03-17T22:20:47.88",
+				"totalAmount": 1770900.00,
+				"shippingStatus": "CANCELED",
+				"shippingFee": 20900.00,
+				"expectedDeliveryAt": "2026-03-18T23:59:59",
+				"deliveredAt": null,
+				"remainingTimeValid": null,
+				"isPastExpectedDeliveryAt": false,
+				"hasPrescriptionItem": true,
+				"requiresFinalPayment": false,
+				"availableActions": [],
+				"customerName": "Lê Đức Lợi",
+				"customerPhone": "0839158168",
+				"customerEmail": "leducloi@gmail.com",
+				"orderDetail": [],
+				"prescriptionOrderDetail": [
+					{
+						"prescriptionOrderDetailId": 111,
+						"frameId": 2,
+						"frameName": "Gọng Kính Tròn Cổ Điển",
+						"framePrice": 1200000.00,
+						"frameImg": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1772382822/Frame_02_r2ytlh.jpg",
+						"lensId": 4,
+						"lensName": "Tròng Chống Ánh Sáng Xanh Cơ Bản",
+						"lensPrice": 550000.00,
+						"lensImg": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1772383014/Lens_01_i3cmlm.jpg",
+						"contactLensId": null,
+						"contactLensName": null,
+						"contactLensPrice": 0,
+						"contactLensImg": null,
+						"rightEyeSph": "-2.5",
+						"rightEyeCyl": "-1.25",
+						"rightEyeAxis": "16",
+						"rightEyeAdd": "1.0",
+						"rightPD": "0",
+						"leftEyeSph": "1.5",
+						"leftEyeCyl": "-0.5",
+						"leftEyeAxis": "175",
+						"leftEyeAdd": "1.0",
+						"leftPD": "0",
+						"quantity": 1,
+						"totalPrice": 1750000.00
+					}
+				],
+				"recipientName": "Nguyen Van A",
+				"recipientPhone": "0901234567",
+				"recipientEmail": "a@example.com",
+				"recipientAddress": "Số 2, đường số 43, Phường An Phú, Thành Phố Thủ Đức, Hồ Chí Minh",
+				"note": "Test order from Postman",
+				"returnExchangeId": 33,
+				"returnCode": "RF2603180007",
+				"requestDate": "2026-03-18T15:12:02.87",
+				"returnExchangeStatus": "PENDING",
+				"returnType": "REFUND",
+				"requestScope": "ORDER",
+				"requestNote": null,
+				"returnReason": "Đéo mua nữa",
+				"refundAmount": 1770900.00,
+				"refundMethod": "MOMO",
+				"refundAccountNumber": "0969733823",
+				"customerAccountQr": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1773821520/return_items/sgl0rpbnzngkveutdfos.png",
+				"refundAccountName": "Phạm Trung Kiên",
+				"refundReferenceCode": null,
+				"staffRefundEvidenceUrl": null,
+				"approvedDate": null,
+				"approvedByName": null,
+				"processedDate": null,
+				"processedByName": null,
+				"rejectReason": null,
+				"returnExchangeItems": []
+			}
+		}
+		
+		
+3) API PUT http://localhost:8080/api/staff/return-exchange/cancel-refund-requests/{returnExchangeId}/status
+	* Công dụng: Cập nhật returnExchangeStatus = PENDING --> REJECTED hoặc APPROVED tùy vào chuỗi JSON truyền vào
+	* Chuỗi JSON truyền vào:
+		{
+		  "action": "REJECT",
+		  "rejectReason": "Thông tin tài khoản nhận hoàn tiền chưa hợp lệ"
+		}
+		hoặc
+		{
+		  "action": "APPROVE"
+		}
+	* Chuỗi JSON trả ra:
+		{
+			"code": 1000,
+			"message": "Cancel refund request status updated successfully",
+			"result": {
+				"return_exchange_id": 32,
+				"return_code": "RF2603180006",
+				"order_id": 267,
+				"user_id": 13,
+				"return_type": "REFUND",
+				"request_scope": "ORDER",
+				"request_note": "Nhờ shop xử lý sớm",
+				"return_reason": "Đổi nhu cầu mua hàng",
+				"refund_amount": 740000.00,
+				"refund_method": "VCB",
+				"refund_account_number": "9965379303",
+				"refund_account_name": "NGUYEN TRAN DAT AN",
+				"status": "REJECTED",
+				"request_date": "2026-03-18T13:27:26.933",
+				"approved_date": "2026-03-18T17:54:03.3230167",
+				"approved_by_id": 25,
+				"reject_reason": "Thông tin tài khoản nhận hoàn tiền chưa hợp lệ"
+			}
+		}
+		
+		
+4) API PUT http://localhost:8080/api/staff/return-exchange/cancel-refund-requests/{returnExchangeId}/complete-refund
+	* Công dụng: Cập nhật returnExchangeStatus = APPROVED --> COMPLETED, và cập nhật Payment.Status = SUCCESS --> REFUNDED
+	* Chuỗi JSON truyền vào:
+		{
+		  "refundAmount": 1770900.00
+		}
+	* Truyền hình ảnh bằng chứng từ SALES STAFF với key : staffEvidenceFile
+	* Rule: Phải upload file ảnh bằng chứng rồi mới bấm "Hoàn thành" được
+	* Chuỗi JSON trả ra:
+		{
+			"code": 1000,
+			"message": "Cancel refund request completed successfully",
+			"result": {
+				"return_exchange_id": 33,
+				"return_code": "RF2603180007",
+				"order_id": 244,
+				"user_id": 13,
+				"return_type": "REFUND",
+				"request_scope": "ORDER",
+				"return_reason": "Đéo mua nữa",
+				"refund_amount": 1770900.00,
+				"refund_method": "MOMO",
+				"refund_account_number": "0969733823",
+				"refund_account_name": "Phạm Trung Kiên",
+				"staff_refund_evidence_url": "https://res.cloudinary.com/dbgkfgkrl/image/upload/v1773834087/return_items/z4tyfod5kgupa4wijcfy.jpg",
+				"status": "COMPLETED",
+				"request_date": "2026-03-18T15:12:02.87",
+				"approved_date": "2026-03-18T17:51:51.453",
+				"approved_by_id": 25,
+				"processed_date": "2026-03-18T18:41:28.3014042",
+				"processed_by_id": 25
+			}
+		}

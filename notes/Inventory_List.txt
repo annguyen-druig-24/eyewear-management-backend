@@ -1,0 +1,94 @@
+### Trang Inventory cho STAFF ###			
+* Các field cần có cho trang Inventory của STAFF
+	- productId
+	- productName
+	- SKU
+	- brandName
+	- frameMaterialName (Gọng)
+	- frameShapeName	(Gọng)
+	- lensTypeName		(Tròng)
+	- indexValue		(Tròng)
+	- isBlueLightBlock	(Tròng)
+	- isPhotochromic	(Tròng)
+	- usageType			(Kính áp tròng)
+	- lensMaterial		(Kính áp tròng)
+	- baseCurve			(Kính áp tròng)
+	- waterContent		(Kính áp tròng)
+	- replacementSchedule (hạn sử dụng)	(Kính áp tròng)
+	- availableQuantity
+
+1) Hiển thị dữ liệu các sản phẩm (Gọng, Tròng, Kính áp tròng):
+API GET http://localhost:8080/api/inventory/products
+	* Lưu ý: Phải truyền token vào mới có thể gọi được API này ==> Đã phân quyền dưới BE (chỉ có OPERATIONS STAFF, SALES STAFF, MANAGER, ADMIN mới gọi và sử dụng được API này)
+	* Công dụng: Hiển thị thông tin sản phẩm và số lượng tồn kho
+	* Giải thích các quantity:
+		- onHandQuantity: là số lượng hàng thực tế
+		- reservedQuantity: là số lượng hàng được đặt nhưng đang chờ thanh toán thành công
+		- availableQuantity = onHandQuantity - reservedQuantity
+		==> FE chỉ lấy 1 quantity để hiển thị lên UI. Có thể lấy onHandQuantity hoặc availableQuantity để hiển thị lên UI đều được (ưu tiên lấy availableQuantity)
+	* Chuỗi JSON truyền vào : {}
+	* Chuỗi JSON trả ra:
+		{
+			"code": 1000,
+			"message": "OK",
+			"result": [
+				{
+					"productId": 1,
+					"productName": "Gọng Kính Mát Thời Trang Ray-Ban",
+					"productTypeName": "Gọng kính",
+					"SKU": "RB-001",
+					"brandName": "Ray-Ban",
+					"frameMaterialName": "Kim loại",
+					"frameShapeName": "Phi công (Aviator)",
+					"onHandQuantity": 50,
+					"reservedQuantity": 0,
+					"availableQuantity": 50,
+					"isActive": true
+				},
+				{
+					"productId": 2,
+					"productName": "Gọng Kính Tròn Cổ Điển",
+					"productTypeName": "Gọng kính",
+					"SKU": "RN-002",
+					"brandName": "Oakley",
+					"frameMaterialName": "Titanium",
+					"frameShapeName": "Tròn (Round)",
+					"onHandQuantity": 30,
+					"reservedQuantity": 0,
+					"availableQuantity": 30,
+					"isActive": true
+				},
+				{
+					"productId": 3,
+					"productName": "Tròng Kính Chống Ánh Sáng Xanh",
+					"productTypeName": "Tròng kính",
+					"SKU": "TK-001",
+					"brandName": "Essilor",
+					"lensTypeName": "Đơn tròng",
+					"indexValue": 1.67,
+					"isBlueLightBlock": true,
+					"isPhotochromic": false,
+					"onHandQuantity": 18,		
+					"reservedQuantity": 0,
+					"availableQuantity": 18,
+					"isActive": true
+				},
+				{
+					"productId": 4,
+					"productName": "Kính Áp Tròng Màu Xám Khói",
+					"productTypeName": "Kính áp tròng",
+					"SKU": "AT-001",
+					"brandName": "Seed",
+					"usageType": "Thẩm mỹ & Cận",
+					"lensMaterial": "Silicone Hydrogel",
+					"baseCurve": 8.60,
+					"waterContent": 38.00,
+					"replacementSchedule": "1 Tháng",
+					"onHandQuantity": 35,
+					"reservedQuantity": 0,
+					"availableQuantity": 35,
+					"isActive": true
+				},
+				...
+			]
+		}

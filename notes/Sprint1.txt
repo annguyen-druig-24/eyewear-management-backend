@@ -1,0 +1,20 @@
+LOGIN - SIGNUP - GET USER PROFILE - UPDATE USER PROFILE
+
+I. Các Field cần nhập:
+	1) Login cần: username, password  --> nếu đúng us và pass sẽ generate ra đc accessToken
+	2) Get User Info: cần accessToken ở trên
+	3) Sign Up User: KO CẦN TOKEN
+		- Khi đăng ký cần các field: username, password, email, phone, name, dob
+	4) Update User Profile: cần accessToken ở trên để update được.
+		- Khi update cần các field: email, phone, name, dob, address, idNumber
+		
+II. FLOW:
+	Login page --> Homepage --> Profile User page --> Update (Trong Profile User page có nút "CHỈNH SỬA" người dùng bấm vào sẽ có thể chỉnh sửa các thông tin rồi bấm "LƯU" để cập nhật thông tin)
+	
+
+III. Các URL API cần dùng:
+	POST: /auth/token   --> Dùng để Login và lấy đc token
+	GET: /users  --> Dùng để xem được tất cả thông tin của các users trong database (CHƯA CẦN LÀM PHẦN NÀY - CHỈ DÀNH CHO ADMIN)
+	GET: /users/my-info  --> Dùng để xem được thông tin của chính user đó (để truy cập đc function này cần có accessToken được generate ra từ phần Login)
+	POST: /users  --> Dùng để đăng ký 1 tài khoản user cho GUEST (để sử dụng đc function này cần nhập các field nêu trên)
+	PUT: /users/my-info --> Dùng để cập nhật thông tin user (để truy cập đc function này cần có accessToken được generate ra từ phần Login)

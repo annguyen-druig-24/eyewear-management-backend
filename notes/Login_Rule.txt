@@ -1,0 +1,41 @@
+FLOW LOGIN PHÂN QUYỀN:
+1) Gọi API POST http://localhost:8080/auth/token
+	a) Truyền chuỗi JSON đầu vào:
+		{
+			"username": "leducloi",
+			"password": "Loi@2005"
+		}
+	b) Chuỗi JSON trả ra:
+		{
+			"code": 1000,
+			"result": {
+				"token": "eyJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJleWV3ZWFyLW1hbmFnZW1lbnQuY29tIiwic3ViIjoibGVkdWNsb2kiLCJleHAiOjE3NzI2NDM0NzgsImlhdCI6MTc3MjYzOTg3OCwianRpIjoiNDUyYmFmYzgtN2YyMC00MWExLWFiOTktYjIwMWNmYjBjNGE1Iiwic2NvcGUiOiJST0xFX0NVU1RPTUVSIn0.nu8EIIt_QCXf0GHpwonIwTWMnw5aNti8QhjWuvKU4QZAHH5MH7erGq1safgQNGw_5iJ6nsXTuVkSBc3mJqb6mA",
+				"authenticated": true
+			}
+		}
+		
+2) Gọi API GET http://localhost:8080/users/my-info
+	a) Truyền vào token từ chuỗi JSON trả ra khi chạy API POST http://localhost:8080/auth/token
+	b) Chuỗi JSON trả ra: 	
+		{
+			"code": 1000,
+			"result": {
+				"username": "leducloi",
+				"email": "leducloi@gmail.com",
+				"phone": "0839158168",
+				"name": "Lê Đức Lợi",
+				"dob": "2005-11-15",
+				"address": "abc, Xã Hưng Thi, Huyện Lạc Thủy, Hòa Bình",
+				"idNumber": null,
+				"role": {
+					"name": "CUSTOMER"
+				},
+				"provinceCode": 267,
+				"provinceName": "Hòa Bình",
+				"districtCode": 2157,
+				"districtName": "Huyện Lạc Thủy",
+				"wardCode": "230908",
+				"wardName": "Xã Hưng Thi"
+			}
+		}
+	--> Lấy "role": "name" : "CUSTOMER" để phân quyền

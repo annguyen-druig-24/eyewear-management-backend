@@ -1,0 +1,184 @@
+# Quy trình hủy đơn & hoàn tiền online trước khi SALES STAFF xác nhận
+
+Tài liệu này đề xuất quy trình nghiệp vụ cho trường hợp:
+- Khách hàng (CUSTOMER) tự bấm **Hủy đơn**.
+- Đơn đang ở giai đoạn trước xác nhận của SALES STAFF (chưa `CONFIRMED`).
+- Đơn đã phát sinh thanh toán online (`VNPAY`, `PAYOS`) với trạng thái `PARTIALLY_PAID` hoặc `PAID`.
+
+## 1) Nguyên tắc nghiệp vụ cốt lõi
+
+1. **Cho phép khách tự hủy khi đơn chưa được xử lý vận hành**.
+   - Nên giới hạn hủy tự động khi `Order_Status` thuộc nhóm an toàn: `PENDING`, `PARTIALLY_PAID`, `PAID`.
+   - Không cho tự hủy khi đã `CONFIRMED` trở lên; lúc đó chuyển sang quy trình staff xử lý hủy.
+
+2. **Hủy đơn và hoàn tiền là 2 bước khác nhau**.
+   - Bước A: Khóa đơn để dừng thực hiện (`CANCELED`).
+   - Bước B: Thực hiện hoàn tiền theo số tiền thực thu.
+
+3. **Hoàn theo số tiền đã thu thành công, không theo tổng đơn lý thuyết**.
+   - `refundAmount = SUM(Payment.Amount WHERE Status = SUCCESS) - SUM(refunded)`.
+   - Nếu chưa thu đồng nào thì không tạo nghiệp vụ refund.
+
+4. **Idempotency (chống bấm lặp / callback lặp)** là bắt buộc.
+   - Một order chỉ có **một yêu cầu hủy đang mở**.
+   - Không tạo nhiều bản ghi refund trùng cho cùng một khoản.
+
+## 2) Luồng đề xuất chi tiết
+
+### Bước 1: CUSTOMER bấm “Hủy”
+
+Hệ thống kiểm tra điều kiện:
+- `Order_Status` chưa vào luồng xử lý (`!= CONFIRMED`, chưa đóng gói, chưa giao vận).
+- Người bấm đúng chủ đơn.
+- Đơn chưa có yêu cầu hủy đang mở.
+
+Nếu hợp lệ:
+- Cập nhật `Order.Order_Status = CANCELED`.
+- Cập nhật `Invoice.Status = CANCELED` (hoặc trạng thái phản ánh “đã hủy”).
+- Ghi log vào `Order_Processing` với note kiểu `CUSTOMER_REQUEST_CANCEL`.
+
+### Bước 2: Xác định có cần hoàn tiền không
+
+- Tính tổng tiền đã thanh toán thành công từ bảng `Payment` (`Status = SUCCESS`).
+- Nếu tổng = 0:
+  - Kết thúc luồng hủy, không tạo refund.
+- Nếu tổng > 0:
+  - Tạo yêu cầu refund ở trạng thái chờ xử lý (pending refund).
+
+### Bước 3: SALES STAFF duyệt yêu cầu hoàn
+
+Staff mở danh sách “Đơn đã hủy cần hoàn tiền”, kiểm tra:
+- Trạng thái order đúng là `CANCELED`.
+- Đối soát payment online (`VNPAY` / `PAYOS`) đã `SUCCESS`.
+- Số tiền hoàn đề xuất.
+
+Staff có 2 nhánh:
+- **Reject hoàn**: bắt buộc nhập `rejectReason` (chỉ dùng khi có sai lệch nghiệp vụ rõ ràng).
+- **Accept hoàn**: chuyển sang xử lý hoàn tiền.
+
+### Bước 4: Thực hiện hoàn tiền
+
+Ưu tiên:
+1. **Auto refund qua gateway API** (nếu cổng hỗ trợ).
+2. Nếu không hỗ trợ, **manual transfer** theo tài khoản khách.
+--> Hiện tại sẽ refund theo kiểu STAFF hoàn tiền thủ công dựa vào refund_method và refund_account_number của CUSTOMERS
+
+Sau khi thực hiện:
+- Lưu mã giao dịch hoàn (`refundTransactionCode`).
+- Lưu bằng chứng (`imageUrl`/biên lai).
+- Cập nhật trạng thái khoản payment liên quan sang `REFUNDED` (toàn phần hoặc một phần theo thiết kế).
+
+### Bước 5: Đóng yêu cầu
+
+- Đánh dấu yêu cầu refund là `COMPLETED`.
+- Ghi `approvedBy`, `approvedDate`.
+- Thông báo cho CUSTOMER (in-app/email).
+
+## 3) Đánh giá phương án bạn đề xuất
+
+Phương án của bạn **khả dụng**, đặc biệt cho giai đoạn đầu khi chưa tích hợp auto-refund. Tuy nhiên nên chỉnh 5 điểm sau để vận hành an toàn hơn:
+
+1. **Không nên chỉ check `Order_Status != CONFIRMED`**.
+   - Cần check theo danh sách trạng thái cụ thể cho phép hủy.
+
+2. **Tách rõ “yêu cầu hủy” và “yêu cầu hoàn tiền”**.
+   - Tránh trường hợp đơn đã hủy nhưng refund chưa làm hoặc làm lỗi khó theo dõi.
+
+3. **Nếu muốn dùng `Return_Exchange` cho REFUND, nên chuyển về 1-1 với `Order`**.
+   - Đây là hướng phù hợp cho nghiệp vụ refund cấp đơn hàng.
+   - Tránh phụ thuộc vào từng dòng `Order_Detail`.
+
+4. **Bắt buộc lưu dấu vết kế toán/tác vụ**.
+   - Ai duyệt, ai chuyển, chuyển lúc nào, số tiền nào, mã giao dịch nào.
+
+5. **Thêm trạng thái trung gian cho refund**.
+   - Ví dụ: `PENDING_APPROVAL` → `APPROVED` → `PROCESSING` → `COMPLETED` / `REJECTED` / `FAILED`.
+
+## 4) Khuyến nghị thiết kế dữ liệu tốt hơn (hỗ trợ cả REFUND cấp Order và RETURN/WARRANTY theo từng Order_Detail)
+
+### 4.1. Dùng mô hình Header + Item
+
+- `Return_Exchange` là bảng **header** (cấp yêu cầu), liên kết với `Order_ID`.
+- Thêm bảng `Return_Exchange_Item` để map các `Order_Detail_ID` cụ thể và `Quantity` tương ứng.
+
+Cách này giải quyết đúng vấn đề bạn nêu:
+- Một Order có nhiều `Order_Detail`.
+- Khi khách chỉ muốn bảo hành/đổi trả 1 item, hệ thống lưu đúng item đó trong `Return_Exchange_Item`.
+
+### 4.2. Phân biệt theo loại hồ sơ
+
+- `Return_Type = REFUND`:
+  - `Request_Scope = ORDER`.
+  - Không cần dòng trong `Return_Exchange_Item` (hoàn tiền cấp đơn).
+  - Bắt buộc `Refund_Amount > 0` và `Refund_Method`.
+
+- `Return_Type IN (WARRANTY, RETURN)`:
+  - `Request_Scope = ITEM`.
+  - Bắt buộc có ít nhất 1 dòng trong `Return_Exchange_Item`.
+  - Mỗi dòng chỉ rõ `Order_Detail_ID` + `Quantity` cần xử lý.
+
+### 4.3. Vì sao mô hình này tốt hơn 1-1 Return_Exchange ↔ Order
+
+- Không mất chi tiết item-level khi xử lý đổi/trả/bảo hành.
+- Vẫn đáp ứng refund toàn đơn trước `CONFIRMED`.
+- Dễ mở rộng partial return/partial refund trong tương lai.
+
+## 5) Rule tiền cần chốt rõ
+
+1. Nếu `PAID` online → hoàn toàn bộ số đã thu.
+2. Nếu `PARTIALLY_PAID` (deposit) → hoàn đúng phần deposit đã thu.
+3. Nếu payment có `FAILED/PENDING` → không tính vào số hoàn.
+4. Nếu đã hoàn một phần trước đó → chỉ hoàn phần còn lại.
+
+## 6) SLA & kiểm soát vận hành
+
+- Đặt SLA xử lý refund (ví dụ <= 24h làm việc).
+- Dashboard cho staff: số đơn chờ duyệt hoàn, chờ chuyển khoản, quá SLA.
+- Cảnh báo nếu order `CANCELED` nhưng có payment `SUCCESS` chưa `REFUNDED` quá N giờ.
+
+---
+
+## Kết luận ngắn
+
+- Ý tưởng của bạn **hoàn toàn làm được** và hợp lý để triển khai sớm.
+- Nên triển khai theo hướng: **hủy đơn ngay khi hợp lệ + tạo luồng refund riêng có kiểm soát trạng thái và audit đầy đủ**.
+- Thiết kế cân bằng nhất là: `Return_Exchange` (header cấp Order) + `Return_Exchange_Item` (chi tiết theo `Order_Detail`) để vừa hỗ trợ `REFUND` toàn đơn, vừa phân biệt chính xác item cần `RETURN/WARRANTY`.
+
+
+## 7) Quan hệ giữa Return_Exchange, Return_Exchange_Item, Order, Order_Detail, Prescription_Order_Detail
+
+### 7.1. Quan hệ chuẩn trong mô hình hiện tại
+
+- `Order` 1 - N `Order_Detail`:
+  - Một đơn hàng có nhiều dòng sản phẩm.
+- `Return_Exchange` N - 1 `Order`:
+  - Mỗi yêu cầu return/warranty/refund thuộc về một order.
+  - Một order có thể phát sinh nhiều yêu cầu ở các thời điểm khác nhau.
+- `Return_Exchange_Item` N - 1 `Return_Exchange`:
+  - Mỗi yêu cầu kiểu item-level có nhiều dòng chi tiết item cần xử lý.
+- `Return_Exchange_Item` N - 1 `Order_Detail`:
+  - Mỗi dòng return item trỏ đúng `Order_Detail` để biết chính xác sản phẩm nào bị đổi/trả/bảo hành.
+
+### 7.2. Ánh xạ nghiệp vụ theo Return_Type
+
+- `Return_Type = REFUND`:
+  - Scope ở mức `ORDER`.
+  - Có thể không cần `Return_Exchange_Item` (vì hoàn tiền toàn đơn).
+- `Return_Type = RETURN/WARRANTY`:
+  - Scope ở mức `ITEM`.
+  - Bắt buộc có ít nhất 1 dòng `Return_Exchange_Item` để chỉ ra `Order_Detail` cụ thể.
+
+### 7.3. Với PRESCRIPTION_ORDER thì liên quan Prescription_Order_Detail như thế nào?
+
+- `Prescription_Order` là lớp nghiệp vụ mở rộng của `Order` (1-1 theo `Order_ID`).
+- `Prescription_Order_Detail` là chi tiết thông số kính/toa (frame/lens, SPH/CYL/AXIS/PD...) cho prescription.
+- Để gắn return/warranty vào đúng item trong đơn, **khóa chuẩn vẫn nên đi qua `Order_Detail`** vì đây là dòng hàng thương mại đã được tính giá/số lượng trong order.
+- Khi cần hiển thị thêm thông tin toa cho item bị return/warranty:
+  1. Từ `Return_Exchange_Item` lấy `Order_Detail_ID`.
+  2. Join `Order_Detail -> Order`.
+  3. Nếu `Order.Order_Type` là `PRESCRIPTION_ORDER` hoặc `MIX_ORDER`, join tiếp sang `Prescription_Order` và `Prescription_Order_Detail` để lấy thông tin toa tương ứng.
+
+### 7.4. Lưu ý thiết kế nếu cần trace prescription ở mức item chính xác 100%
+
+Nếu hệ thống của bạn cần map cứng giữa từng `Order_Detail` và từng `Prescription_Order_Detail`, nên thêm khóa tham chiếu trực tiếp (ví dụ `Order_Detail.Prescription_Order_Detail_ID` hoặc bảng mapping trung gian), vì schema hiện tại chưa có FK trực tiếp giữa hai bảng này.
+

@@ -1,0 +1,153 @@
+### Flow_Return_Refund_Request V2 (version đơn giản hơn) ###
+# Flow CUSTOMER tạo Return_Request (trả hàng + hoàn tiền do lỗi)
+
+Tài liệu này mô tả flow khi CUSTOMER muốn trả hàng và hoàn tiền vì sản phẩm lỗi.
+Mục tiêu: chuẩn hóa luồng thao tác giữa CUSTOMER ↔ SALES STAFF ↔ hệ thống để dễ triển khai backend/frontend.
+
+---
+
+## 1) Phạm vi áp dụng
+
+- Áp dụng cho đơn đã giao thành công hoặc đơn đủ điều kiện tiếp nhận trả hàng theo chính sách.
+- Áp dụng cho trường hợp trả hàng do lỗi sản phẩm (defective item) và có hoàn tiền.
+- Có thể áp dụng cho cả `DIRECT_ORDER`, `PRESCRIPTION_ORDER`, `MIX_ORDER` (xử lý item-level qua `Order_Detail`).
+- Đơn hàng sẽ được gửi yêu cầu đổi trả trong vòng 7 ngày kể từ khi nhận được hàng (Order_Status = COMPLETED)
+---
+
+## 2) Data model mapping (theo schema hiện tại)
+
+- `Return_Exchange` = header của yêu cầu.
+  - `Order_ID`: đơn hàng gốc.
+  - `Return_Type`: nên dùng `RETURN` cho trả hàng; nếu team muốn tách rõ hoàn tiền cấp đơn có thể dùng `REFUND`.
+  - `Status`: vòng đời yêu cầu.
+  - `Return_Reason`, `Image_URL`: lý do + ảnh bằng chứng lỗi.
+  - `Refund_Amount`, `Refund_Method`, `Refund_Account_Number`: thông tin hoàn tiền.
+  - `Approved_By`, `Approved_Date`, `Reject_Reason`: dữ liệu duyệt/từ chối.
+- `Return_Exchange_Item` = chi tiết từng dòng hàng bị trả.
+  - `Order_Detail_ID`, `Quantity`, `Note`.
+
+> Khuyến nghị: với case trả do lỗi sản phẩm, nên tạo `Return_Exchange` + ít nhất 1 dòng `Return_Exchange_Item`.
+
+---
+
+## 3) Flow chi tiết (theo ý tưởng của bạn, chuẩn hóa để triển khai)
+
+## Bước 1: CUSTOMER tạo Return_Request
+
+1. CUSTOMER vào lịch sử đơn hàng, chọn `Order` cần trả.
+2. CUSTOMER chọn 1 hoặc nhiều `Order_Detail` muốn trả (item-level).
+3. CUSTOMER nhập:
+   - Lý do trả (`return_reason`).
+   - Mô tả lỗi sản phẩm.
+   - Ảnh/video bằng chứng (`image_url`).
+   - Số lượng trả cho từng item.
+4. Hệ thống tạo bản ghi:
+   - `Return_Exchange` với `Status = PENDING`.
+   - Các dòng `Return_Exchange_Item` tương ứng.
+5. Hệ thống gửi thông báo cho SALES STAFF có request mới.
+
+### Validation tại bước tạo
+
+- `Order` thuộc đúng CUSTOMER.
+- `Order` ở trạng thái cho phép trả theo policy (ví dụ đã `DELIVERED`/`COMPLETED` trong N ngày).
+- `Quantity` yêu cầu trả không vượt quá số lượng đã mua và chưa trả trước đó.
+- Không tạo trùng request mở cho cùng `Order_Detail` nếu policy không cho phép.
+
+---
+
+## Bước 2: SALES STAFF tiếp nhận yêu cầu
+
+1. SALES STAFF mở danh sách request `PENDING`.
+2. Xem đầy đủ thông tin:
+   - Đơn hàng, item yêu cầu trả, ảnh lỗi, lý do, lịch sử trạng thái.
+
+---
+
+## Bước 3: SALES STAFF kiểm tra hàng
+
+1. SALES STAFF kiểm tra đơn hàng rồi sau đó cập nhật trạng thái tiếp nhận (khuyến nghị thêm trạng thái trung gian `RECEIVED`).
+2. SALES STAFF kiểm tra thực tế:
+   - Đúng sản phẩm?
+   - Đúng số lượng?
+   - Tình trạng lỗi có khớp mô tả/chính sách?
+
+> Nếu hiện tại hệ thống chỉ có `PENDING/APPROVED/REJECTED/COMPLETED`, có thể tạm ghi log nội bộ bằng `Order_Processing`/note; về dài hạn nên thêm trạng thái trung gian để audit rõ hơn.
+
+---
+
+## Bước 4: SALES STAFF ra quyết định
+
+### 4.1 Chấp nhận (APPROVED → COMPLETED)
+
+1. SALES STAFF bấm **Accept**.
+2. Nhập/chốt thông tin hoàn tiền:
+   - `refund_amount`.
+   - `refund_method`.
+   - `refund_account_number` (nếu chuyển khoản thủ công).
+3. Thực hiện hoàn tiền (SALES STAFF hoàn tiền thủ công dựa vào refund_method và refund_account_number của CUSTOMERS).	
+4. Upload chứng từ/bill chuyển khoản (`image_url` evidence).
+5. Cập nhật:
+   - `Status = COMPLETED`.
+   - `Approved_By`, `Approved_Date`.
+
+### 4.2 Từ chối (REJECTED)
+
+1. SALES STAFF bấm **Reject**.
+2. Bắt buộc nhập `reject_reason`.
+3. Hệ thống cập nhật `Status = REJECTED`.
+4. Không thực hiện hoàn tiền.
+
+---
+
+## Bước 5: CUSTOMER theo dõi kết quả
+
+- CUSTOMER xem được timeline trạng thái trên web/app:
+  - `PENDING` → `APPROVED/REJECTED` → `COMPLETED`.
+- Hệ thống gửi email/in-app notification khi:
+  - Request được tạo.
+  - Request được duyệt/từ chối.
+  - Hoàn tiền thành công (kèm evidence nếu có).
+
+---
+
+## 4) State machine đề xuất
+
+Trạng thái tối thiểu (khớp schema hiện tại):
+- `PENDING`: mới tạo, chờ staff xử lý.
+- `APPROVED`: staff đồng ý yêu cầu (có thể đang chờ thao tác hoàn tiền).
+- `REJECTED`: staff từ chối.
+- `COMPLETED`: đã xử lý xong (đã hoàn tiền hoặc đã hoàn tất nghiệp vụ theo loại request).
+
+Trạng thái nên mở rộng thêm (nếu nâng cấp):
+- `RECEIVED`: đã nhận hàng hoàn.
+- `REFUND_PROCESSING`: đang thực hiện chuyển hoàn.
+- `REFUND_FAILED`: hoàn tiền lỗi, cần retry.
+
+---
+
+## 5) Rule nghiệp vụ quan trọng
+
+1. **Idempotency**: chống tạo request trùng khi CUSTOMER bấm nhiều lần.
+2. **Số lượng hợp lệ**: tổng quantity đã trả + đang xử lý không vượt quantity đã mua.
+3. **Ràng buộc bằng chứng**: case lỗi sản phẩm nên bắt buộc ít nhất 1 ảnh.
+4. **Audit đầy đủ**: ai duyệt, duyệt lúc nào, lý do từ chối, mã giao dịch hoàn tiền.
+5. **SLA**: ví dụ phản hồi trong 24h làm việc, hoàn tiền trong 1–3 ngày.
+
+---
+
+## 6) Đối chiếu trực tiếp với flow bạn đề xuất
+
+Flow bạn đưa ra là **đúng hướng và khả thi**:
+1) CUSTOMER chọn Order/Order_Detail muốn đổi trả.  
+2) CUSTOMER upload ảnh lỗi + lý do.  
+3) SALES STAFF nhận request.  
+4) SALES STAFF kiểm tra và quyết định:  
+   - Accept: hoàn tiền + upload bill evidence.  
+   - Reject: nhập lý do từ chối.  
+5) CUSTOMER theo dõi status trên web/email.
+
+Điểm mình bổ sung để triển khai “an toàn hệ thống” hơn:
+- Validation quantity và điều kiện thời hạn trả.
+- Chống trùng request.
+- State machine rõ để theo dõi vận hành.
+- Bắt buộc audit/evidence cho bước hoàn tiền.

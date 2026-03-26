@@ -24,6 +24,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -44,6 +45,9 @@ class VnpayCallbackServiceImplTest {
 
     @Mock
     CheckoutCartTrackingService checkoutCartTrackingService;
+
+    @Mock
+    OrderEmailNotificationService orderEmailNotificationService;
 
     @InjectMocks
     VnpayCallbackServiceImpl service;
@@ -104,10 +108,56 @@ class VnpayCallbackServiceImplTest {
         verify(orderRepo).save(order);
         verify(shippingInfoRepo).save(shippingInfo);
         verify(invoiceRepo).save(invoice);
+        verify(orderEmailNotificationService, never()).sendOrderSuccessEmailSafely(any(), any());
 
         ArgumentCaptor<List<Payment>> captor = ArgumentCaptor.forClass(List.class);
         verify(paymentRepo).saveAll(captor.capture());
         assertThat(captor.getValue()).hasSize(1);
         assertThat(captor.getValue().getFirst().getPaymentID()).isEqualTo(11L);
+    }
+
+    @Test
+    void handleCallback_whenSuccess_shouldSendOrderSuccessEmail() {
+        Order order = Order.builder()
+                .orderID(2L)
+                .orderCode("ORD-TEST-ONLINE")
+                .orderStatus(OrderConstants.ORDER_STATUS_PENDING)
+                .build();
+
+        ShippingInfo shippingInfo = new ShippingInfo();
+        shippingInfo.setOrder(order);
+        shippingInfo.setRecipientEmail("customer@example.com");
+        shippingInfo.setRecipientName("Customer Test");
+        order.setShippingInfo(shippingInfo);
+
+        Payment fullPayment = Payment.builder()
+                .paymentID(20L)
+                .order(order)
+                .paymentPurpose(OrderConstants.PAYMENT_PURPOSE_FULL)
+                .paymentMethod("VNPAY")
+                .amount(new BigDecimal("1540900.00"))
+                .status(OrderConstants.PAYMENT_STATUS_PENDING)
+                .build();
+
+        Invoice invoice = new Invoice();
+        invoice.setOrder(order);
+        invoice.setStatus(OrderConstants.INVOICE_STATUS_UNPAID);
+
+        when(paymentRepo.findByIdForUpdate(20L)).thenReturn(Optional.of(fullPayment));
+        when(invoiceRepo.findByOrderOrderID(2L)).thenReturn(Optional.of(invoice));
+
+        long vnpAmount = 1540900L * 100;
+        VnpayCallbackService.IpResult result = service.handleCallback(20L, vnpAmount, "00", "00");
+
+        assertThat(result).isEqualTo(VnpayCallbackService.IpResult.CONFIRM_SUCCESS);
+        assertThat(order.getOrderStatus()).isEqualTo(OrderConstants.ORDER_STATUS_PAID);
+        assertThat(invoice.getStatus()).isEqualTo(OrderConstants.INVOICE_STATUS_PAID);
+        assertThat(fullPayment.getStatus()).isEqualTo(OrderConstants.PAYMENT_STATUS_SUCCESS);
+
+        verify(paymentRepo).save(fullPayment);
+        verify(orderRepo).save(order);
+        verify(invoiceRepo).save(invoice);
+        verify(checkoutCartTrackingService).cleanupTrackedCartItems(order);
+        verify(orderEmailNotificationService).sendOrderSuccessEmailSafely(order, fullPayment);
     }
 }

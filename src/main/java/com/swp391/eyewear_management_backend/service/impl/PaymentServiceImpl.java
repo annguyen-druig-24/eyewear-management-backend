@@ -14,7 +14,6 @@ import com.swp391.eyewear_management_backend.repository.InvoiceRepo;
 import com.swp391.eyewear_management_backend.repository.OrderRepo;
 import com.swp391.eyewear_management_backend.repository.PaymentRepo;
 import com.swp391.eyewear_management_backend.repository.UserRepo;
-import com.swp391.eyewear_management_backend.service.EmailService;
 import com.swp391.eyewear_management_backend.service.PaymentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -43,7 +42,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final InvoiceRepo invoiceRepo;
     private final BackendProperties backendProperties;
     private final CheckoutCartTrackingService checkoutCartTrackingService;
-    private final EmailService emailService;
+    private final OrderEmailNotificationService orderEmailNotificationService;
 
     @Override
     public String createPayOSPaymentUrl(Long paymentId, long amount, String orderCodeStr) {
@@ -190,12 +189,7 @@ public class PaymentServiceImpl implements PaymentService {
                     String toName = order.getShippingInfo() != null ? order.getShippingInfo().getRecipientName() : order.getUser().getName();
 
                     // Bắn mail thông báo thành công
-                    emailService.sendOrderSuccessEmail(
-                            toEmail,
-                            toName,
-                            order.getOrderCode(),
-                            order.getTotalAmount() != null ? order.getTotalAmount().doubleValue() : payment.getAmount().doubleValue()
-                    );
+                    orderEmailNotificationService.sendOrderSuccessEmailSafely(order, payment);
                 } catch (Exception ex) {
                     // Try-catch để lỡ mail lỗi thì hệ thống vẫn ghi nhận thanh toán thành công, không bị roll-back
                     System.err.println("Lỗi khi gửi mail Webhook PayOS: " + ex.getMessage());
