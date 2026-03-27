@@ -65,6 +65,765 @@ public class OrderServiceImpl implements OrderService {
 
     private final EmailService emailService;
 
+    // Common methods and Helper methods
+
+    // Common methods
+
+    // Lay thoi diem hien tai theo mui gio ung dung.
+    private LocalDateTime now() {
+        return LocalDateTime.now(APP_ZONE_ID);
+    }
+
+    // Chuan hoa chuoi text de tranh sai lech khi so sanh hoac luu tru.
+    private String normalizeText(String text) {
+        if (text == null) {
+            return null;
+        }
+        String trimmed = text.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    // So sanh hai gia tri status theo kieu khong phan biet hoa thuong.
+    private boolean isStatus(String value, String expected) {
+        return value != null && expected != null && value.trim().equalsIgnoreCase(expected);
+    }
+
+    // Chuan hoa so tien online ve dang khong co phan thap phan.
+    private BigDecimal normalizeOnlineAmount(BigDecimal amount) {
+        if (amount == null) return BigDecimal.ZERO;
+        return amount.setScale(0, RoundingMode.HALF_UP);
+    }
+
+    // Xac dinh dia chi giao hang uu tien tu request, neu khong co thi lay dia chi mac dinh cua user.
+    private ShippingAddressRequest resolveAddress(ShippingAddressRequest reqAddr, User user) {
+        if (reqAddr != null && reqAddr.getDistrictCode() != null && reqAddr.getWardCode() != null) {
+            return reqAddr;
+        }
+
+        // dùng default codes từ user
+        if (user.getDistrictCode() == null || user.getWardCode() == null) {
+            // chưa có default codes => preview sẽ shipFee=0, FE buộc user chọn địa chỉ mới
+            return null;
+        }
+
+        ShippingAddressRequest a = new ShippingAddressRequest();
+        a.setStreet(null);
+        a.setProvinceCode(user.getProvinceCode());
+        a.setProvinceName(user.getProvinceName());
+        a.setDistrictCode(user.getDistrictCode());
+        a.setDistrictName(user.getDistrictName());
+        a.setWardCode(user.getWardCode());
+        a.setWardName(user.getWardName());
+        return a;
+    }
+
+    // Ghep thong tin dia chi chi tiet thanh chuoi day du de luu shipping info.
+    private String buildFullAddress(ShippingAddressRequest address, User user) {
+        if (address == null) return user.getAddress();
+
+        String street = address.getStreet() != null ? address.getStreet().trim() : null;
+        if (street == null || street.isEmpty()) return user.getAddress();
+
+        return street + ", " + address.getWardName() + ", " + address.getDistrictName() + ", " + address.getProvinceName();
+    }
+
+    // Sinh ma don hang duy nhat theo ngay va so thu tu.
+    private String generateOrderCode() {
+        return "ORD-" + now().toLocalDate() + "-" +
+                UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+    }
+
+    // Sinh ma yeu cau hoan tra theo loai yeu cau va ngay hien tai.
+    private String generateReturnCode(String returnType) {
+        String typePrefix = "RX";
+        if (returnType != null) {
+            switch (returnType.trim().toUpperCase(Locale.ROOT)) {
+                case "RETURN" -> typePrefix = "RT";
+                case "WARRANTY" -> typePrefix = "WA";
+                case "REFUND" -> typePrefix = "RF";
+                default -> typePrefix = "RX";
+            }
+        }
+        String datePart = LocalDate.now(APP_ZONE_ID).format(DateTimeFormatter.ofPattern("yyMMdd"));
+        String prefix = typePrefix + datePart;
+        Optional<ReturnExchange> lastReturnOpt = returnExchangeRepo.findTopByReturnCodeStartingWithOrderByReturnCodeDesc(prefix);
+        int sequence = 1;
+        if (lastReturnOpt.isPresent()) {
+            String lastCode = lastReturnOpt.get().getReturnCode();
+            String sequenceStr = lastCode.substring(lastCode.length() - 4);
+            sequence = Integer.parseInt(sequenceStr) + 1;
+        }
+        String finalCode;
+        do {
+            finalCode = prefix + String.format("%04d", sequence);
+            sequence++;
+        } while (returnExchangeRepo.findByReturnCode(finalCode).isPresent());
+        return finalCode;
+    }
+
+    // Tong hop ly do huy don tu thong tin khach hang gui len.
+    private String buildCustomerCancelNote(CustomerCancelOrderRequest request) {
+        String reason = normalizeText(request != null ? request.getCancelReason() : null);
+        if (reason == null) {
+            return "CUSTOMER_CANCEL_BEFORE_CONFIRM";
+        }
+        return "CUSTOMER_CANCEL_BEFORE_CONFIRM: " + reason;
+    }
+
+    // Xay dung ke hoach thanh toan day du hoac dat coc dua tren ket qua preview.
+    private PaymentPlan buildPaymentPlan(CheckoutPreviewResponse preview, CreateOrderRequest req) {
+        boolean depositRequired = preview.isDepositRequired();
+
+        String method = req.getPaymentMethod(); // COD/VNPAY/MOMO/PAYOS
+        String payStrategy = req.getPayStrategy(); // FULL/DEPOSIT
+
+        if (!depositRequired) {
+            return PaymentPlan.full(method, preview.getTotalAmount());
+        }
+
+        BigDecimal dep = preview.getDepositAmount();
+        BigDecimal rem = preview.getRemainingAmount();
+
+        if ("COD".equalsIgnoreCase(method)) {
+            // COD main but deposit must be online
+            if (req.getDepositPaymentMethod() == null) {
+                throw new AppException(ErrorCode.DEPOSIT_PAYMENT_METHOD_REQUIRED);
+            }
+            return PaymentPlan.deposit(req.getDepositPaymentMethod(), dep, rem);
+        }
+
+        // online main
+        if ("FULL".equalsIgnoreCase(payStrategy)) {
+            return PaymentPlan.full(method, preview.getTotalAmount());
+        }
+
+        // default: DEPOSIT
+        return PaymentPlan.deposit(method, dep, rem);
+    }
+
+    // Dong goi thong tin thanh toan tam thoi de xu ly trong luong tao don.
+    private static class PaymentPlan {
+        boolean createDepositPayment;
+        String depositMethod;
+        BigDecimal depositAmount;
+        BigDecimal remainingAmount;
+
+        String fullMethod;
+        BigDecimal fullAmount;
+
+        static PaymentPlan deposit(String depositMethod, BigDecimal depositAmount, BigDecimal remainingAmount) {
+            PaymentPlan p = new PaymentPlan();
+            p.createDepositPayment = true;
+            p.depositMethod = depositMethod;
+            p.depositAmount = depositAmount;
+            p.remainingAmount = remainingAmount;
+            return p;
+        }
+
+        static PaymentPlan full(String fullMethod, BigDecimal fullAmount) {
+            PaymentPlan p = new PaymentPlan();
+            p.createDepositPayment = false;
+            p.fullMethod = fullMethod;
+            p.fullAmount = fullAmount;
+            return p;
+        }
+    }
+
+    // Cap nhat cac payment pending thanh canceled sau khi don hang bi huy.
+    private void cancelPendingPaymentsAfterOrderCanceled(Order order) {
+        if (order.getPayments() == null || order.getPayments().isEmpty()) {
+            return;
+        }
+        List<Payment> pendingPayments = order.getPayments().stream()
+                .filter(Objects::nonNull)
+                .filter(p -> OrderConstants.PAYMENT_STATUS_PENDING.equalsIgnoreCase(p.getStatus()))
+                .toList();
+        if (pendingPayments.isEmpty()) {
+            return;
+        }
+        pendingPayments.forEach(p -> p.setStatus(OrderConstants.PAYMENT_STATUS_CANCELED));
+        paymentRepo.saveAll(pendingPayments);
+    }
+
+//    private void adjustInventoryAfterOrderCanceled(Order order) {
+//        if (order == null || order.getOrderID() == null) {
+//            return;
+//        }
+//        Map<Long, Integer> requiredByProductId = aggregateOrderProductQuantities(order.getOrderID());
+//        if (requiredByProductId.isEmpty()) {
+//            return;
+//        }
+//        List<Long> productIds = requiredByProductId.keySet().stream().sorted().toList();
+//        List<Product> products = productRepo.findByIdsForUpdate(productIds);
+//        if (products.size() != productIds.size()) {
+//            throw new AppException(ErrorCode.INVALID_REQUEST);
+//        }
+//        for (Product product : products) {
+//            int requestedQty = requiredByProductId.getOrDefault(product.getProductID(), 0);
+//            if (requestedQty <= 0) {
+//                continue;
+//            }
+//            int reservedBefore = product.getReservedQuantity() == null ? 0 : product.getReservedQuantity();
+//            int releaseQty = Math.min(reservedBefore, requestedQty);
+//            if (releaseQty > 0) {
+//                product.setReservedQuantity(reservedBefore - releaseQty);
+//            }
+//            int restockQty = requestedQty - releaseQty;
+//            if (restockQty > 0) {
+//                int onHandBefore = product.getOnHandQuantity() == null ? 0 : product.getOnHandQuantity();
+//                product.setOnHandQuantity(onHandBefore + restockQty);
+//            }
+//        }
+//        productRepo.saveAll(products);
+//    }
+//
+//    private Map<Long, Integer> aggregateOrderProductQuantities(Long orderId) {
+//        Map<Long, Integer> qtyByProductId = new HashMap<>();
+//        List<OrderDetail> orderDetails = orderDetailRepo.findByOrderIdFetchProduct(orderId);
+//        for (OrderDetail orderDetail : orderDetails) {
+//            if (orderDetail == null || orderDetail.getProduct() == null || orderDetail.getProduct().getProductID() == null) {
+//                continue;
+//            }
+//            int quantity = orderDetail.getQuantity() == null ? 0 : orderDetail.getQuantity();
+//            if (quantity <= 0) {
+//                continue;
+//            }
+//            qtyByProductId.merge(orderDetail.getProduct().getProductID(), quantity, Integer::sum);
+//        }
+//        prescriptionOrderRepo.findByOrder_OrderID(orderId).ifPresent(prescriptionOrder -> {
+//            if (prescriptionOrder.getPrescriptionOrderDetails() == null || prescriptionOrder.getPrescriptionOrderDetails().isEmpty()) {
+//                return;
+//            }
+//            for (PrescriptionOrderDetail detail : prescriptionOrder.getPrescriptionOrderDetails()) {
+//                if (detail == null) {
+//                    continue;
+//                }
+//                Product frameProduct = detail.getFrame() == null ? null : detail.getFrame().getProduct();
+//                Product lensProduct = detail.getLens() == null ? null : detail.getLens().getProduct();
+//                addRequiredQuantity(qtyByProductId, frameProduct, 1);
+//                addRequiredQuantity(qtyByProductId, lensProduct, 1);
+//            }
+//        });
+//        return qtyByProductId;
+//    }
+
+    // Lay yeu cau return exchange moi nhat can hien thi de theo doi don hang.
+    private ReturnExchange findLatestTrackableReturnExchange(Long orderId) {
+        return returnExchangeRepo.findByOrderIdAndReturnTypesAndRequestScopesOrderByLatest(
+                        orderId,
+                        TRACKING_RETURN_TYPES,
+                        TRACKING_REQUEST_SCOPES,
+                        PageRequest.of(0, 1)
+                ).stream()
+                .findFirst()
+                .orElse(null);
+    }
+
+    // Tinh tong so tien da thanh toan thanh cong cua don hang.
+    private BigDecimal sumSuccessfulPayments(Order order) {
+        if (order.getPayments() == null || order.getPayments().isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        return order.getPayments().stream()
+                .filter(Objects::nonNull)
+                .filter(p -> OrderConstants.PAYMENT_STATUS_SUCCESS.equalsIgnoreCase(p.getStatus()))
+                .map(Payment::getAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    // Tinh tong so tien da hoan tat cho cac yeu cau refund cap don hang.
+    private BigDecimal sumCompletedOrderRefundAmount(Long orderId) {
+        return returnExchangeRepo.findByOrder_OrderIDAndReturnTypeIgnoreCaseAndRequestScopeIgnoreCase(orderId, "REFUND", "ORDER")
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(re -> "COMPLETED".equalsIgnoreCase(re.getStatus()))
+                .map(ReturnExchange::getRefundAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    // Kiem tra trang thai hien tai co cho phep khach hang huy don hay khong.
+    private boolean isCustomerCancelableStatus(String orderStatus) {
+        if (orderStatus == null) {
+            return false;
+        }
+        return OrderConstants.ORDER_STATUS_PENDING.equalsIgnoreCase(orderStatus)
+                || OrderConstants.ORDER_STATUS_PARTIALLY_PAID.equalsIgnoreCase(orderStatus)
+                || OrderConstants.ORDER_STATUS_PAID.equalsIgnoreCase(orderStatus);
+    }
+
+    // Xac dinh kich ban huy don de FE hien thi dung hanh vi va thong diep.
+    private String resolveCancelScenario(String orderStatus, BigDecimal refundableAmount, ReturnExchange latestOrderRefund) {
+        if (isCustomerCancelableStatus(orderStatus)) {
+            if (refundableAmount != null && refundableAmount.compareTo(BigDecimal.ZERO) > 0) {
+                return "CANCEL_WITH_MANUAL_REFUND";
+            }
+            return "CANCEL_WITHOUT_REFUND";
+        }
+        if (!OrderConstants.ORDER_STATUS_CANCELED.equalsIgnoreCase(orderStatus)) {
+            return "CANCEL_NOT_ALLOWED";
+        }
+        if (latestOrderRefund == null) {
+            return "CANCELED_NO_REFUND_COMPLETED";
+        }
+        String status = latestOrderRefund.getStatus() == null ? "" : latestOrderRefund.getStatus().trim().toUpperCase(Locale.ROOT);
+        return switch (status) {
+            case "PENDING", "APPROVED" -> "CANCELED_REFUND_IN_PROGRESS";
+            case "REJECTED" -> "CANCELED_REFUND_REJECTED";
+            case "COMPLETED" -> "CANCELED_REFUND_COMPLETED";
+            default -> "CANCELED_REFUND_IN_PROGRESS";
+        };
+    }
+
+    // Lay gia san pham an toan, mac dinh bang 0 neu du lieu null.
+    private BigDecimal productPrice(Product product) {
+        return product != null && product.getPrice() != null ? product.getPrice() : BigDecimal.ZERO;
+    }
+
+    // Chon anh dai dien uu tien cua san pham, neu khong co thi lay anh hop le dau tien.
+    private String pickPrimaryImage(Product product) {
+        if (product == null || product.getImages() == null || product.getImages().isEmpty()) {
+            return null;
+        }
+        return product.getImages().stream()
+                .filter(Objects::nonNull)
+                .filter(i -> Boolean.TRUE.equals(i.getAvatar()))
+                .findFirst()
+                .map(ProductImage::getImageUrl)
+                .orElseGet(() -> product.getImages().stream()
+                        .filter(Objects::nonNull)
+                        .map(ProductImage::getImageUrl)
+                        .filter(url -> url != null && !url.trim().isEmpty())
+                        .findFirst()
+                        .orElse(null));
+    }
+
+    // Chuyen BigDecimal sang chuoi gon de hien thi hoac gom nhom du lieu.
+    private String bdToText(BigDecimal value) {
+        return value == null ? null : value.stripTrailingZeros().toPlainString();
+    }
+
+    // Chuyen Double sang chuoi gon thong qua BigDecimal de giu dinh dang on dinh.
+    private String bdToText(Double value) {
+        return value == null ? null : BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
+    }
+
+    // Kiem tra don hang con can thanh toan phan con lai hay khong.
+    private boolean isRequiresFinalPayment(Order order) {
+        if (order == null) {
+            return false;
+        }
+        Invoice invoice = order.getInvoice();
+        if (invoice != null && isStatus(invoice.getStatus(), "PARTIALLY_PAID")) {
+            return true;
+        }
+        return isStatus(order.getOrderStatus(), "PARTIALLY_PAID");
+    }
+
+    // Helper methods
+
+    // Cong don so luong ton kho can tru theo tung product.
+    private void addRequiredQuantity(Map<Long, Integer> requiredByProductId,
+                                     Product product,
+                                     int qty) {
+        if (product == null || product.getProductID() == null || qty <= 0) {
+            return;
+        }
+        Long productId = product.getProductID();
+        requiredByProductId.merge(productId, qty, Integer::sum);
+    }
+
+    // Lay product tu contact lens cua cart item neu co.
+    private Product productFromContactLens(CartItem cartItem) {
+        if (cartItem.getContactLens() == null) return null;
+        return cartItem.getContactLens().getProduct();
+    }
+
+    // Lay product tu frame cua cart item neu co.
+    private Product productFromFrame(CartItem cartItem) {
+        if (cartItem.getFrame() == null) return null;
+        return cartItem.getFrame().getProduct();
+    }
+
+    // Lay product tu lens cua cart item neu co.
+    private Product productFromLens(CartItem cartItem) {
+        if (cartItem.getLens() == null) return null;
+        return cartItem.getLens().getProduct();
+    }
+
+    // Tru ton kho va tao lich su giao dich kho sau khi don hang duoc tao.
+    private void deductInventoryAfterOrderCreated(Order order, List<CartItem> cartItems, User user) {
+        Map<Long, Integer> requiredByProductId = new HashMap<>();
+
+        for (CartItem cartItem : cartItems) {
+            int qty = cartItem.getQuantity() == null || cartItem.getQuantity() <= 0 ? 1 : cartItem.getQuantity();
+            addRequiredQuantity(requiredByProductId, productFromContactLens(cartItem), qty);
+            addRequiredQuantity(requiredByProductId, productFromFrame(cartItem), qty);
+            addRequiredQuantity(requiredByProductId, productFromLens(cartItem), qty);
+        }
+
+        if (requiredByProductId.isEmpty()) {
+            return;
+        }
+
+        List<Long> productIds = requiredByProductId.keySet().stream()
+                .sorted()
+                .toList();
+        List<Product> products = productRepo.findByIdsForUpdate(productIds);
+        if (products.size() != productIds.size()) {
+            throw new AppException(ErrorCode.CART_ITEM_INVALID_FOR_CHECKOUT);
+        }
+
+        List<InventoryTransaction> transactions = new ArrayList<>();
+        for (Product product : products) {
+            Long productId = product.getProductID();
+            int requestedQty = requiredByProductId.getOrDefault(productId, 0);
+            int onHandBefore = product.getOnHandQuantity() == null ? 0 : product.getOnHandQuantity();
+            boolean allowPreorder = Boolean.TRUE.equals(product.getAllowPreorder());
+            if (onHandBefore < requestedQty && !allowPreorder) {
+                throw new AppException(ErrorCode.INVENTORY_INSUFFICIENT_QUANTITY);
+            }
+
+            int deductedQty = Math.min(onHandBefore, requestedQty);
+            int onHandAfter = onHandBefore - deductedQty;
+            product.setOnHandQuantity(onHandAfter);
+
+            if (deductedQty <= 0) {
+                continue;
+            }
+
+            InventoryTransaction tx = new InventoryTransaction();
+            tx.setProduct(product);
+            tx.setTransactionType("SALE_OUT");
+            tx.setQuantityBefore(onHandBefore);
+            tx.setQuantityAfter(onHandAfter);
+            tx.setQuantityChange(-deductedQty);
+            tx.setReferenceType("ORDER");
+            tx.setReferenceID(order.getOrderID());
+            tx.setOrder(order);
+            tx.setPerformedBy(user);
+            tx.setPerformedAt(now());
+            tx.setNote(order.getOrderCode());
+            transactions.add(tx);
+        }
+
+        productRepo.saveAll(products);
+        if (!transactions.isEmpty()) {
+            inventoryTransactionRepo.saveAll(transactions);
+        }
+    }
+
+//    private void reserveInventoryAfterOrderCreated(Order order, List<CartItem> cartItems) {
+//        Map<Long, Integer> requiredByProductId = new HashMap<>();
+//        for (CartItem cartItem : cartItems) {
+//            int qty = cartItem.getQuantity() == null || cartItem.getQuantity() <= 0 ? 1 : cartItem.getQuantity();
+//            addRequiredQuantity(requiredByProductId, productFromContactLens(cartItem), qty);
+//            addRequiredQuantity(requiredByProductId, productFromFrame(cartItem), qty);
+//            addRequiredQuantity(requiredByProductId, productFromLens(cartItem), qty);
+//        }
+//        if (requiredByProductId.isEmpty()) {
+//            return;
+//        }
+//
+//        List<Long> productIds = requiredByProductId.keySet().stream().sorted().toList();
+//        List<Product> products = productRepo.findByIdsForUpdate(productIds);
+//        if (products.size() != productIds.size()) {
+//            throw new AppException(ErrorCode.CART_ITEM_INVALID_FOR_CHECKOUT);
+//        }
+//
+//        for (Product product : products) {
+//            Long productId = product.getProductID();
+//            int requestedQty = requiredByProductId.getOrDefault(productId, 0);
+//            int onHandBefore = product.getOnHandQuantity() == null ? 0 : product.getOnHandQuantity();
+//            int reservedBefore = product.getReservedQuantity() == null ? 0 : product.getReservedQuantity();
+//            int availableBefore = Math.max(onHandBefore - reservedBefore, 0);
+//            boolean allowPreorder = Boolean.TRUE.equals(product.getAllowPreorder());
+//            if (availableBefore < requestedQty && !allowPreorder) {
+//                throw new AppException(ErrorCode.INVENTORY_INSUFFICIENT_QUANTITY);
+//            }
+//            int reservedAdded = Math.min(availableBefore, requestedQty);
+//            if (reservedAdded <= 0) {
+//                continue;
+//            }
+//            product.setReservedQuantity(reservedBefore + reservedAdded);
+//        }
+//        productRepo.saveAll(products);
+//    }
+
+    // Xac dinh product chinh de luu vao order detail thong thuong.
+    private Product resolveOrderDetailProduct(CartItem ci) {
+        if (ci.getContactLens() != null) return ci.getContactLens().getProduct();
+        if (ci.getFrame() != null && ci.getLens() == null) return ci.getFrame().getProduct();
+        if (ci.getLens() != null && ci.getFrame() == null) return ci.getLens().getProduct();
+        return null; // frame+lens => prescription, không vào Order_Detail
+    }
+
+    // Tao ban ghi order detail cho item khong luu o bang prescription order detail.
+    private OrderDetail buildNormalOrderDetail(Order order, CartItem ci, CheckoutLineItemResponse li) {
+        Product product = resolveOrderDetailProduct(ci);
+        if (product == null) {
+            throw new AppException(ErrorCode.CART_ITEM_INVALID_FOR_CHECKOUT);
+        }
+        OrderDetail od = new OrderDetail();
+        od.setOrder(order);
+        od.setProduct(product);
+        od.setUnitPrice(li.getUnitPrice());
+        od.setQuantity(li.getQuantity() == null ? 1 : li.getQuantity());
+        return od;
+    }
+
+    // Chuyen Double sang BigDecimal cho du lieu do mat.
+    private BigDecimal toBd(Double v) {
+        if (v == null) return null;
+        return new BigDecimal(String.valueOf(v)).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    // Chuyen gia tri PD sang BigDecimal voi scale phu hop.
+    private BigDecimal toPdBd(Double v) {
+        if (v == null) return null;
+        return new BigDecimal(String.valueOf(v)).setScale(1, RoundingMode.HALF_UP);
+    }
+
+    // Kiem tra prescription co du lieu PD hay khong.
+    private boolean hasPdData(CartItemPrescription rx) {
+        return rx.getPd() != null || (rx.getPdRight() != null && rx.getPdLeft() != null);
+    }
+
+    // Xac dinh cart item co bat buoc thong tin PD hay khong.
+    private boolean isPdRequired(CartItem ci) {
+        return ci.getFrame() != null;
+    }
+
+    // Kiem tra prescription co bat ky thong so do mat nao duoc nhap hay khong.
+    private boolean hasPrescriptionData(CartItemPrescription rx) {
+        return rx.getRightEyeSph() != null
+                || rx.getRightEyeCyl() != null
+                || rx.getRightEyeAxis() != null
+                || rx.getRightEyeAdd() != null
+                || rx.getLeftEyeSph() != null
+                || rx.getLeftEyeCyl() != null
+                || rx.getLeftEyeAxis() != null
+                || rx.getLeftEyeAdd() != null
+                || rx.getPd() != null
+                || rx.getPdRight() != null
+                || rx.getPdLeft() != null;
+    }
+
+    // Phan loai cart item co duoc xem la prescription item theo rule hien tai hay khong.
+    private boolean isPrescriptionItemByBusinessRule(CartItem ci, CartItemPrescription rx) {
+        if (ci.getFrame() != null && ci.getLens() != null) return true;
+        if (ci.getLens() != null && ci.getFrame() == null) return rx != null && hasPrescriptionData(rx);
+        if (ci.getContactLens() != null) return rx != null && hasPrescriptionData(rx);
+        return false;
+    }
+
+    // Xac dinh loai don hang tong the dua tren tap item duoc checkout.
+    private String determineOrderTypeByBusinessRule(List<CheckoutLineItemResponse> previewItems,
+                                                    List<CartItem> cartItems,
+                                                    Map<Long, CartItemPrescription> rxMap) {
+        Map<Long, CheckoutLineItemResponse> previewMap = new HashMap<>();
+        for (CheckoutLineItemResponse li : previewItems) {
+            previewMap.put(li.getCartItemId(), li);
+        }
+        boolean hasDirect = false;
+        boolean hasPre = false;
+        boolean hasPrescription = false;
+        for (CartItem ci : cartItems) {
+            CheckoutLineItemResponse li = previewMap.get(ci.getCartItemId());
+            boolean isPrescription = isPrescriptionItemByBusinessRule(ci, rxMap.get(ci.getCartItemId()));
+            boolean isPre = li != null && "PRE_ORDER".equals(li.getItemType());
+            if (isPrescription) {
+                hasPrescription = true;
+            } else if (isPre) {
+                hasPre = true;
+            } else {
+                hasDirect = true;
+            }
+        }
+        int types = 0;
+        if (hasDirect) types++;
+        if (hasPre) types++;
+        if (hasPrescription) types++;
+        if (types > 1) return "MIX_ORDER";
+        if (hasPrescription) return "PRESCRIPTION_ORDER";
+        if (hasPre) return "PRE_ORDER";
+        return "DIRECT_ORDER";
+    }
+
+    // Map order detail sang response item thong thuong cho man hinh chi tiet don.
+    private StaffOrderItemResponse toOrderItemResponse(OrderDetail detail) {
+        Product product = detail.getProduct();
+        Integer quantity = detail.getQuantity() == null ? 0 : detail.getQuantity();
+        BigDecimal unitPrice = detail.getUnitPrice() == null ? BigDecimal.ZERO : detail.getUnitPrice();
+        return StaffOrderItemResponse.builder()
+                .orderDetailId(detail.getOrderDetailID())
+                .productId(product != null ? product.getProductID() : null)
+                .productName(product != null ? product.getProductName() : null)
+                .quantity(quantity)
+                .unitPrice(unitPrice)
+                .totalPrice(unitPrice.multiply(BigDecimal.valueOf(quantity)))
+                .imageUrl(pickPrimaryImage(product))
+                .build();
+    }
+
+    // Gom nhom va map du lieu prescription order detail sang response hien thi.
+    private List<StaffPrescriptionOrderItemResponse> mapPrescriptionItems(PrescriptionOrder prescriptionOrder) {
+        if (prescriptionOrder == null || prescriptionOrder.getPrescriptionOrderDetails() == null) {
+            return List.of();
+        }
+
+        Map<PrescriptionGroupKey, RxAggregate> aggregates = new LinkedHashMap<>();
+        for (PrescriptionOrderDetail detail : prescriptionOrder.getPrescriptionOrderDetails()) {
+            String rightSph = bdToText(detail.getRightEyeSph());
+            String rightCyl = bdToText(detail.getRightEyeCyl());
+            String rightAxis = detail.getRightEyeAxis() == null ? null : String.valueOf(detail.getRightEyeAxis());
+            String rightAdd = detail.getRightEyeAdd() == null ? null : String.valueOf(detail.getRightEyeAdd());
+            String rightPD = bdToText(detail.getPdRight());
+            String leftSph = bdToText(detail.getLeftEyeSph());
+            String leftCyl = bdToText(detail.getLeftEyeCyl());
+            String leftAxis = detail.getLeftEyeAxis() == null ? null : String.valueOf(detail.getLeftEyeAxis());
+            String leftAdd = detail.getLeftEyeAdd() == null ? null : String.valueOf(detail.getLeftEyeAdd());
+            String leftPD = bdToText(detail.getPdLeft());
+
+            Long frameId = detail.getFrame() != null ? detail.getFrame().getFrameID() : null;
+            Long lensId = detail.getLens() != null ? detail.getLens().getLensID() : null;
+            Product frameProduct = detail.getFrame() != null ? detail.getFrame().getProduct() : null;
+            Product lensProduct = detail.getLens() != null ? detail.getLens().getProduct() : null;
+            String frameName = frameProduct != null ? frameProduct.getProductName() : null;
+            String lensName = lensProduct != null ? lensProduct.getProductName() : null;
+
+            BigDecimal framePrice = productPrice(frameProduct);
+            BigDecimal lensPrice = productPrice(lensProduct);
+            BigDecimal lineTotal = detail.getSubTotal() == null ? BigDecimal.ZERO : detail.getSubTotal();
+
+            PrescriptionGroupKey key = new PrescriptionGroupKey(
+                    frameId,
+                    lensId,
+                    rightSph,
+                    rightCyl,
+                    rightAxis,
+                    rightAdd,
+                    rightPD,
+                    leftSph,
+                    leftCyl,
+                    leftAxis,
+                    leftAdd,
+                    leftPD,
+                    bdToText(lineTotal)
+            );
+
+            RxAggregate aggregate = aggregates.computeIfAbsent(key, k -> new RxAggregate(
+                    StaffPrescriptionOrderItemResponse.builder()
+                            .prescriptionOrderDetailId(detail.getPrescriptionOrderDetailID())
+                            .frameId(frameId)
+                            .frameName(frameName)
+                            .framePrice(framePrice)
+                            .frameImg(pickPrimaryImage(frameProduct))
+                            .lensId(lensId)
+                            .lensName(lensName)
+                            .lensPrice(lensPrice)
+                            .lensImg(pickPrimaryImage(lensProduct))
+                            .contactLensId(null)
+                            .contactLensName(null)
+                            .contactLensPrice(BigDecimal.ZERO)
+                            .contactLensImg(null)
+                            .rightEyeSph(rightSph)
+                            .rightEyeCyl(rightCyl)
+                            .rightEyeAxis(rightAxis)
+                            .rightEyeAdd(rightAdd)
+                            .rightPD(rightPD)
+                            .leftEyeSph(leftSph)
+                            .leftEyeCyl(leftCyl)
+                            .leftEyeAxis(leftAxis)
+                            .leftEyeAdd(leftAdd)
+                            .leftPD(leftPD)
+                            .quantity(0)
+                            .totalPrice(BigDecimal.ZERO)
+                            .build()
+            ));
+
+            aggregate.response.setQuantity(aggregate.response.getQuantity() + 1);
+            aggregate.response.setTotalPrice(aggregate.response.getTotalPrice().add(lineTotal));
+        }
+
+        return aggregates.values().stream().map(a -> a.response).toList();
+    }
+
+    // Luu doi tuong tong hop tam thoi khi gom nhom prescription items.
+    private static class RxAggregate {
+        private final StaffPrescriptionOrderItemResponse response;
+
+        private RxAggregate(StaffPrescriptionOrderItemResponse response) {
+            this.response = response;
+        }
+    }
+
+    // Dai dien khoa gom nhom cho cac prescription item co cung thong so.
+    private static class PrescriptionGroupKey {
+        private final Long frameId;
+        private final Long lensId;
+        private final String rightEyeSph;
+        private final String rightEyeCyl;
+        private final String rightEyeAxis;
+        private final String rightEyeAdd;
+        private final String rightPD;
+        private final String leftEyeSph;
+        private final String leftEyeCyl;
+        private final String leftEyeAxis;
+        private final String leftEyeAdd;
+        private final String leftPD;
+        private final String lineSubTotal;
+
+        private PrescriptionGroupKey(Long frameId, Long lensId, String rightEyeSph, String rightEyeCyl,
+                                     String rightEyeAxis, String rightEyeAdd, String rightPD,
+                                     String leftEyeSph, String leftEyeCyl, String leftEyeAxis,
+                                     String leftEyeAdd, String leftPD, String lineSubTotal) {
+            this.frameId = frameId;
+            this.lensId = lensId;
+            this.rightEyeSph = rightEyeSph;
+            this.rightEyeCyl = rightEyeCyl;
+            this.rightEyeAxis = rightEyeAxis;
+            this.rightEyeAdd = rightEyeAdd;
+            this.rightPD = rightPD;
+            this.leftEyeSph = leftEyeSph;
+            this.leftEyeCyl = leftEyeCyl;
+            this.leftEyeAxis = leftEyeAxis;
+            this.leftEyeAdd = leftEyeAdd;
+            this.leftPD = leftPD;
+            this.lineSubTotal = lineSubTotal;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            PrescriptionGroupKey that = (PrescriptionGroupKey) o;
+            return Objects.equals(frameId, that.frameId)
+                    && Objects.equals(lensId, that.lensId)
+                    && Objects.equals(rightEyeSph, that.rightEyeSph)
+                    && Objects.equals(rightEyeCyl, that.rightEyeCyl)
+                    && Objects.equals(rightEyeAxis, that.rightEyeAxis)
+                    && Objects.equals(rightEyeAdd, that.rightEyeAdd)
+                    && Objects.equals(rightPD, that.rightPD)
+                    && Objects.equals(leftEyeSph, that.leftEyeSph)
+                    && Objects.equals(leftEyeCyl, that.leftEyeCyl)
+                    && Objects.equals(leftEyeAxis, that.leftEyeAxis)
+                    && Objects.equals(leftEyeAdd, that.leftEyeAdd)
+                    && Objects.equals(leftPD, that.leftPD)
+                    && Objects.equals(lineSubTotal, that.lineSubTotal);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(frameId, lensId, rightEyeSph, rightEyeCyl, rightEyeAxis, rightEyeAdd, rightPD,
+                    leftEyeSph, leftEyeCyl, leftEyeAxis, leftEyeAdd, leftPD, lineSubTotal);
+        }
+    }
+
+    // Main business methods
+
+    // Tao don hang tu cac cart item duoc chon va khoi tao shipping, invoice, payment lien quan.
     /*
         Hàm này làm 6 nhóm việc chính trong 1 transaction:
         - Xác thực user hiện tại
@@ -110,7 +869,7 @@ public class OrderServiceImpl implements OrderService {
             - Với cartItem kiểu PRESCRIPTION, bạn cần thông số mắt (SPH/CYL/AXIS).
             - Tạo rxMap để tra nhanh theo cartItemId khi loop items.
             Mục tiêu:
-            - Tránh mỗi vòng lặp lại query DB → tối ưu.
+            - Tránh mỗi vòng lặp lại query DB -> tối ưu.
             - Tách dữ liệu “kính thuốc” (prescription) khỏi CartItem.
          */
         Map<Long, CartItemPrescription> rxMap = new HashMap<>();
@@ -135,7 +894,7 @@ public class OrderServiceImpl implements OrderService {
 
         // FIX: nếu user gửi promotionId nhưng preview không áp được => báo lỗi rõ ràng
         if (request.getPromotionId() != null && preview.getAppliedPromotionId() == null) {
-            throw new AppException(ErrorCode.PROMOTION_NOT_APPLICABLE); // bạn thêm ErrorCode này
+            throw new AppException(ErrorCode.PROMOTION_NOT_APPLICABLE);
         }
 
         // 6) validate payment strategy theo preview.depositRequired
@@ -402,134 +1161,7 @@ public class OrderServiceImpl implements OrderService {
                 .build();
     }
 
-    private BigDecimal normalizeOnlineAmount(BigDecimal amount) {
-        if (amount == null) return BigDecimal.ZERO;
-        return amount.setScale(0, RoundingMode.HALF_UP);
-    }
-
-    private void deductInventoryAfterOrderCreated(Order order, List<CartItem> cartItems, User user) {
-        Map<Long, Integer> requiredByProductId = new HashMap<>();
-
-        for (CartItem cartItem : cartItems) {
-            int qty = cartItem.getQuantity() == null || cartItem.getQuantity() <= 0 ? 1 : cartItem.getQuantity();
-            addRequiredQuantity(requiredByProductId, productFromContactLens(cartItem), qty);
-            addRequiredQuantity(requiredByProductId, productFromFrame(cartItem), qty);
-            addRequiredQuantity(requiredByProductId, productFromLens(cartItem), qty);
-        }
-
-        if (requiredByProductId.isEmpty()) {
-            return;
-        }
-
-        List<Long> productIds = requiredByProductId.keySet().stream()
-                .sorted()
-                .toList();
-        List<Product> products = productRepo.findByIdsForUpdate(productIds);
-        if (products.size() != productIds.size()) {
-            throw new AppException(ErrorCode.CART_ITEM_INVALID_FOR_CHECKOUT);
-        }
-
-        List<InventoryTransaction> transactions = new ArrayList<>();
-        for (Product product : products) {
-            Long productId = product.getProductID();
-            int requestedQty = requiredByProductId.getOrDefault(productId, 0);
-            int onHandBefore = product.getOnHandQuantity() == null ? 0 : product.getOnHandQuantity();
-            boolean allowPreorder = Boolean.TRUE.equals(product.getAllowPreorder());
-            if (onHandBefore < requestedQty && !allowPreorder) {
-                throw new AppException(ErrorCode.INVENTORY_INSUFFICIENT_QUANTITY);
-            }
-
-            int deductedQty = Math.min(onHandBefore, requestedQty);
-            int onHandAfter = onHandBefore - deductedQty;
-            product.setOnHandQuantity(onHandAfter);
-
-            if (deductedQty <= 0) {
-                continue;
-            }
-
-            InventoryTransaction tx = new InventoryTransaction();
-            tx.setProduct(product);
-            tx.setTransactionType("SALE_OUT");
-            tx.setQuantityBefore(onHandBefore);
-            tx.setQuantityAfter(onHandAfter);
-            tx.setQuantityChange(-deductedQty);
-            tx.setReferenceType("ORDER");
-            tx.setReferenceID(order.getOrderID());
-            tx.setOrder(order);
-            tx.setPerformedBy(user);
-            tx.setPerformedAt(now());
-            tx.setNote(order.getOrderCode());
-            transactions.add(tx);
-        }
-
-        productRepo.saveAll(products);
-        if (!transactions.isEmpty()) {
-            inventoryTransactionRepo.saveAll(transactions);
-        }
-    }
-
-//    private void reserveInventoryAfterOrderCreated(Order order, List<CartItem> cartItems) {
-//        Map<Long, Integer> requiredByProductId = new HashMap<>();
-//        for (CartItem cartItem : cartItems) {
-//            int qty = cartItem.getQuantity() == null || cartItem.getQuantity() <= 0 ? 1 : cartItem.getQuantity();
-//            addRequiredQuantity(requiredByProductId, productFromContactLens(cartItem), qty);
-//            addRequiredQuantity(requiredByProductId, productFromFrame(cartItem), qty);
-//            addRequiredQuantity(requiredByProductId, productFromLens(cartItem), qty);
-//        }
-//        if (requiredByProductId.isEmpty()) {
-//            return;
-//        }
-//
-//        List<Long> productIds = requiredByProductId.keySet().stream().sorted().toList();
-//        List<Product> products = productRepo.findByIdsForUpdate(productIds);
-//        if (products.size() != productIds.size()) {
-//            throw new AppException(ErrorCode.CART_ITEM_INVALID_FOR_CHECKOUT);
-//        }
-//
-//        for (Product product : products) {
-//            Long productId = product.getProductID();
-//            int requestedQty = requiredByProductId.getOrDefault(productId, 0);
-//            int onHandBefore = product.getOnHandQuantity() == null ? 0 : product.getOnHandQuantity();
-//            int reservedBefore = product.getReservedQuantity() == null ? 0 : product.getReservedQuantity();
-//            int availableBefore = Math.max(onHandBefore - reservedBefore, 0);
-//            boolean allowPreorder = Boolean.TRUE.equals(product.getAllowPreorder());
-//            if (availableBefore < requestedQty && !allowPreorder) {
-//                throw new AppException(ErrorCode.INVENTORY_INSUFFICIENT_QUANTITY);
-//            }
-//            int reservedAdded = Math.min(availableBefore, requestedQty);
-//            if (reservedAdded <= 0) {
-//                continue;
-//            }
-//            product.setReservedQuantity(reservedBefore + reservedAdded);
-//        }
-//        productRepo.saveAll(products);
-//    }
-
-    private void addRequiredQuantity(Map<Long, Integer> requiredByProductId,
-                                     Product product,
-                                     int qty) {
-        if (product == null || product.getProductID() == null || qty <= 0) {
-            return;
-        }
-        Long productId = product.getProductID();
-        requiredByProductId.merge(productId, qty, Integer::sum);
-    }
-
-    private Product productFromContactLens(CartItem cartItem) {
-        if (cartItem.getContactLens() == null) return null;
-        return cartItem.getContactLens().getProduct();
-    }
-
-    private Product productFromFrame(CartItem cartItem) {
-        if (cartItem.getFrame() == null) return null;
-        return cartItem.getFrame().getProduct();
-    }
-
-    private Product productFromLens(CartItem cartItem) {
-        if (cartItem.getLens() == null) return null;
-        return cartItem.getLens().getProduct();
-    }
-
+    // Lay thong tin trang thai tong quan cua don hang cho nguoi dung hien tai.
     @Override
     @Transactional(readOnly = true)
     public OrderStatusResponse getOrderStatus(Long orderId) {
@@ -599,6 +1231,7 @@ public class OrderServiceImpl implements OrderService {
                 .build();
     }
 
+    // Cho phep khach hang huy don va tao yeu cau hoan tien neu can.
     @Override
     @Transactional
     public CustomerCancelOrderResponse cancelOrderByCustomer(Long orderId,
@@ -730,268 +1363,7 @@ public class OrderServiceImpl implements OrderService {
                 .build();
     }
 
-    private String generateReturnCode(String returnType) {
-        String typePrefix = "RX";
-        if (returnType != null) {
-            switch (returnType.trim().toUpperCase(Locale.ROOT)) {
-                case "RETURN" -> typePrefix = "RT";
-                case "WARRANTY" -> typePrefix = "WA";
-                case "REFUND" -> typePrefix = "RF";
-                default -> typePrefix = "RX";
-            }
-        }
-        String datePart = LocalDate.now(APP_ZONE_ID).format(DateTimeFormatter.ofPattern("yyMMdd"));
-        String prefix = typePrefix + datePart;
-        Optional<ReturnExchange> lastReturnOpt = returnExchangeRepo.findTopByReturnCodeStartingWithOrderByReturnCodeDesc(prefix);
-        int sequence = 1;
-        if (lastReturnOpt.isPresent()) {
-            String lastCode = lastReturnOpt.get().getReturnCode();
-            String sequenceStr = lastCode.substring(lastCode.length() - 4);
-            sequence = Integer.parseInt(sequenceStr) + 1;
-        }
-        String finalCode;
-        do {
-            finalCode = prefix + String.format("%04d", sequence);
-            sequence++;
-        } while (returnExchangeRepo.findByReturnCode(finalCode).isPresent());
-        return finalCode;
-    }
-
-    private String buildCustomerCancelNote(CustomerCancelOrderRequest request) {
-        String reason = normalizeText(request != null ? request.getCancelReason() : null);
-        if (reason == null) {
-            return "CUSTOMER_CANCEL_BEFORE_CONFIRM";
-        }
-        return "CUSTOMER_CANCEL_BEFORE_CONFIRM: " + reason;
-    }
-
-    private String normalizeText(String text) {
-        if (text == null) {
-            return null;
-        }
-        String trimmed = text.trim();
-        return trimmed.isEmpty() ? null : trimmed;
-    }
-
-    private void cancelPendingPaymentsAfterOrderCanceled(Order order) {
-        if (order.getPayments() == null || order.getPayments().isEmpty()) {
-            return;
-        }
-        List<Payment> pendingPayments = order.getPayments().stream()
-                .filter(Objects::nonNull)
-                .filter(p -> OrderConstants.PAYMENT_STATUS_PENDING.equalsIgnoreCase(p.getStatus()))
-                .toList();
-        if (pendingPayments.isEmpty()) {
-            return;
-        }
-        pendingPayments.forEach(p -> p.setStatus(OrderConstants.PAYMENT_STATUS_CANCELED));
-        paymentRepo.saveAll(pendingPayments);
-    }
-
-//    private void adjustInventoryAfterOrderCanceled(Order order) {
-//        if (order == null || order.getOrderID() == null) {
-//            return;
-//        }
-//        Map<Long, Integer> requiredByProductId = aggregateOrderProductQuantities(order.getOrderID());
-//        if (requiredByProductId.isEmpty()) {
-//            return;
-//        }
-//        List<Long> productIds = requiredByProductId.keySet().stream().sorted().toList();
-//        List<Product> products = productRepo.findByIdsForUpdate(productIds);
-//        if (products.size() != productIds.size()) {
-//            throw new AppException(ErrorCode.INVALID_REQUEST);
-//        }
-//        for (Product product : products) {
-//            int requestedQty = requiredByProductId.getOrDefault(product.getProductID(), 0);
-//            if (requestedQty <= 0) {
-//                continue;
-//            }
-//            int reservedBefore = product.getReservedQuantity() == null ? 0 : product.getReservedQuantity();
-//            int releaseQty = Math.min(reservedBefore, requestedQty);
-//            if (releaseQty > 0) {
-//                product.setReservedQuantity(reservedBefore - releaseQty);
-//            }
-//            int restockQty = requestedQty - releaseQty;
-//            if (restockQty > 0) {
-//                int onHandBefore = product.getOnHandQuantity() == null ? 0 : product.getOnHandQuantity();
-//                product.setOnHandQuantity(onHandBefore + restockQty);
-//            }
-//        }
-//        productRepo.saveAll(products);
-//    }
-//
-//    private Map<Long, Integer> aggregateOrderProductQuantities(Long orderId) {
-//        Map<Long, Integer> qtyByProductId = new HashMap<>();
-//        List<OrderDetail> orderDetails = orderDetailRepo.findByOrderIdFetchProduct(orderId);
-//        for (OrderDetail orderDetail : orderDetails) {
-//            if (orderDetail == null || orderDetail.getProduct() == null || orderDetail.getProduct().getProductID() == null) {
-//                continue;
-//            }
-//            int quantity = orderDetail.getQuantity() == null ? 0 : orderDetail.getQuantity();
-//            if (quantity <= 0) {
-//                continue;
-//            }
-//            qtyByProductId.merge(orderDetail.getProduct().getProductID(), quantity, Integer::sum);
-//        }
-//        prescriptionOrderRepo.findByOrder_OrderID(orderId).ifPresent(prescriptionOrder -> {
-//            if (prescriptionOrder.getPrescriptionOrderDetails() == null || prescriptionOrder.getPrescriptionOrderDetails().isEmpty()) {
-//                return;
-//            }
-//            for (PrescriptionOrderDetail detail : prescriptionOrder.getPrescriptionOrderDetails()) {
-//                if (detail == null) {
-//                    continue;
-//                }
-//                Product frameProduct = detail.getFrame() == null ? null : detail.getFrame().getProduct();
-//                Product lensProduct = detail.getLens() == null ? null : detail.getLens().getProduct();
-//                addRequiredQuantity(qtyByProductId, frameProduct, 1);
-//                addRequiredQuantity(qtyByProductId, lensProduct, 1);
-//            }
-//        });
-//        return qtyByProductId;
-//    }
-
-    private Product resolveOrderDetailProduct(CartItem ci) {
-        if (ci.getContactLens() != null) return ci.getContactLens().getProduct();
-        if (ci.getFrame() != null && ci.getLens() == null) return ci.getFrame().getProduct();
-        if (ci.getLens() != null && ci.getFrame() == null) return ci.getLens().getProduct();
-        return null; // frame+lens => prescription, không vào Order_Detail
-    }
-
-    private OrderDetail buildNormalOrderDetail(Order order, CartItem ci, CheckoutLineItemResponse li) {
-        Product product = resolveOrderDetailProduct(ci);
-        if (product == null) {
-            throw new AppException(ErrorCode.CART_ITEM_INVALID_FOR_CHECKOUT);
-        }
-        OrderDetail od = new OrderDetail();
-        od.setOrder(order);
-        od.setProduct(product);
-        od.setUnitPrice(li.getUnitPrice());
-        od.setQuantity(li.getQuantity() == null ? 1 : li.getQuantity());
-        return od;
-    }
-
-    private ShippingAddressRequest resolveAddress(ShippingAddressRequest reqAddr, User user) {
-        if (reqAddr != null && reqAddr.getDistrictCode() != null && reqAddr.getWardCode() != null) {
-            return reqAddr;
-        }
-
-        // dùng default codes từ user
-        if (user.getDistrictCode() == null || user.getWardCode() == null) {
-            // chưa có default codes => preview sẽ shipFee=0, FE buộc user chọn địa chỉ mới
-            return null;
-        }
-
-        ShippingAddressRequest a = new ShippingAddressRequest();
-        a.setStreet(null);
-        a.setProvinceCode(user.getProvinceCode());
-        a.setProvinceName(user.getProvinceName());
-        a.setDistrictCode(user.getDistrictCode());
-        a.setDistrictName(user.getDistrictName());
-        a.setWardCode(user.getWardCode());
-        a.setWardName(user.getWardName());
-        return a;
-    }
-
-    private String buildFullAddress(ShippingAddressRequest address, User user) {
-        if (address == null) return user.getAddress();
-
-        String street = address.getStreet() != null ? address.getStreet().trim() : null;
-        if (street == null || street.isEmpty()) return user.getAddress();
-
-        return street + ", " + address.getWardName() + ", " + address.getDistrictName() + ", " + address.getProvinceName();
-    }
-
-    private String generateOrderCode() {
-        return "ORD-" + now().toLocalDate() + "-" +
-                UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-    }
-
-    /**
-     * Convert rule UI payment => plan tạo Payment records.
-     * - Nếu không cần cọc:
-     * COD => 1 record FULL COD PENDING
-     * VNPAY/MOMO => 1 record FULL online PENDING (redirect)
-     * - Nếu cần cọc:
-     * paymentMethod=COD => DEPOSIT online + REMAINING COD
-     * paymentMethod=VNPAY/MOMO:
-     * payStrategy=FULL => FULL online
-     * payStrategy=DEPOSIT => DEPOSIT online + REMAINING COD
-     */
-    private PaymentPlan buildPaymentPlan(CheckoutPreviewResponse preview, CreateOrderRequest req) {
-        boolean depositRequired = preview.isDepositRequired();
-
-        String method = req.getPaymentMethod(); // COD/VNPAY/MOMO/PAYOS
-        String payStrategy = req.getPayStrategy(); // FULL/DEPOSIT
-
-        if (!depositRequired) {
-            return PaymentPlan.full(method, preview.getTotalAmount());
-        }
-
-        BigDecimal dep = preview.getDepositAmount();
-        BigDecimal rem = preview.getRemainingAmount();
-
-        if ("COD".equalsIgnoreCase(method)) {
-            // COD main but deposit must be online
-            if (req.getDepositPaymentMethod() == null) {
-                throw new AppException(ErrorCode.DEPOSIT_PAYMENT_METHOD_REQUIRED);
-            }
-            return PaymentPlan.deposit(req.getDepositPaymentMethod(), dep, rem);
-        }
-
-        // online main
-        if ("FULL".equalsIgnoreCase(payStrategy)) {
-            return PaymentPlan.full(method, preview.getTotalAmount());
-        }
-
-        // default: DEPOSIT
-        return PaymentPlan.deposit(method, dep, rem);
-    }
-
-    private static class PaymentPlan {
-        boolean createDepositPayment;
-        String depositMethod;
-        BigDecimal depositAmount;
-        BigDecimal remainingAmount;
-
-        String fullMethod;
-        BigDecimal fullAmount;
-
-        static PaymentPlan deposit(String depositMethod, BigDecimal depositAmount, BigDecimal remainingAmount) {
-            PaymentPlan p = new PaymentPlan();
-            p.createDepositPayment = true;
-            p.depositMethod = depositMethod;
-            p.depositAmount = depositAmount;
-            p.remainingAmount = remainingAmount;
-            return p;
-        }
-
-        static PaymentPlan full(String fullMethod, BigDecimal fullAmount) {
-            PaymentPlan p = new PaymentPlan();
-            p.createDepositPayment = false;
-            p.fullMethod = fullMethod;
-            p.fullAmount = fullAmount;
-            return p;
-        }
-    }
-
-    private BigDecimal toBd(Double v) {
-        if (v == null) return null;
-        return new BigDecimal(String.valueOf(v)).setScale(2, RoundingMode.HALF_UP);
-    }
-
-    private BigDecimal toPdBd(Double v) {
-        if (v == null) return null;
-        return new BigDecimal(String.valueOf(v)).setScale(1, RoundingMode.HALF_UP);
-    }
-
-    private boolean hasPdData(CartItemPrescription rx) {
-        return rx.getPd() != null || (rx.getPdRight() != null && rx.getPdLeft() != null);
-    }
-
-    private LocalDateTime now() {
-        return LocalDateTime.now(APP_ZONE_ID);
-    }
-
+    // Lay lich su don hang cua khach hang dang dang nhap.
     @Override
     @Transactional(readOnly = true)
     public List<CustomerOrderHistoryResponse> getCustomerOrderHistory() {
@@ -1019,6 +1391,7 @@ public class OrderServiceImpl implements OrderService {
                 .toList();
     }
 
+    // Lay chi tiet don hang de khach hang theo doi san pham, thanh toan va hoan tien.
     @Override
     @Transactional(readOnly = true)
     public StaffOrderDetailResponse getOrderDetailForCustomer(Long orderId) {
@@ -1124,334 +1497,4 @@ public class OrderServiceImpl implements OrderService {
                 .build();
     }
 
-    private ReturnExchange findLatestTrackableReturnExchange(Long orderId) {
-        return returnExchangeRepo.findByOrderIdAndReturnTypesAndRequestScopesOrderByLatest(
-                        orderId,
-                        TRACKING_RETURN_TYPES,
-                        TRACKING_REQUEST_SCOPES,
-                        PageRequest.of(0, 1)
-                ).stream()
-                .findFirst()
-                .orElse(null);
-    }
-
-    private BigDecimal sumSuccessfulPayments(Order order) {
-        if (order.getPayments() == null || order.getPayments().isEmpty()) {
-            return BigDecimal.ZERO;
-        }
-        return order.getPayments().stream()
-                .filter(Objects::nonNull)
-                .filter(p -> OrderConstants.PAYMENT_STATUS_SUCCESS.equalsIgnoreCase(p.getStatus()))
-                .map(Payment::getAmount)
-                .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
-
-    private BigDecimal sumCompletedOrderRefundAmount(Long orderId) {
-        return returnExchangeRepo.findByOrder_OrderIDAndReturnTypeIgnoreCaseAndRequestScopeIgnoreCase(orderId, "REFUND", "ORDER")
-                .stream()
-                .filter(Objects::nonNull)
-                .filter(re -> "COMPLETED".equalsIgnoreCase(re.getStatus()))
-                .map(ReturnExchange::getRefundAmount)
-                .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
-
-    private boolean isCustomerCancelableStatus(String orderStatus) {
-        if (orderStatus == null) {
-            return false;
-        }
-        return OrderConstants.ORDER_STATUS_PENDING.equalsIgnoreCase(orderStatus)
-                || OrderConstants.ORDER_STATUS_PARTIALLY_PAID.equalsIgnoreCase(orderStatus)
-                || OrderConstants.ORDER_STATUS_PAID.equalsIgnoreCase(orderStatus);
-    }
-
-    private String resolveCancelScenario(String orderStatus, BigDecimal refundableAmount, ReturnExchange latestOrderRefund) {
-        if (isCustomerCancelableStatus(orderStatus)) {
-            if (refundableAmount != null && refundableAmount.compareTo(BigDecimal.ZERO) > 0) {
-                return "CANCEL_WITH_MANUAL_REFUND";
-            }
-            return "CANCEL_WITHOUT_REFUND";
-        }
-        if (!OrderConstants.ORDER_STATUS_CANCELED.equalsIgnoreCase(orderStatus)) {
-            return "CANCEL_NOT_ALLOWED";
-        }
-        if (latestOrderRefund == null) {
-            return "CANCELED_NO_REFUND_COMPLETED";
-        }
-        String status = latestOrderRefund.getStatus() == null ? "" : latestOrderRefund.getStatus().trim().toUpperCase(Locale.ROOT);
-        return switch (status) {
-            case "PENDING", "APPROVED" -> "CANCELED_REFUND_IN_PROGRESS";
-            case "REJECTED" -> "CANCELED_REFUND_REJECTED";
-            case "COMPLETED" -> "CANCELED_REFUND_COMPLETED";
-            default -> "CANCELED_REFUND_IN_PROGRESS";
-        };
-    }
-
-    private StaffOrderItemResponse toOrderItemResponse(OrderDetail detail) {
-        Product product = detail.getProduct();
-        Integer quantity = detail.getQuantity() == null ? 0 : detail.getQuantity();
-        BigDecimal unitPrice = detail.getUnitPrice() == null ? BigDecimal.ZERO : detail.getUnitPrice();
-        return StaffOrderItemResponse.builder()
-                .orderDetailId(detail.getOrderDetailID())
-                .productId(product != null ? product.getProductID() : null)
-                .productName(product != null ? product.getProductName() : null)
-                .quantity(quantity)
-                .unitPrice(unitPrice)
-                .totalPrice(unitPrice.multiply(BigDecimal.valueOf(quantity)))
-                .imageUrl(pickPrimaryImage(product))
-                .build();
-    }
-
-    private List<StaffPrescriptionOrderItemResponse> mapPrescriptionItems(PrescriptionOrder prescriptionOrder) {
-        if (prescriptionOrder == null || prescriptionOrder.getPrescriptionOrderDetails() == null) {
-            return List.of();
-        }
-
-        Map<PrescriptionGroupKey, RxAggregate> aggregates = new LinkedHashMap<>();
-        for (PrescriptionOrderDetail detail : prescriptionOrder.getPrescriptionOrderDetails()) {
-            String rightSph = bdToText(detail.getRightEyeSph());
-            String rightCyl = bdToText(detail.getRightEyeCyl());
-            String rightAxis = detail.getRightEyeAxis() == null ? null : String.valueOf(detail.getRightEyeAxis());
-            String rightAdd = detail.getRightEyeAdd() == null ? null : String.valueOf(detail.getRightEyeAdd());
-            String rightPD = bdToText(detail.getPdRight());
-            String leftSph = bdToText(detail.getLeftEyeSph());
-            String leftCyl = bdToText(detail.getLeftEyeCyl());
-            String leftAxis = detail.getLeftEyeAxis() == null ? null : String.valueOf(detail.getLeftEyeAxis());
-            String leftAdd = detail.getLeftEyeAdd() == null ? null : String.valueOf(detail.getLeftEyeAdd());
-            String leftPD = bdToText(detail.getPdLeft());
-
-            Long frameId = detail.getFrame() != null ? detail.getFrame().getFrameID() : null;
-            Long lensId = detail.getLens() != null ? detail.getLens().getLensID() : null;
-            Product frameProduct = detail.getFrame() != null ? detail.getFrame().getProduct() : null;
-            Product lensProduct = detail.getLens() != null ? detail.getLens().getProduct() : null;
-            String frameName = frameProduct != null ? frameProduct.getProductName() : null;
-            String lensName = lensProduct != null ? lensProduct.getProductName() : null;
-
-            BigDecimal framePrice = productPrice(frameProduct);
-            BigDecimal lensPrice = productPrice(lensProduct);
-            BigDecimal lineTotal = detail.getSubTotal() == null ? BigDecimal.ZERO : detail.getSubTotal();
-
-            PrescriptionGroupKey key = new PrescriptionGroupKey(
-                    frameId,
-                    lensId,
-                    rightSph,
-                    rightCyl,
-                    rightAxis,
-                    rightAdd,
-                    rightPD,
-                    leftSph,
-                    leftCyl,
-                    leftAxis,
-                    leftAdd,
-                    leftPD,
-                    bdToText(lineTotal)
-            );
-
-            RxAggregate aggregate = aggregates.computeIfAbsent(key, k -> new RxAggregate(
-                    StaffPrescriptionOrderItemResponse.builder()
-                            .prescriptionOrderDetailId(detail.getPrescriptionOrderDetailID())
-                            .frameId(frameId)
-                            .frameName(frameName)
-                            .framePrice(framePrice)
-                            .frameImg(pickPrimaryImage(frameProduct))
-                            .lensId(lensId)
-                            .lensName(lensName)
-                            .lensPrice(lensPrice)
-                            .lensImg(pickPrimaryImage(lensProduct))
-                            .contactLensId(null)
-                            .contactLensName(null)
-                            .contactLensPrice(BigDecimal.ZERO)
-                            .contactLensImg(null)
-                            .rightEyeSph(rightSph)
-                            .rightEyeCyl(rightCyl)
-                            .rightEyeAxis(rightAxis)
-                            .rightEyeAdd(rightAdd)
-                            .rightPD(rightPD)
-                            .leftEyeSph(leftSph)
-                            .leftEyeCyl(leftCyl)
-                            .leftEyeAxis(leftAxis)
-                            .leftEyeAdd(leftAdd)
-                            .leftPD(leftPD)
-                            .quantity(0)
-                            .totalPrice(BigDecimal.ZERO)
-                            .build()
-            ));
-
-            aggregate.response.setQuantity(aggregate.response.getQuantity() + 1);
-            aggregate.response.setTotalPrice(aggregate.response.getTotalPrice().add(lineTotal));
-        }
-
-        return aggregates.values().stream().map(a -> a.response).toList();
-    }
-
-    private BigDecimal productPrice(Product product) {
-        return product != null && product.getPrice() != null ? product.getPrice() : BigDecimal.ZERO;
-    }
-
-    private String pickPrimaryImage(Product product) {
-        if (product == null || product.getImages() == null || product.getImages().isEmpty()) {
-            return null;
-        }
-        return product.getImages().stream()
-                .filter(Objects::nonNull)
-                .filter(i -> Boolean.TRUE.equals(i.getAvatar()))
-                .findFirst()
-                .map(ProductImage::getImageUrl)
-                .orElseGet(() -> product.getImages().stream()
-                        .filter(Objects::nonNull)
-                        .map(ProductImage::getImageUrl)
-                        .filter(url -> url != null && !url.trim().isEmpty())
-                        .findFirst()
-                        .orElse(null));
-    }
-
-    private String bdToText(BigDecimal value) {
-        return value == null ? null : value.stripTrailingZeros().toPlainString();
-    }
-
-    private String bdToText(Double value) {
-        return value == null ? null : BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
-    }
-
-    private boolean isRequiresFinalPayment(Order order) {
-        if (order == null) {
-            return false;
-        }
-        Invoice invoice = order.getInvoice();
-        if (invoice != null && isStatus(invoice.getStatus(), "PARTIALLY_PAID")) {
-            return true;
-        }
-        return isStatus(order.getOrderStatus(), "PARTIALLY_PAID");
-    }
-
-    private boolean isStatus(String value, String expected) {
-        return value != null && expected != null && value.trim().equalsIgnoreCase(expected);
-    }
-
-    private static class RxAggregate {
-        private final StaffPrescriptionOrderItemResponse response;
-
-        private RxAggregate(StaffPrescriptionOrderItemResponse response) {
-            this.response = response;
-        }
-    }
-
-    private static class PrescriptionGroupKey {
-        private final Long frameId;
-        private final Long lensId;
-        private final String rightEyeSph;
-        private final String rightEyeCyl;
-        private final String rightEyeAxis;
-        private final String rightEyeAdd;
-        private final String rightPD;
-        private final String leftEyeSph;
-        private final String leftEyeCyl;
-        private final String leftEyeAxis;
-        private final String leftEyeAdd;
-        private final String leftPD;
-        private final String lineSubTotal;
-
-        private PrescriptionGroupKey(Long frameId, Long lensId, String rightEyeSph, String rightEyeCyl,
-                                     String rightEyeAxis, String rightEyeAdd, String rightPD,
-                                     String leftEyeSph, String leftEyeCyl, String leftEyeAxis,
-                                     String leftEyeAdd, String leftPD, String lineSubTotal) {
-            this.frameId = frameId;
-            this.lensId = lensId;
-            this.rightEyeSph = rightEyeSph;
-            this.rightEyeCyl = rightEyeCyl;
-            this.rightEyeAxis = rightEyeAxis;
-            this.rightEyeAdd = rightEyeAdd;
-            this.rightPD = rightPD;
-            this.leftEyeSph = leftEyeSph;
-            this.leftEyeCyl = leftEyeCyl;
-            this.leftEyeAxis = leftEyeAxis;
-            this.leftEyeAdd = leftEyeAdd;
-            this.leftPD = leftPD;
-            this.lineSubTotal = lineSubTotal;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            PrescriptionGroupKey that = (PrescriptionGroupKey) o;
-            return Objects.equals(frameId, that.frameId)
-                    && Objects.equals(lensId, that.lensId)
-                    && Objects.equals(rightEyeSph, that.rightEyeSph)
-                    && Objects.equals(rightEyeCyl, that.rightEyeCyl)
-                    && Objects.equals(rightEyeAxis, that.rightEyeAxis)
-                    && Objects.equals(rightEyeAdd, that.rightEyeAdd)
-                    && Objects.equals(rightPD, that.rightPD)
-                    && Objects.equals(leftEyeSph, that.leftEyeSph)
-                    && Objects.equals(leftEyeCyl, that.leftEyeCyl)
-                    && Objects.equals(leftEyeAxis, that.leftEyeAxis)
-                    && Objects.equals(leftEyeAdd, that.leftEyeAdd)
-                    && Objects.equals(leftPD, that.leftPD)
-                    && Objects.equals(lineSubTotal, that.lineSubTotal);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(frameId, lensId, rightEyeSph, rightEyeCyl, rightEyeAxis, rightEyeAdd, rightPD,
-                    leftEyeSph, leftEyeCyl, leftEyeAxis, leftEyeAdd, leftPD, lineSubTotal);
-        }
-    }
-
-    private boolean isPdRequired(CartItem ci) {
-        return ci.getFrame() != null;
-    }
-
-    private boolean isPrescriptionItemByBusinessRule(CartItem ci, CartItemPrescription rx) {
-        if (ci.getFrame() != null && ci.getLens() != null) return true;
-        if (ci.getLens() != null && ci.getFrame() == null) return rx != null && hasPrescriptionData(rx);
-        if (ci.getContactLens() != null) return rx != null && hasPrescriptionData(rx);
-        return false;
-    }
-
-    private String determineOrderTypeByBusinessRule(List<CheckoutLineItemResponse> previewItems,
-                                                    List<CartItem> cartItems,
-                                                    Map<Long, CartItemPrescription> rxMap) {
-        Map<Long, CheckoutLineItemResponse> previewMap = new HashMap<>();
-        for (CheckoutLineItemResponse li : previewItems) {
-            previewMap.put(li.getCartItemId(), li);
-        }
-        boolean hasDirect = false;
-        boolean hasPre = false;
-        boolean hasPrescription = false;
-        for (CartItem ci : cartItems) {
-            CheckoutLineItemResponse li = previewMap.get(ci.getCartItemId());
-            boolean isPrescription = isPrescriptionItemByBusinessRule(ci, rxMap.get(ci.getCartItemId()));
-            boolean isPre = li != null && "PRE_ORDER".equals(li.getItemType());
-            if (isPrescription) {
-                hasPrescription = true;
-            } else if (isPre) {
-                hasPre = true;
-            } else {
-                hasDirect = true;
-            }
-        }
-        int types = 0;
-        if (hasDirect) types++;
-        if (hasPre) types++;
-        if (hasPrescription) types++;
-        if (types > 1) return "MIX_ORDER";
-        if (hasPrescription) return "PRESCRIPTION_ORDER";
-        if (hasPre) return "PRE_ORDER";
-        return "DIRECT_ORDER";
-    }
-
-    private boolean hasPrescriptionData(CartItemPrescription rx) {
-        return rx.getRightEyeSph() != null
-                || rx.getRightEyeCyl() != null
-                || rx.getRightEyeAxis() != null
-                || rx.getRightEyeAdd() != null
-                || rx.getLeftEyeSph() != null
-                || rx.getLeftEyeCyl() != null
-                || rx.getLeftEyeAxis() != null
-                || rx.getLeftEyeAdd() != null
-                || rx.getPd() != null
-                || rx.getPdRight() != null
-                || rx.getPdLeft() != null;
-    }
 }
