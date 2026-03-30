@@ -6,19 +6,15 @@ import com.swp391.eyewear_management_backend.dto.response.SupplierResponse;
 import com.swp391.eyewear_management_backend.entity.Brand;
 import com.swp391.eyewear_management_backend.entity.BrandSupplier;
 import com.swp391.eyewear_management_backend.entity.Supplier;
-import com.swp391.eyewear_management_backend.exception.AppException;
-import com.swp391.eyewear_management_backend.exception.ErrorCode;
 import com.swp391.eyewear_management_backend.repository.BrandRepo;
 import com.swp391.eyewear_management_backend.repository.BrandSupplierRepo;
 import com.swp391.eyewear_management_backend.repository.SupplierRepository;
-import com.swp391.eyewear_management_backend.service.ImageUploadService;
 import com.swp391.eyewear_management_backend.service.SupplierService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -39,8 +35,6 @@ public class SupplierServiceImpl implements SupplierService {
 
     @Autowired
     private BrandSupplierRepo brandSupplierRepo;
-
-    private final ImageUploadService imageUploadService;
 
     @Override
     public List<SupplierResponse> getAllSuppliers() {
@@ -107,10 +101,10 @@ public class SupplierServiceImpl implements SupplierService {
         Supplier supplier = supplierRepository.findById(supplierId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy Supplier với ID: " + supplierId));
 
-        List<String> duplicatedBrandNames = collectDuplicateBrandNamesInDb(brands);
-        if (!duplicatedBrandNames.isEmpty()) {
-            throw new IllegalArgumentException("Không thể thêm brand vì đã tồn tại trong DB: " + String.join(", ", duplicatedBrandNames));
-        }
+//        List<String> duplicatedBrandNames = collectDuplicateBrandNamesInDb(brands);
+//        if (!duplicatedBrandNames.isEmpty()) {
+//            throw new IllegalArgumentException("Không thể thêm brand vì đã tồn tại trong DB: " + String.join(", ", duplicatedBrandNames));
+//        }
 
         if (brands != null && !brands.isEmpty()) {
             List<Brand> brandsToCreate = new ArrayList<>();
@@ -118,7 +112,7 @@ public class SupplierServiceImpl implements SupplierService {
                 Brand newBrand = new Brand();
                 newBrand.setBrandName(brandDto.getBrandName());
                 newBrand.setDescription(brandDto.getDescription());
-                newBrand.setLogoUrl(resolveBrandLogoUrl(brandDto));
+                newBrand.setLogoUrl(null);
                 newBrand.setStatus(brandDto.getStatus() != null ? brandDto.getStatus() : true);
                 brandsToCreate.add(newBrand);
 
@@ -188,15 +182,4 @@ public class SupplierServiceImpl implements SupplierService {
     }
 
 
-    private String resolveBrandLogoUrl(BrandDto brandDto) {
-        if (brandDto.getLogoFile() == null || brandDto.getLogoFile().isEmpty()) {
-            return null;
-        }
-
-        try {
-            return imageUploadService.uploadImage(brandDto.getLogoFile());
-        } catch (IOException e) {
-            throw new AppException(ErrorCode.UPLOAD_IMAGE_FAILED, "Upload logo brand thất bại");
-        }
-    }
 }

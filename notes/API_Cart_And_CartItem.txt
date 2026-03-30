@@ -1,0 +1,685 @@
+==============================
+API CART & CART ITEM - FLOW + TEST CASE
+==============================
+
+1) Tong quan nhanh
+- Base URL: /api/cart
+- Controller dang dung CORS: http://localhost:3000
+- Cac API deu lam viec theo user dang dang nhap (lay tu SecurityContext)
+- Khong truyen userId trong request body/path cho cac API nay
+- Kieu loi va message duoc tra qua GlobalExceptionHandler
+
+
+2) Danh sach API trong CartController
+- POST /api/cart/add
+	Muc dich: them moi item vao gio, hoac cong don quantity neu item da ton tai
+
+- GET /api/cart/getAllCart
+	Muc dich: lay toan bo item cua gio hien tai
+
+- DELETE /api/cart/delete/{cartItemId}
+	Muc dich: xoa 1 item khoi gio
+
+- DELETE /api/cart/deleteAllCart
+	Muc dich: xoa tat ca item trong gio
+
+- PUT /api/cart/update
+	Muc dich: cap nhat quantity cho 1 cartItem
+
+
+3) Cac quy tac nghiep vu quan trong
+3.1 User context
+- Moi API deu goi getCurrentUser()
+- Neu chua dang nhap/khong hop le -> loi UNAUTHENTICATED
+- Neu username khong tim thay trong DB -> loi USER_NOT_EXISTED
+
+3.2 Them item vao gio (POST /add)
+- He thong tim cart theo user:
+	+ Co roi: dung cart cu
+	+ Chua co: tao moi cart
+- He thong load entity theo id request:
+	+ contactLensId sai -> CONTACT_LENS_NOT_FOUND
+	+ frameId sai -> FRAME_NOT_FOUND
+	+ lensId sai -> LENS_NOT_FOUND
+- Logic tim item trung:
+	+ So sanh bo 3 id san pham (contactLens/frame/lens)
+	+ So sanh them thong so prescription
+	+ Neu cung bo id + cung prescription -> xem la trung item
+- Neu trung item:
+	+ quantity = quantity cu + quantity moi
+	+ itemType duoc tinh lai
+- Neu chua trung:
+	+ Tao cartItem moi
+	+ Gia frame/lens/contact lens lay tu Product.price trong DB
+	+ price tong = tong gia cac thanh phan co trong item
+- Neu request co thong so prescription (bat ky truong nao co gia tri):
+	+ itemType uu tien la PRESCRIPTION
+	+ Neu la item moi thi tao CartItemPrescription
+
+3.3 Xac dinh itemType
+- Neu co prescription -> PRESCRIPTION (uu tien cao nhat)
+- Neu khong co prescription, nhung co bat ky san pham nao cho phep preorder va availableQuantity = 0 -> PREORDER
+- Nguoc lai -> ORDER
+
+3.4 Lay gio hang (GET /getAllCart)
+- Neu user chua co cart -> tra ve []
+- Neu co cart -> map tat ca cartItem sang CartItemResponse
+
+3.5 Xoa 1 item (DELETE /delete/{cartItemId})
+- Tim cartItem theo id
+- Neu khong ton tai: code hien tai dang nem UNAUTHENTICATED (khong phan biet ro voi NOT_FOUND)
+- Neu ton tai nhung khong thuoc user dang dang nhap: UNAUTHENTICATED
+- Neu thuoc user: xoa thanh cong
+
+3.6 Cap nhat quantity (PUT /update)
+- Validate request:
+	+ cartItemId bat buoc
+	+ quantity bat buoc, >= 1
+- Tim cartItem theo id:
+	+ Khong ton tai -> CART_ITEM_NOT_FOUND
+- Kiem tra owner cartItem:
+	+ Khong phai user hien tai -> UNAUTHENTICATED
+- Hop le -> update quantity, luu DB, tra CartItemResponse
+
+3.7 Xoa tat ca gio (DELETE /deleteAllCart)
+- Neu co cart: clear danh sach cartItems roi save cart
+- Neu chua co cart: khong loi, ket thuc em
+
+
+4) Mau request/response de test nhanh
+4.1 POST /api/cart/add (Frame + Lens)
+Request JSON:
+{
+	"frameId": 101,
+	"lensId": 205,
+	"quantity": 1
+}
+
+Response 200 (vi du):
+{
+	"cartItemId": 9001,
+	"cartId": 300,
+	"itemType": "ORDER",
+	"frameId": 101,
+	"lensId": 205,
+	"quantity": 1,
+	"framePrice": 1200000.0,
+	"lensPrice": 600000.0,
+	"price": 1800000.0
+}
+
+4.2 POST /api/cart/add (co prescription)
+Request JSON:
+{
+	"frameId": 101,
+	"lensId": 205,
+	"quantity": 1,
+	"rightEyeSph": -1.25,
+	"leftEyeSph": -1.00,
+	"pd": 62.0
+}
+
+Ky vong:
+- itemType = PRESCRIPTION
+- co thong tin prescription trong response (neu mapper da map)
+
+4.3 PUT /api/cart/update
+Request JSON:
+{
+	"cartItemId": 9001,
+	"quantity": 3
+}
+
+Response 200: quantity duoc cap nhat thanh 3
+
+
+5) Bo test case chi tiet (manual test/Postman)
+
+5.1 Nhom A - Authentication/Authorization
+TC-A01
+- API: GET /api/cart/getAllCart
+- Dieu kien: khong gui token
+- Ky vong: 401, code UNAUTHENTICATED
+
+TC-A02
+- API: POST /api/cart/add
+- Dieu kien: token hop le nhung user da bi xoa khoi DB
+- Ky vong: 404, code USER_NOT_EXISTED
+
+TC-A03
+- API: DELETE /api/cart/delete/{cartItemId}
+- Dieu kien: cartItem thuoc user khac
+- Ky vong: 401, code UNAUTHENTICATED
+
+TC-A04
+- API: PUT /api/cart/update
+- Dieu kien: cartItem thuoc user khac
+- Ky vong: 401, code UNAUTHENTICATED
+
+
+5.2 Nhom B - POST /api/cart/add (happy path)
+TC-B01
+- Input: chi co contactLensId hop le + quantity = 1
+- Ky vong: tao item moi, itemType ORDER hoac PREORDER theo ton kho
+
+TC-B02
+- Input: chi co frameId hop le + quantity = 2
+- Ky vong: tao item moi, framePrice lay tu DB
+
+TC-B03
+- Input: frameId + lensId hop le
+- Ky vong: price = framePrice + lensPrice
+
+TC-B04
+- Input: add trung item lan 2, cung product combo, cung prescription
+- Ky vong: khong tao dong moi, quantity duoc cong don
+
+TC-B05
+- Input: cung product combo nhung prescription khac
+- Ky vong: tao dong moi (khong cong don)
+
+TC-B06
+- Input: co thong so prescription bat ky
+- Ky vong: itemType = PRESCRIPTION
+
+TC-B07
+- Input: frame allowPreorder=true va availableQuantity=0, khong co prescription
+- Ky vong: itemType = PREORDER
+
+TC-B08
+- Input: frame in-stock, lens in-stock, khong prescription
+- Ky vong: itemType = ORDER
+
+
+5.3 Nhom C - POST /api/cart/add (validation + not found)
+TC-C01
+- Input: quantity bi thieu
+- Ky vong: 400, code 2005 hoac validation code tu ErrorCode theo key
+
+TC-C02
+- Input: quantity = 0
+- Ky vong: 400, message QUANTITY_MUST_BE_GREATER_THAN_0
+
+TC-C03
+- Input: quantity < 0
+- Ky vong: 400
+
+TC-C04
+- Input: contactLensId khong ton tai
+- Ky vong: 404, CONTACT_LENS_NOT_FOUND
+
+TC-C05
+- Input: frameId khong ton tai
+- Ky vong: 404, FRAME_NOT_FOUND
+
+TC-C06
+- Input: lensId khong ton tai
+- Ky vong: 404, LENS_NOT_FOUND
+
+TC-C07
+- Input: Content-Type != application/json
+- Ky vong: 415, thong diep Content-Type phai la application/json
+
+TC-C08
+- Input: Accept khong chap nhan json
+- Ky vong: 406
+
+
+5.4 Nhom D - GET /api/cart/getAllCart
+TC-D01
+- Dieu kien: user chua co cart
+- Ky vong: 200, response []
+
+TC-D02
+- Dieu kien: user co nhieu item
+- Ky vong: 200, tra day du danh sach
+
+TC-D03
+- Dieu kien: co item PRESCRIPTION
+- Ky vong: itemType = PRESCRIPTION, co thong tin prescription neu mapper co map
+
+
+5.5 Nhom E - DELETE /api/cart/delete/{cartItemId}
+TC-E01
+- Input: cartItemId hop le, thuoc user
+- Ky vong: 204 No Content
+
+TC-E02
+- Input: cartItemId khong ton tai
+- Ky vong hien tai: 401 UNAUTHENTICATED (do logic service)
+- Ghi chu: ve nghiep vu nen doi thanh 404 CART_ITEM_NOT_FOUND
+
+TC-E03
+- Input: cartItemId thuoc user khac
+- Ky vong: 401 UNAUTHENTICATED
+
+
+5.6 Nhom F - PUT /api/cart/update
+TC-F01
+- Input: cartItemId hop le, quantity=5
+- Ky vong: 200, quantity trong response = 5
+
+TC-F02
+- Input: thieu cartItemId
+- Ky vong: 400, CART_ITEM_ID_REQUIRED
+
+TC-F03
+- Input: thieu quantity
+- Ky vong: 400, QUANTITY_REQUIRED
+
+TC-F04
+- Input: quantity = 0
+- Ky vong: 400, QUANTITY_MUST_BE_GREATER_THAN_0
+
+TC-F05
+- Input: cartItemId khong ton tai
+- Ky vong: 404, CART_ITEM_NOT_FOUND
+
+TC-F06
+- Input: cartItemId ton tai nhung khong thuoc user
+- Ky vong: 401, UNAUTHENTICATED
+
+
+5.7 Nhom G - DELETE /api/cart/deleteAllCart
+TC-G01
+- Dieu kien: cart co item
+- Ky vong: 204, sau do GET cart tra []
+
+TC-G02
+- Dieu kien: cart da rong
+- Ky vong: 204, khong loi
+
+TC-G03
+- Dieu kien: user chua co cart
+- Ky vong: 204, khong loi
+
+
+5.8 Nhom H - Prescription alias test
+Muc dich: xac nhan JsonAlias trong CartItemRequest
+
+TC-H01
+- Input dung key rightADD, leftADD
+- Ky vong: backend nhan du lieu vao rightEyeAdd/leftEyeAdd
+
+TC-H02
+- Input dung key PD
+- Ky vong: map vao pd
+
+TC-H03
+- Input dung key pd_right, pd_left
+- Ky vong: map vao pdRight, pdLeft
+
+
+5.9 Nhom I - Test tinh gia
+TC-I01
+- Item co frame + lens
+- Ky vong: price = frame product.price + lens product.price
+
+TC-I02
+- Item chi co contactLens
+- Ky vong: price = contactLens product.price
+
+TC-I03
+- Item frame + lens + contactLens
+- Ky vong: price = tong 3 gia
+
+
+5.10 Nhom J - Duplicate behavior
+TC-J01
+- Add item A lan 1 quantity=1
+- Add item A lan 2 quantity=2 (same product, same prescription)
+- Ky vong: tong quantity = 3 tren cung 1 cartItem
+
+TC-J02
+- Add item A lan 1 co prescription X
+- Add item A lan 2 co prescription Y (khac X)
+- Ky vong: sinh 2 cartItem rieng
+
+
+5.11 Nhom K - Data/consistency checks
+TC-K01
+- Sau khi delete item, goi GET cart
+- Ky vong: item bi xoa khong con trong danh sach
+
+TC-K02
+- Sau khi clear cart, add item moi
+- Ky vong: them moi binh thuong, khong loi
+
+TC-K03
+- Kiem tra itemType duoc cap nhat lai khi add trung item (service co tinh lai)
+- Ky vong: itemType phu hop dieu kien hien tai
+
+
+6) Script test nhanh bang curl
+6.1 Add cart item
+curl --location 'http://localhost:8080/api/cart/add' \
+--header 'Authorization: Bearer <token>' \
+--header 'Content-Type: application/json' \
+--data '{
+	"frameId": 101,
+	"lensId": 205,
+	"quantity": 1
+}'
+
+6.2 Get all cart
+curl --location 'http://localhost:8080/api/cart/getAllCart' \
+--header 'Authorization: Bearer <token>'
+
+6.3 Update quantity
+curl --location --request PUT 'http://localhost:8080/api/cart/update' \
+--header 'Authorization: Bearer <token>' \
+--header 'Content-Type: application/json' \
+--data '{
+	"cartItemId": 9001,
+	"quantity": 3
+}'
+
+6.4 Delete one item
+curl --location --request DELETE 'http://localhost:8080/api/cart/delete/9001' \
+--header 'Authorization: Bearer <token>'
+
+6.5 Clear all cart
+curl --location --request DELETE 'http://localhost:8080/api/cart/deleteAllCart' \
+--header 'Authorization: Bearer <token>'
+
+
+7) Goi y bo test tu dong (neu ban muon viet integration test)
+- Nen viet test theo nhom:
+	+ CartController validation test (MockMvc)
+	+ CartService business logic test (Mockito)
+	+ Integration test voi DB testcontainer cho flow add/update/delete
+- So test toi thieu de bao phu tot:
+	+ POST /add: 12 test
+	+ GET /getAllCart: 3 test
+	+ DELETE /delete/{id}: 4 test
+	+ PUT /update: 6 test
+	+ DELETE /deleteAllCart: 3 test
+	=> tong ~28 test
+
+
+8) Ghi chu quan trong cho team
+- API delete 1 item khi id khong ton tai dang tra UNAUTHENTICATED; logic nay de gay nham lan cho FE/QA.
+- Nen can nhac doi thanh CART_ITEM_NOT_FOUND de ro nghia hon.
+- Truong framePrice/lensPrice/price trong request add hien co validate nhung service dang lay gia tu DB; FE nen khong can gui 3 truong gia nay.
+
+
+9) Test case mo rong (them nhieu case de bao phu sau)
+
+9.1 Nhom L - Payload shape va parser behavior
+TC-L01
+- API: POST /api/cart/add
+- Input: body la object rong {}
+- Ky vong: 400 (thieu quantity)
+
+TC-L02
+- API: POST /api/cart/add
+- Input: body null (gui chuoi "null")
+- Ky vong: 400 hoac 500 tuy parser; muc tieu la backend khong duoc 200
+
+TC-L03
+- API: POST /api/cart/add
+- Input: malformed JSON (thieu dau }
+- Ky vong: 400
+
+TC-L04
+- API: PUT /api/cart/update
+- Input: malformed JSON
+- Ky vong: 400
+
+TC-L05
+- API: PUT /api/cart/update
+- Input: quantity la string "abc"
+- Ky vong: 400
+
+TC-L06
+- API: POST /api/cart/add
+- Input: frameId la string "abc"
+- Ky vong: 400
+
+TC-L07
+- API: POST /api/cart/add
+- Input: field la unknown (vd: "fooBar":123)
+- Ky vong: request van xu ly neu Jackson bo qua unknown properties
+
+TC-L08
+- API: POST /api/cart/add
+- Input: quantity la so thuc 1.5
+- Ky vong: 400 (khong map vao Integer)
+
+TC-L09
+- API: PUT /api/cart/update
+- Input: cartItemId la so am
+- Ky vong: thuong la 404 CART_ITEM_NOT_FOUND (vi khong tim thay)
+
+TC-L10
+- API: DELETE /api/cart/delete/{cartItemId}
+- Input: cartItemId khong phai so (vd /delete/abc)
+- Ky vong: 400
+
+
+9.2 Nhom M - Boundary va du lieu lon
+TC-M01
+- API: POST /api/cart/add
+- Input: quantity = 1 (bien duoi hop le)
+- Ky vong: 200
+
+TC-M02
+- API: POST /api/cart/add
+- Input: quantity = Integer.MAX_VALUE
+- Ky vong: he thong khong crash; neu DB gioi han thi tra loi loi hop ly
+
+TC-M03
+- API: PUT /api/cart/update
+- Input: quantity = Integer.MAX_VALUE
+- Ky vong: khong crash
+
+TC-M04
+- API: POST /api/cart/add
+- Input: quantity = -2147483648
+- Ky vong: 400
+
+TC-M05
+- API: POST /api/cart/add
+- Input: rightEyeAxis = 0, 180, 181
+- Ky vong: backend hien tai khong validate axis, nen van nhan; ghi nhan de bo sung validate nghiep vu
+
+TC-M06
+- API: POST /api/cart/add
+- Input: PD rat lon (vd 999)
+- Ky vong: hien tai van nhan; can ghi de bo sung rule
+
+TC-M07
+- API: GET /api/cart/getAllCart
+- Dieu kien: gio co > 100 item
+- Ky vong: 200, response day du va thoi gian phan hoi chap nhan duoc
+
+
+9.3 Nhom N - Ngu canh prescription chi tiet
+TC-N01
+- Input add: chi co pd, khong co sph/cyl/axis
+- Ky vong: duoc xem la co prescription -> itemType PRESCRIPTION
+
+TC-N02
+- Input add: chi co rightEyeSph
+- Ky vong: itemType PRESCRIPTION, tao row prescription
+
+TC-N03
+- Input add item lan 2: cung product va cung full prescription
+- Ky vong: merge quantity, khong tao them cartItem
+
+TC-N04
+- Input add item lan 2: khac duy nhat pdRight
+- Ky vong: tach thanh item moi
+
+TC-N05
+- Input add item lan 2: khac duy nhat leftEyeAdd
+- Ky vong: tach thanh item moi
+
+TC-N06
+- Input alias: rightAdd thay vi rightEyeAdd
+- Ky vong: map dung qua @JsonAlias
+
+TC-N07
+- Input alias: PDRight + PDLeft
+- Ky vong: map vao pdRight/pdLeft
+
+TC-N08
+- Input alias: right_add + left_add
+- Ky vong: map dung
+
+
+9.4 Nhom O - ItemType transition scenarios
+TC-O01
+- Dieu kien: add item in-stock -> ORDER
+- Hanh dong: cap nhat ton kho product ve 0 va allowPreorder=true
+- Add lai cung item
+- Ky vong: itemType item da co duoc tinh lai thanh PREORDER
+
+TC-O02
+- Dieu kien: item dang PREORDER
+- Hanh dong: add lai cung item nhung co them prescription
+- Ky vong: itemType uu tien PRESCRIPTION
+
+TC-O03
+- Dieu kien: item co frame preorder, lens in-stock
+- Ky vong: PREORDER (chi can mot thanh phan preorder)
+
+
+9.5 Nhom P - Ownership, isolation, multi-user
+TC-P01
+- User A add item
+- User B GET cart
+- Ky vong: User B khong thay item cua A
+
+TC-P02
+- User A co cartItemId=9001
+- User B goi DELETE /delete/9001
+- Ky vong: 401
+
+TC-P03
+- User A co cartItemId=9001
+- User B goi PUT /update voi cartItemId=9001
+- Ky vong: 401
+
+TC-P04
+- User A clear cart
+- User B cart khong bi anh huong
+- Ky vong: data isolation dung
+
+
+9.6 Nhom Q - Concurrency va race condition
+TC-Q01
+- 2 request POST /add cung luc, cung payload, cung user
+- Ky vong mong muon: quantity duoc cong don chinh xac, khong sinh ban ghi duplicate bat thuong
+
+TC-Q02
+- 1 request PUT /update quantity=10 va 1 request DELETE item cung luc
+- Ky vong: mot request thanh cong, request con lai tra loi hop ly (404/401 tuy thu tu)
+
+TC-Q03
+- 2 request DELETE cung cartItemId gan dong thoi
+- Ky vong: request dau 204, request sau loi hop ly (401 theo logic hien tai hoac 404 neu sua logic)
+
+TC-Q04
+- POST /add lap lai 50 lan nhanh lien tiep
+- Ky vong: he thong on dinh, khong deadlock
+
+
+9.7 Nhom R - Data integrity va gia tri tra ve
+TC-R01
+- Add frame + lens
+- Ky vong: framePrice response == Product.price frame trong DB
+
+TC-R02
+- Add chi contact lens
+- Ky vong: contactLensPrice dung voi DB
+
+TC-R03
+- Add item co quantity=3
+- Ky vong: truong price la don gia combo (khong nhan quantity) theo code hien tai
+
+TC-R04
+- Update quantity tu 1 len 5
+- Ky vong: price van khong doi (neu code khong tinh theo quantity)
+- Ghi chu: QA can xac nhan yeu cau nghiep vu mong muon
+
+TC-R05
+- Sau khi clear cart, GET cart
+- Ky vong: []
+
+
+9.8 Nhom S - Header va protocol tests
+TC-S01
+- POST /add voi Accept: */*
+- Ky vong: 200
+
+TC-S02
+- POST /add voi Accept: text/plain
+- Ky vong: 406
+
+TC-S03
+- POST /add khong co Content-Type
+- Ky vong: 415 hoac 400 tuy parser
+
+TC-S04
+- POST /add voi Content-Type: application/json; charset=utf-8
+- Ky vong: 200
+
+TC-S05
+- OPTIONS preflight cho /api/cart/add tu origin localhost:3000
+- Ky vong: pass CORS
+
+
+9.9 Nhom T - Security hardening (negative)
+TC-T01
+- SQL injection string trong field khong phu hop kieu (vd frameId="1 OR 1=1")
+- Ky vong: 400, khong loi he thong
+
+TC-T02
+- XSS payload trong field string khong ton tai cua schema
+- Ky vong: bo qua field unknown, khong crash
+
+TC-T03
+- JWT het han
+- Ky vong: 401
+
+TC-T04
+- JWT sai chu ky
+- Ky vong: 401
+
+
+9.10 Nhom U - Regression tests (de tranh vo logic cu)
+TC-U01
+- Add item frame+lens khong prescription
+- Ky vong: itemType khong bi nham thanh PRESCRIPTION
+
+TC-U02
+- Add item co prescription
+- Ky vong: merge duplicate phai tinh den prescription (khong merge nham)
+
+TC-U03
+- Update quantity khong duoc doi owner item
+- Ky vong: owner giu nguyen
+
+TC-U04
+- Clear cart khong xoa user/cart record
+- Ky vong: lan add tiep theo van dung cart do (neu thiet ke la tai su dung cart)
+
+
+10) Checklist test automation de dat do bao phu cao
+- Controller validation tests (MockMvc): 18-22 case
+- Service unit tests (Mockito): 25-30 case
+- Integration tests (SpringBootTest + DB): 15-20 case
+- Concurrency tests (JMeter/Gatling/manual threads): 4-6 case
+- Tong muc tieu: 65-78 case
+
+
+11) De xuat uu tien chay test (neu thieu thoi gian)
+- Priority P0
+	+ A01, A03, B04, C02, C04, E01, F05, G01
+- Priority P1
+	+ B05, B06, C07, D01, H01, J01, K01, N04
+- Priority P2
+	+ Q01, Q02, R04, S05, T03, U04
+
+

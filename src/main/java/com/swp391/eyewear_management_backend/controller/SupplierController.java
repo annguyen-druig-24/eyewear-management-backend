@@ -1,6 +1,6 @@
 package com.swp391.eyewear_management_backend.controller;
 
-import com.swp391.eyewear_management_backend.dto.request.AddBrandsRequest;
+import com.swp391.eyewear_management_backend.dto.request.BrandDto;
 import com.swp391.eyewear_management_backend.dto.request.CreateSupplierBrandRequest;
 import com.swp391.eyewear_management_backend.dto.response.SupplierResponse;
 import com.swp391.eyewear_management_backend.service.SupplierService;
@@ -40,12 +40,12 @@ public class SupplierController {
     }
 
     // THÊM MỚI ENDPOINT NÀY
-    @PostMapping(value = "/{supplierId}/brands", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(value = "/{supplierId}/brands", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> addBrandsToExistingSupplier(
             @PathVariable Long supplierId,
-            @ModelAttribute AddBrandsRequest request) { // Dùng DTO bọc lại để Spring map form-data chứa file
+            @RequestBody List<BrandDto> brands) {
         try {
-            supplierService.addBrandsToExistingSupplier(supplierId, request.getBrands());
+            supplierService.addBrandsToExistingSupplier(supplierId, brands);
             return new ResponseEntity<>("Thêm Brands cho Supplier thành công!", HttpStatus.OK);
         } catch (IllegalArgumentException e) {
             return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
