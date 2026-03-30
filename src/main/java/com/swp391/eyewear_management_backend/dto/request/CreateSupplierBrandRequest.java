@@ -16,6 +16,5 @@ public class CreateSupplierBrandRequest {
     @NotNull(message = "Supplier address is required")
     private String supplierAddress;
 
-    // Danh sách các Brand thuộc Supplier này
-    private List<BrandDto> brands;
+
 }
