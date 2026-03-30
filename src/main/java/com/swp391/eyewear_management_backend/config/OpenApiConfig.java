@@ -50,6 +50,7 @@ public class OpenApiConfig {
         return new OpenAPI()
                 .info(new Info().title("Eyewear API").version("1.0"))
                 .addServersItem(new Server().url("https://api-eyewear.purintech.id.vn").description("Production Server"))
+                .addServersItem(new Server().url("https://api-eyewear.sora.io.vn").description("Sora Server"))
                 .addServersItem(new Server().url("http://103.118.29.230").description("Server 2"))
                 .addServersItem(new Server().url("http://localhost:8080").description("Local Dev (HTTP)"))
                 .addSecurityItem(new SecurityRequirement().addList(schemeName))

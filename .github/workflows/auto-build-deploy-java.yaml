@@ -4,58 +4,71 @@ on:
   push:
     branches:
       - main
-      - 'feature/API_Synthesis' # <--- Thêm dòng này
+      - "feature/API_Synthesis"
   pull_request:
     branches:
       - main
-      - 'feature/API_Synthesis' # <--- Thêm dòng này (nếu muốn chạy khi tạo PR))
+      - "feature/API_Synthesis"
 
 jobs:
   build-and-deploy:
-    runs-on: self-hosted # Chạy trên VPS Linux của bạn
+    runs-on: self-hosted
 
     env:
-      IMAGE_NAME: ${{ secrets.IMAGE_NAME }} # Tên image Docker (ví dụ: healthcare-app)
-      DOCKER_HOST_PORT: ${{ secrets.DOCKER_HOST_PORT }} # Cổng trên máy host (ví dụ: 80)
-      APP_INTERNAL_PORT: ${{ secrets.APP_INTERNAL_PORT }} # Cổng mà ứng dụng Spring Boot lắng nghe bên trong container (thường là 8080)
+      IMAGE_NAME: ${{ secrets.IMAGE_NAME }}
+      DOCKER_HOST_PORT: ${{ secrets.DOCKER_HOST_PORT }}
+      APP_INTERNAL_PORT: ${{ secrets.APP_INTERNAL_PORT }}
+      BACKEND_APPLICATION_YML: ${{ secrets.BACKEND_APPLICATION_YML }}
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4 # Kéo mã nguồn về runner (trên VPS của bạn)
+        uses: actions/checkout@v4
 
+      - name: Restore application.yml from GitHub secret
+        run: |
+          if [ -z "$BACKEND_APPLICATION_YML" ]; then
+            echo "Missing required secret: BACKEND_APPLICATION_YML"
+            exit 1
+          fi
+
+          mkdir -p src/main/resources
+          printf "%s" "$BACKEND_APPLICATION_YML" > src/main/resources/application.yml
+          echo "application.yml restored from GitHub secret."
 
       - name: Build Docker Image
         run: |
           echo "Building Docker image ${IMAGE_NAME}:latest from Dockerfile..."
-          docker build -t $IMAGE_NAME:latest .
+          docker build -t "$IMAGE_NAME:latest" .
           echo "Docker image built successfully: ${IMAGE_NAME}:latest"
 
       - name: Stop and Remove Old Container (if exists)
         run: |
           echo "Stopping and removing existing container ${IMAGE_NAME}..."
-          docker stop $IMAGE_NAME || true
-          docker rm $IMAGE_NAME || true
+          docker stop "$IMAGE_NAME" || true
+          docker rm "$IMAGE_NAME" || true
           echo "Old container stopped and removed (if it existed)."
 
-      # --- Bước bổ sung: Xóa image cũ (tùy chọn nhưng được khuyến nghị để tiết kiệm dung lượng) ---
       - name: Clean up old Docker Image (optional)
         run: |
-          echo "Cleaning up old Docker image ${IMAGE_NAME}:<previous_tag> (if any not in use)..."
-          # Lệnh này sẽ xóa các image không được sử dụng bởi bất kỳ container nào.
-          # Cẩn thận nếu bạn muốn giữ lại các phiên bản image cũ để rollback.
+          echo "Cleaning up unused Docker images..."
           docker image prune -f || true
           echo "Docker images cleaned up."
 
-      - name: Run Docker Container (Inject Environment Variables)
+      - name: Run Docker Container
         run: |
           echo "Running new Docker container ${IMAGE_NAME}..."
           docker run -d \
-            --name $IMAGE_NAME \
-            -p $DOCKER_HOST_PORT:$APP_INTERNAL_PORT \
-            $IMAGE_NAME:latest
+            --name "$IMAGE_NAME" \
+            -p "$DOCKER_HOST_PORT:$APP_INTERNAL_PORT" \
+            "$IMAGE_NAME:latest"
           echo "New Docker container started successfully, mapped to host port $DOCKER_HOST_PORT."
 
       - name: Check Running Container Status
         run: |
           echo "Checking status of container ${IMAGE_NAME}..."
           docker ps -f "name=${IMAGE_NAME}"
+
+      - name: Remove generated application.yml
+        if: always()
+        run: |
+          rm -f src/main/resources/application.yml
