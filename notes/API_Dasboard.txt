@@ -1,0 +1,489 @@
+====================================================
+API DASHBOARD - FLOW + TEST CASES (CHI TIET, DE HIEU)
+====================================================
+
+1) Tong quan
+- Base path: /api/v1/dashboard
+- Co 2 endpoint chinh:
+	+ GET /api/v1/dashboard
+	+ GET /api/v1/dashboard/top-products
+- Date query format: yyyy-MM-dd
+- Neu khong truyen ngay: service tu set khoang mac dinh 7 ngay gan nhat
+
+
+2) Security va quyen truy cap
+
+2.1 GET /api/v1/dashboard
+- Controller co @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+- Nghia la endpoint nay can JWT hop le + role dung
+- User role khac (vd CUSTOMER) -> 403
+- Khong token -> 401
+
+2.2 GET /api/v1/dashboard/top-products
+- Endpoint nay duoc expose public trong SecurityConfig:
+	+ /api/v1/dashboard/top-products nam trong PUBLIC_GET_ENDPOINTS
+- Khong can token van goi duoc
+
+
+3) Luong xu ly nghiep vu trong service
+
+3.1 Rule validate ngay (ca 2 endpoint)
+- Neu startDate va endDate cung co, ma startDate > endDate:
+	+ throw IllegalArgumentException
+	+ message:
+		* getDashboardStatistics: "Ngày bắt đầu không được lớn hơn ngày kết thúc!"
+		* getTopSellingProducts: "Ngày bắt đầu không được lớn hơn ngày kết thúc!"
+		* getTopSellingProductsByType: "Start Date must before End Date!"
+
+3.2 Rule chuan hoa khoang thoi gian
+- endDateTime:
+	+ co endDate -> endDate at 23:59:59.999999999
+	+ khong co endDate -> now()
+- startDateTime:
+	+ co startDate -> startDate at 00:00:00
+	+ khong co startDate -> endDateTime minus 6 days, set 00:00:00
+- Tuc la khoang mac dinh la 7 ngay (tu ngay -6 den ngay hien tai)
+
+3.3 Luong GET /api/v1/dashboard (Dashboard summary)
+- Tinh summary:
+	+ totalRevenue = SUM(totalAmount) cua order status IN (COMPLETED, PAID)
+	+ pendingOrders = dem orderStatus=PENDING trong khoang ngay
+	+ completedOrders = dem orderStatus=COMPLETED trong khoang ngay
+- Tinh revenueChart:
+	+ Lay raw query theo ngay (dd/MM) chi cho COMPLETED, PAID
+	+ Truyen vao Map<label, revenue>
+	+ Loop tat ca ngay tu start -> end
+	+ Ngay nao khong co du lieu => chen revenue = 0
+	+ Dam bao chart khong bi khuyet ngay
+- Tinh orderStatusChart:
+	+ Dem so order theo tung status trong khoang ngay
+	+ Mapper translate status sang tieng Viet:
+		* PENDING -> Đang xử lý
+		* COMPLETED -> Hoàn thành
+		* CANCELED -> Đã hủy
+		* PAID -> Đã thanh toán
+		* PARTIALLY_PAID -> Thanh toán một phần
+		* PROCESSING -> Đang chuẩn bị hàng
+		* CONFIRMED -> Đã xác nhận
+		* READY -> Chờ giao hàng
+		* status khac -> giu nguyen
+- Tinh topProducts:
+	+ Top 5 san pham ban chay (sum OrderDetail.quantity) trong khoang ngay
+	+ Chi tinh order status IN (COMPLETED, PAID)
+
+3.4 Luong GET /api/v1/dashboard/top-products
+- Lay top 5 san pham ban chay trong khoang ngay tuong tu tren
+- Co image avatar qua subquery ProductImage isAvatar=true
+- Neu khong co avatar -> image co the null
+
+
+4) Dinh dang response
+
+4.1 GET /api/v1/dashboard
+{
+	"summary": {
+		"totalRevenue": 12000000,
+		"pendingOrders": 3,
+		"completedOrders": 15
+	},
+	"revenueChart": [
+		{ "label": "24/03", "revenue": 1500000 },
+		{ "label": "25/03", "revenue": 0 },
+		{ "label": "26/03", "revenue": 3200000 }
+	],
+	"orderStatusChart": [
+		{ "name": "Đang xử lý", "value": 3 },
+		{ "name": "Hoàn thành", "value": 15 }
+	],
+	"topProducts": [
+		{ "id": 101, "name": "Frame A", "price": 1200000, "sold": 18, "image": "https://..." }
+	]
+}
+
+4.2 GET /api/v1/dashboard/top-products
+[
+	{ "id": 101, "name": "Frame A", "price": 1200000, "sold": 18, "image": "https://..." },
+	{ "id": 102, "name": "Lens B", "price": 700000, "sold": 14, "image": null }
+]
+
+
+5) Test case tong hop (rat nhieu, de QA dung ngay)
+
+5.1 Nhom A - Auth/Authorization
+TC-DB-A01
+- API: GET /api/v1/dashboard
+- Dieu kien: khong token
+- Ky vong: 401
+
+TC-DB-A02
+- API: GET /api/v1/dashboard
+- Dieu kien: token role CUSTOMER
+- Ky vong: 403
+
+TC-DB-A03
+- API: GET /api/v1/dashboard
+- Dieu kien: token role SALES STAFF
+- Ky vong: 200
+
+TC-DB-A04
+- API: GET /api/v1/dashboard
+- Dieu kien: token role ADMIN
+- Ky vong: 200
+
+TC-DB-A05
+- API: GET /api/v1/dashboard
+- Dieu kien: token role MANAGER
+- Ky vong: 200
+
+TC-DB-A06
+- API: GET /api/v1/dashboard/top-products
+- Dieu kien: khong token
+- Ky vong: 200 (public)
+
+TC-DB-A07
+- API: GET /api/v1/dashboard/top-products
+- Dieu kien: token sai/hong
+- Ky vong: thong thuong van 200 neu request di theo public matcher GET
+
+
+5.2 Nhom B - Date validation
+TC-DB-B01
+- Input: startDate=2026-03-01, endDate=2026-03-31
+- API dashboard
+- Ky vong: 200
+
+TC-DB-B02
+- Input: startDate=2026-03-31, endDate=2026-03-01
+- API dashboard
+- Ky vong: 500 do IllegalArgumentException (global handler generic)
+
+TC-DB-B03
+- Input: startDate=endDate=2026-03-30
+- API dashboard
+- Ky vong: 200, revenueChart co 1 diem
+
+TC-DB-B04
+- Input: chi startDate, khong endDate
+- API dashboard
+- Ky vong: 200, endDateTime = now
+
+TC-DB-B05
+- Input: chi endDate, khong startDate
+- API dashboard
+- Ky vong: 200, startDateTime = endDate - 6 ngay
+
+TC-DB-B06
+- Input: khong truyen ca 2
+- API dashboard
+- Ky vong: 200, default 7 ngay gan nhat
+
+TC-DB-B07
+- Input: startDate sai format 2026/03/30
+- API dashboard
+- Ky vong: 400
+
+TC-DB-B08
+- Input: startDate sai format 30-03-2026
+- API top-products
+- Ky vong: 400
+
+
+5.3 Nhom C - Summary logic
+TC-DB-C01
+- Dataset: co order COMPLETED va PAID trong khoang
+- Ky vong: totalRevenue = tong totalAmount cua 2 status nay
+
+TC-DB-C02
+- Dataset: co order CANCELED/PENDING nhieu
+- Ky vong: totalRevenue khong tinh cac status nay
+
+TC-DB-C03
+- Dataset: khong co order hop le
+- Ky vong: totalRevenue = 0
+
+TC-DB-C04
+- Dataset: pending 5 don
+- Ky vong: pendingOrders = 5
+
+TC-DB-C05
+- Dataset: completed 11 don
+- Ky vong: completedOrders = 11
+
+TC-DB-C06
+- Dataset: pending/completed ngoai khoang ngay
+- Ky vong: khong tinh
+
+
+5.4 Nhom D - Revenue chart behavior
+TC-DB-D01
+- Khoang 7 ngay, chi 3 ngay co doanh thu
+- Ky vong: chart van co 7 diem, 4 diem revenue=0
+
+TC-DB-D02
+- Khoang 1 ngay
+- Ky vong: chart dung 1 label dd/MM
+
+TC-DB-D03
+- Khoang 30 ngay
+- Ky vong: chart du 30 diem
+
+TC-DB-D04
+- Dataset: nhieu order cung ngay
+- Ky vong: chart gom tong doanh thu ngay do
+
+TC-DB-D05
+- Dataset: order status PENDING co totalAmount lon
+- Ky vong: chart khong tinh PENDING
+
+TC-DB-D06
+- Dataset: order PAID
+- Ky vong: chart co tinh PAID
+
+TC-DB-D07
+- Check format label
+- Ky vong: dd/MM
+
+
+5.5 Nhom E - Order status chart
+TC-DB-E01
+- Dataset: PENDING 3, COMPLETED 5
+- Ky vong: value dung theo count
+
+TC-DB-E02
+- Dataset: status PROCESSING
+- Ky vong: name = "Đang chuẩn bị hàng"
+
+TC-DB-E03
+- Dataset: status READY
+- Ky vong: name = "Chờ giao hàng"
+
+TC-DB-E04
+- Dataset: status la UNKNOWN_X
+- Ky vong: name = "UNKNOWN_X"
+
+TC-DB-E05
+- Dataset: status PARTIALLY_PAID
+- Ky vong: name = "Thanh toán một phần"
+
+TC-DB-E06
+- Dataset: khong co order
+- Ky vong: orderStatusChart = []
+
+
+5.6 Nhom F - Top products dashboard
+TC-DB-F01
+- Dataset: >5 products co sold
+- Ky vong: chi tra 5 product
+
+TC-DB-F02
+- Dataset: 2 products
+- Ky vong: tra 2 product
+
+TC-DB-F03
+- Dataset: product co avatar
+- Ky vong: image != null
+
+TC-DB-F04
+- Dataset: product khong avatar
+- Ky vong: image = null
+
+TC-DB-F05
+- Dataset: co order PENDING cua product ban chay
+- Ky vong: sold khong tinh PENDING
+
+TC-DB-F06
+- Dataset: tie sold giua 2 product
+- Ky vong: van tra du lieu; thu tu phu thuoc DB order by sum desc
+
+
+5.7 Nhom G - Top-products endpoint rieng
+TC-DB-G01
+- API: /top-products khong date
+- Ky vong: default 7 ngay
+
+TC-DB-G02
+- API: /top-products co date range
+- Ky vong: loc theo range
+
+TC-DB-G03
+- API: /top-products startDate>endDate
+- Ky vong: 500 IllegalArgumentException
+
+TC-DB-G04
+- API: /top-products date format sai
+- Ky vong: 400
+
+TC-DB-G05
+- API: /top-products voi range khong co du lieu
+- Ky vong: []
+
+
+5.8 Nhom H - Boundary date/time
+TC-DB-H01
+- Order o dung 00:00:00 cua startDate
+- Ky vong: duoc tinh
+
+TC-DB-H02
+- Order o dung 23:59:59 cua endDate
+- Ky vong: duoc tinh
+
+TC-DB-H03
+- Order truoc startDate 1s
+- Ky vong: khong tinh
+
+TC-DB-H04
+- Order sau endDate 1s
+- Ky vong: khong tinh
+
+TC-DB-H05
+- Range qua nam (31/12 -> 02/01)
+- Ky vong: chart dung so ngay, label dung
+
+
+5.9 Nhom I - Data type va mapping
+TC-DB-I01
+- totalRevenue BigDecimal co phan le
+- Ky vong: response long (bi cat phan le theo longValue)
+
+TC-DB-I02
+- price product BigDecimal co phan le
+- Ky vong: response long (toTopProductDto map vao long)
+
+TC-DB-I03
+- sold projection Integer
+- Ky vong: map dung sang int
+
+TC-DB-I04
+- id projection Integer
+- Ky vong: map dung sang int
+
+
+5.10 Nhom J - Empty data behavior
+TC-DB-J01
+- DB khong co order nao trong range
+- dashboard:
+	+ summary.totalRevenue = 0
+	+ pendingOrders = 0
+	+ completedOrders = 0
+	+ revenueChart van co du cac ngay (toan 0)
+	+ orderStatusChart = []
+	+ topProducts = []
+
+TC-DB-J02
+- /top-products range rong du lieu
+- Ky vong: []
+
+
+5.11 Nhom K - Header va media
+TC-DB-K01
+- Accept application/json
+- Ky vong: 200
+
+TC-DB-K02
+- Accept text/plain
+- Ky vong: 406
+
+TC-DB-K03
+- Query param date nhung co UTF-8 ky tu la
+- Ky vong: 400
+
+
+5.12 Nhom L - Performance/smoke
+TC-DB-L01
+- Goi /dashboard 100 lan lien tiep voi cung range
+- Ky vong: on dinh, khong 500
+
+TC-DB-L02
+- Goi /top-products 100 lan lien tiep
+- Ky vong: on dinh
+
+TC-DB-L03
+- Range 365 ngay
+- Ky vong: response co 365 diem revenueChart (neu cho phep), thoi gian phan hoi chap nhan
+
+
+5.13 Nhom M - Regression checks
+TC-DB-M01
+- Verify /dashboard van can role duoc cap (PreAuthorize)
+
+TC-DB-M02
+- Verify /top-products van public
+
+TC-DB-M03
+- Verify default date window van la 7 ngay
+
+TC-DB-M04
+- Verify revenue chi tinh COMPLETED/PAID
+
+TC-DB-M05
+- Verify translate status khong bi thay doi map key
+
+
+5.14 Nhom N - Security negative
+TC-DB-N01
+- JWT het han /dashboard
+- Ky vong: 401
+
+TC-DB-N02
+- JWT sai chu ky /dashboard
+- Ky vong: 401
+
+TC-DB-N03
+- Role claim sai delimiter (khong parse duoc role)
+- Ky vong: 403
+
+
+5.15 Nhom O - Contract/API compatibility
+TC-DB-O01
+- Khong co field moi phat sinh ngoai contract cu
+- Ky vong: FE parse binh thuong
+
+TC-DB-O02
+- Field topProducts.image co the null
+- Ky vong: FE xu ly null-safe
+
+TC-DB-O03
+- orderStatusChart.name tieng Viet co dau
+- Ky vong: UTF-8 hien thi dung
+
+
+6) Mau curl de test nhanh
+
+6.1 Dashboard (can token co role)
+curl --location 'http://localhost:8080/api/v1/dashboard?startDate=2026-03-24&endDate=2026-03-30' \
+--header 'Authorization: Bearer <token-role-admin-or-manager-or-salesstaff>'
+
+6.2 Dashboard default 7 ngay
+curl --location 'http://localhost:8080/api/v1/dashboard' \
+--header 'Authorization: Bearer <token-role-admin-or-manager-or-salesstaff>'
+
+6.3 Top products (public)
+curl --location 'http://localhost:8080/api/v1/dashboard/top-products?startDate=2026-03-24&endDate=2026-03-30'
+
+6.4 Top products default
+curl --location 'http://localhost:8080/api/v1/dashboard/top-products'
+
+
+7) Goi y bo test tu dong
+- Controller (MockMvc): 20-28 case
+- Service unit test (Mockito): 28-38 case
+- Integration DB test: 15-22 case
+- Performance smoke: 3-5 case
+- Tong muc tieu: 66-93 case
+
+
+8) Priority test de chay truoc
+- P0:
+	+ A01, A02, A03, B02, C01, D01, E01, F01, G03
+- P1:
+	+ B06, C03, D05, E04, F04, H01, H02, J01
+- P2:
+	+ L01, L03, N03, O03
+
+
+9) Diem luu y cho team
+- Loi startDate > endDate hien dang ra IllegalArgumentException -> thuong bi goi vao generic 500, chua co error code rieng.
+- /top-products dang public theo SecurityConfig, /dashboard khong public.
+- Mapping BigDecimal sang long co the mat phan thap phan (neu du lieu co le).
+- Revenue chart da co logic trám ngày không doanh thu bằng 0, FE co the ve line chart lien tuc.
+

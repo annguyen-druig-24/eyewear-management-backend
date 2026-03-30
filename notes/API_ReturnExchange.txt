@@ -1,0 +1,480 @@
+=====================================================
+API RETURN EXCHANGE - FLOW + TEST CASES (VERY DETAILED)
+=====================================================
+
+1) Tong quan
+- Base URL: /api/return-exchanges
+- Controller CORS: http://localhost:3000
+- Create API dung multipart/form-data
+- Cac API doc/chuyen trang thai/xoa dung JSON thong thuong
+- Toan bo loi duoc xu ly boi GlobalExceptionHandler
+
+
+2) Danh sach endpoint trong ReturnExchangeController
+- POST /api/return-exchanges
+	Tao yeu cau doi/tra
+
+- GET /api/return-exchanges/{returnExchangeId}
+	Lay chi tiet theo id
+
+- GET /api/return-exchanges/code/{returnCode}
+	Lay chi tiet theo ma return code
+
+- GET /api/return-exchanges/my-requests
+	Lay danh sach yeu cau cua user dang dang nhap
+
+- GET /api/return-exchanges/all
+	Lay tat ca yeu cau
+
+- GET /api/return-exchanges/status/{status}
+	Lay danh sach theo status
+
+- PUT /api/return-exchanges/{returnExchangeId}/approve
+	Duyet yeu cau
+
+- PUT /api/return-exchanges/{returnExchangeId}/reject?rejectReason=...
+	Tu choi yeu cau
+
+- DELETE /api/return-exchanges/{returnExchangeId}
+	Xoa yeu cau (chi PENDING)
+
+
+3) Luong nghiep vu chi tiet (service thuc te)
+
+3.1 Tao yeu cau (POST)
+- Buoc 1: Lay current user tu SecurityContext
+	+ auth null/khong hop le -> UNAUTHENTICATED
+	+ username khong co trong DB -> USER_NOT_EXISTED
+
+- Buoc 2: Chuan hoa returnType, requestScope
+	+ returnType null/blank -> mac dinh REFUND
+	+ requestScope null/blank:
+		* neu returnType REFUND -> mac dinh ORDER
+		* nguoc lai -> mac dinh ITEM
+	+ ca 2 deu upper-case
+
+- Buoc 3: Kiem tra don hang
+	+ orderId khong ton tai -> ORDER_NOT_FOUND
+	+ orderStatus phai la COMPLETED, neu khong -> RETURN_EXCHANGE_NOT_FIT
+	+ qua 7 ngay tu deliveredAt -> RETURN_EXCHANGE_EXPIRED_TIME
+
+- Buoc 4: Kiem tra xung dot yeu cau mo
+	+ status mo duoc tinh: PENDING, APPROVED
+	+ Neu requestScope = ORDER:
+		* Co ORDER open cung returnType -> INVALID_REQUEST
+		* Co ITEM open cung returnType -> INVALID_REQUEST
+	+ Neu requestScope = ITEM:
+		* Neu da co ORDER open cung returnType -> INVALID_REQUEST
+		* ITEM open cung returnType van cho, nhung bi khong che so luong theo item
+
+- Buoc 5: Rule bat buoc thong tin refund
+	+ Neu returnType la RETURN hoac REFUND:
+		* refundMethod bat buoc
+		* refundAccountNumber bat buoc
+		* refundAccountName bat buoc
+	+ Neu thieu -> cac loi RETURN_EXCHANGE_REFUND_*_NOT_FOUND
+
+- Buoc 6: Rule item theo scope
+	+ Neu requestScope = ITEM thi items khong duoc rong
+	+ Rong -> INVALID_REQUEST
+
+- Buoc 7: Validate tung item
+	+ orderDetailId phai match voi:
+		* OrderDetail cua don thuong, hoac
+		* PrescriptionOrderDetail cua don thuoc
+	+ Khong tim thay -> ITEM_NOT_FOUND
+	+ Neu trung hiem (1 id match ca 2 bang) -> ORDER_DETAIL_MATCH_PRESCRIPTION_DETAIL
+
+- Buoc 8: Validate so luong item
+	+ Don thuong:
+		* quantity > 0
+		* quantity <= orderDetail.quantity
+		* Neu vuot -> UNCATEGORIZED_EXCEPTION (hien tai)
+		* Cong don voi cac open request va request hien tai khong duoc vuot quantity goc
+			- Neu vuot -> INVALID_REQUEST
+	+ Don thuoc:
+		* quantity auto set = 1 (bo)
+		* Moi prescription detail chi duoc request toi da 1 trong open + current
+			- Neu vuot -> INVALID_REQUEST
+
+- Buoc 9: Tinh refundAmount
+	+ Neu returnType la RETURN/REFUND:
+		* Item thuong: unitPrice * quantity
+		* Item don thuoc: subTotal (neu co)
+	+ Neu requestScope = ORDER:
+		* refundAmount = order.totalAmount (ghi de ket qua truoc do)
+
+- Buoc 10: Upload anh
+	+ itemImages map theo index item
+	+ itemImages la required=true tren controller
+	+ Moi item co the co image neu index ton tai va file khong rong
+	+ upload fail -> UPLOAD_IMAGE_FAILED
+	+ customerImageQr optional, neu co thi upload; fail -> UPLOAD_IMAGE_FAILED
+
+- Buoc 11: Tao ban ghi
+	+ status mac dinh PENDING
+	+ returnCode duoc sinh theo prefix:
+		* RETURN -> RTyyMMdd####
+		* EXCHANGE -> EXyyMMdd####
+		* WARRANTY -> WAyyMMdd####
+		* REFUND -> RFyyMMdd####
+		* khac -> RXyyMMdd####
+	+ Co vong lap chong trung returnCode
+
+
+3.2 Lay theo id/code
+- Khong ton tai -> UNCATEGORIZED_EXCEPTION (hien tai)
+- Ton tai -> map ReturnExchangeResponse
+
+
+3.3 Lay my-requests/all/by-status
+- my-requests: loc theo current user
+- all: findAll
+- by-status: findByStatus(status) (phu thuoc chinh ta status)
+
+
+3.4 Approve/Reject
+- findById khong thay -> UNCATEGORIZED_EXCEPTION
+- approve:
+	+ set approvedBy = currentUser
+	+ set approvedDate = now
+	+ set status = APPROVED
+- reject:
+	+ set approvedBy = currentUser
+	+ set approvedDate = now
+	+ set status = REJECTED
+	+ set rejectReason tu query param
+- Hien tai khong khoa transition state (vd REJECTED van co the approve lai)
+
+
+3.5 Delete
+- findById khong thay -> UNCATEGORIZED_EXCEPTION
+- Chi cho xoa khi status == PENDING
+- Khac PENDING -> UNCATEGORIZED_EXCEPTION
+
+
+4) Mau request de test create (multipart)
+
+4.1 ITEM scope + RETURN
+Form-data keys:
+- request: (application/json)
+{
+	"orderId": 123,
+	"returnType": "RETURN",
+	"requestScope": "ITEM",
+	"requestNote": "Khach muon tra 1 phan",
+	"returnReason": "San pham loi nhe",
+	"refundMethod": "BANK_TRANSFER",
+	"refundAccountNumber": "123456789",
+	"refundAccountName": "NGUYEN VAN A",
+	"items": [
+		{
+			"orderDetailId": 9991,
+			"quantity": 1,
+			"itemReason": "Tray xuoc",
+			"note": "Co kem anh"
+		}
+	]
+}
+- itemImages: file 1
+- customerImageQr: file optional
+
+4.2 ORDER scope + REFUND
+Form-data keys:
+- request: (application/json)
+{
+	"orderId": 123,
+	"returnType": "REFUND",
+	"requestScope": "ORDER",
+	"requestNote": "Hoan toan bo don",
+	"returnReason": "Khong dung nhu mo ta",
+	"refundMethod": "BANK_TRANSFER",
+	"refundAccountNumber": "123456789",
+	"refundAccountName": "NGUYEN VAN A",
+	"items": []
+}
+- itemImages: file bat buoc do controller required=true
+
+
+5) Response pattern
+- Thanh cong create:
+	+ HTTP 201
+	+ ApiResponse: code=1000, message=Success, result="Return exchange request created successfully"
+
+- Thanh cong cac API con lai:
+	+ HTTP 200 (tru delete cung dang 200)
+	+ ApiResponse code=1000
+
+- That bai:
+	+ AppException -> code/message theo ErrorCode
+	+ Validation fail -> 400
+	+ Sai Content-Type -> 415
+	+ Sai Accept -> 406
+
+
+6) TEST CASES CUC LON (manual/Postman/automation)
+
+6.1 Nhom A - Auth va security context
+TC-RE-A01: POST create khong token -> 401 UNAUTHENTICATED
+TC-RE-A02: GET my-requests khong token -> 401 UNAUTHENTICATED
+TC-RE-A03: PUT approve khong token -> 401 UNAUTHENTICATED
+TC-RE-A04: DELETE khong token -> 401 UNAUTHENTICATED
+TC-RE-A05: token hop le nhung user khong ton tai -> 404 USER_NOT_EXISTED
+
+
+6.2 Nhom B - Validation level request (bean validation)
+TC-RE-B01: orderId null -> 400
+TC-RE-B02: returnType blank -> 400 (controller @Valid)
+TC-RE-B03: requestScope blank -> 400
+TC-RE-B04: item quantity null (item request) -> 400
+TC-RE-B05: item quantity = 0 -> 400
+TC-RE-B06: item orderDetailId null -> 400
+
+
+6.3 Nhom C - Create happy path
+TC-RE-C01: ITEM + RETURN, 1 item thuong hop le, co image -> 201
+TC-RE-C02: ITEM + RETURN, 2 item thuong hop le, 2 image -> 201
+TC-RE-C03: ITEM + EXCHANGE, 1 item thuong -> 201
+TC-RE-C04: ITEM + WARRANTY, 1 item thuong -> 201
+TC-RE-C05: ITEM + REFUND, 1 item thuong -> 201
+TC-RE-C06: ITEM + RETURN cho prescription detail hop le -> 201
+TC-RE-C07: ORDER + REFUND, co itemImages file -> 201
+TC-RE-C08: customerImageQr co file -> upload thanh cong -> 201
+TC-RE-C09: customerImageQr bo trong, item image co -> 201
+TC-RE-C10: returnType lower-case "refund" -> he thong normalize thanh REFUND -> 201
+TC-RE-C11: requestScope lower-case "item" -> normalize thanh ITEM -> 201
+TC-RE-C12: returnType null, requestScope null -> mac dinh REFUND + ORDER -> 201 neu du thong tin refund
+
+
+6.4 Nhom D - Rule order status va han 7 ngay
+TC-RE-D01: order khong ton tai -> 404 ORDER_NOT_FOUND
+TC-RE-D02: order status != COMPLETED -> 400 RETURN_EXCHANGE_NOT_FIT
+TC-RE-D03: deliveredAt > 7 ngay -> 400 RETURN_EXCHANGE_EXPIRED_TIME
+TC-RE-D04: deliveredAt dung 7 ngay (boundary) -> ky vong cho phep
+TC-RE-D05: shippingInfo null -> bo qua check han, tiep tuc flow
+TC-RE-D06: deliveredAt null -> bo qua check han, tiep tuc flow
+
+
+6.5 Nhom E - Rule refund fields bat buoc
+TC-RE-E01: returnType RETURN thieu refundMethod -> 400 RETURN_EXCHANGE_REFUND_METHOD_NOT_FOUND
+TC-RE-E02: returnType RETURN thieu refundAccountNumber -> 400 RETURN_EXCHANGE_REFUND_ACCOUNT_NOT_FOUND
+TC-RE-E03: returnType RETURN thieu refundAccountName -> 400 RETURN_EXCHANGE_REFUND_NAME_NOT_FOUND
+TC-RE-E04: returnType REFUND thieu refundMethod -> 400
+TC-RE-E05: returnType REFUND thieu refundAccountNumber -> 400
+TC-RE-E06: returnType REFUND thieu refundAccountName -> 400
+TC-RE-E07: returnType EXCHANGE thieu refund fields -> duoc phep
+TC-RE-E08: returnType WARRANTY thieu refund fields -> duoc phep
+TC-RE-E09: refundMethod co khoang trang "   " -> xem nhu thieu -> 400
+TC-RE-E10: refundAccountName co khoang trang "   " -> 400
+
+
+6.6 Nhom F - Scope va items
+TC-RE-F01: scope ITEM nhung items null -> 400 INVALID_REQUEST
+TC-RE-F02: scope ITEM nhung items [] -> 400 INVALID_REQUEST
+TC-RE-F03: scope ORDER va items null -> hop le
+TC-RE-F04: scope ORDER va items co du lieu -> service khong xu ly item (do code chi xu ly neu items != null && !empty; van xu ly, nhung refundAmount bi overwrite order total)
+TC-RE-F05: scope null + returnType REFUND -> auto ORDER
+TC-RE-F06: scope null + returnType RETURN -> auto ITEM
+
+
+6.7 Nhom G - Validate item identity va so luong
+TC-RE-G01: orderDetailId khong thuoc order hien tai -> ITEM_NOT_FOUND
+TC-RE-G02: orderDetailId khong ton tai o ca 2 bang -> ITEM_NOT_FOUND
+TC-RE-G03: (du lieu hiem) id trung o 2 bang -> ORDER_DETAIL_MATCH_PRESCRIPTION_DETAIL
+TC-RE-G04: item thuong quantity > orderDetail.quantity -> 500/loi UNCATEGORIZED_EXCEPTION
+TC-RE-G05: item thuong quantity <= 0 -> 500/loi UNCATEGORIZED_EXCEPTION (neu qua duoc bean validation)
+TC-RE-G06: item thuong quantity hop le -> pass
+TC-RE-G07: prescription detail quantity gui 5 -> service van set quantity=1
+TC-RE-G08: prescription detail request lan 2 khi open da co -> 400 INVALID_REQUEST
+
+
+6.8 Nhom H - Open request conflict (PENDING/APPROVED)
+TC-RE-H01: da co open ORDER cung returnType, tao ORDER moi -> 400 INVALID_REQUEST
+TC-RE-H02: da co open ITEM cung returnType, tao ORDER -> 400 INVALID_REQUEST
+TC-RE-H03: da co open ORDER cung returnType, tao ITEM -> 400 INVALID_REQUEST
+TC-RE-H04: da co open ITEM cung returnType, tao ITEM khac item, khong vuot qty -> cho phep
+TC-RE-H05: da co open ITEM cung returnType, tao ITEM lap lai vuot tong qty -> 400 INVALID_REQUEST
+TC-RE-H06: open request khac returnType -> khong chan
+TC-RE-H07: request da REJECTED hoac DELETED khong nam trong open statuses -> khong chan
+
+
+6.9 Nhom I - Tinh refund amount
+TC-RE-I01: ITEM + RETURN 1 item thuong qty=2 unitPrice=100 -> refund=200
+TC-RE-I02: ITEM + RETURN 2 item thuong -> refund la tong
+TC-RE-I03: ITEM + REFUND item prescription subTotal=500 -> refund += 500
+TC-RE-I04: ITEM + EXCHANGE -> refundAmount ky vong null/0 (khong cong)
+TC-RE-I05: ORDER scope -> refundAmount = order.totalAmount
+TC-RE-I06: ORDER scope + co items cung du lieu -> ket qua cuoi cung van order.totalAmount
+
+
+6.10 Nhom J - Upload file behavior
+TC-RE-J01: itemImages required missing part -> 400 do controller
+TC-RE-J02: itemImages co 1 file, items co 3 -> chi item index 0 co image, item 1-2 khong image
+TC-RE-J03: itemImages nhieu hon items -> file du bi bo qua
+TC-RE-J04: item image empty file -> bo qua upload, khong loi
+TC-RE-J05: customerImageQr empty -> bo qua upload, khong loi
+TC-RE-J06: upload item image throw IOException -> 400 UPLOAD_IMAGE_FAILED
+TC-RE-J07: upload customerImageQr throw IOException -> 400 UPLOAD_IMAGE_FAILED
+TC-RE-J08: upload file dung dinh dang jpg/png -> pass
+TC-RE-J09: upload file dung dung luong lon -> xac nhan theo gioi han server
+
+
+6.11 Nhom K - Return code generation
+TC-RE-K01: returnType RETURN -> prefix RT
+TC-RE-K02: EXCHANGE -> EX
+TC-RE-K03: WARRANTY -> WA
+TC-RE-K04: REFUND -> RF
+TC-RE-K05: returnType la gia tri la -> RX
+TC-RE-K06: 2 request lien tiep cung ngay -> sequence tang dan
+TC-RE-K07: race condition 2 request cung luc -> khong trung code (do vong lap check)
+
+
+6.12 Nhom L - GET by id/code
+TC-RE-L01: GET by id hop le -> 200 + result day du
+TC-RE-L02: GET by id khong ton tai -> 500 UNCATEGORIZED_EXCEPTION (hien tai)
+TC-RE-L03: GET by code hop le -> 200
+TC-RE-L04: GET by code khong ton tai -> 500 UNCATEGORIZED_EXCEPTION
+TC-RE-L05: GET by code phan biet hoa thuong (repo findByReturnCode exact)
+
+
+6.13 Nhom M - List APIs
+TC-RE-M01: GET my-requests user co du lieu -> 200 + list > 0
+TC-RE-M02: GET my-requests user khong du lieu -> 200 + []
+TC-RE-M03: GET all co du lieu -> 200
+TC-RE-M04: GET all khong du lieu -> 200 + []
+TC-RE-M05: GET by status PENDING -> tra danh sach PENDING
+TC-RE-M06: GET by status approved (lowercase) -> phu thuoc DB collation, can test
+TC-RE-M07: GET by status gia tri khong co -> 200 + []
+
+
+6.14 Nhom N - Approve flow
+TC-RE-N01: approve id hop le -> status APPROVED, approvedBy co gia tri, approvedDate co gia tri
+TC-RE-N02: approve id khong ton tai -> 500 UNCATEGORIZED_EXCEPTION
+TC-RE-N03: approve khi dang REJECTED -> code hien tai van cho phep (kiem tra behavior)
+TC-RE-N04: approve khi dang APPROVED -> idempotency khong dam bao, approvedDate co the doi
+TC-RE-N05: approve khong token -> 401
+
+
+6.15 Nhom O - Reject flow
+TC-RE-O01: reject id hop le + rejectReason co gia tri -> status REJECTED
+TC-RE-O02: reject id khong ton tai -> 500 UNCATEGORIZED_EXCEPTION
+TC-RE-O03: rejectReason rong -> controller khong validate, van set rong
+TC-RE-O04: rejectReason rat dai -> phu thuoc DB NVARCHAR(500)
+TC-RE-O05: reject sau khi approve -> code hien tai van cho phep overwrite status
+
+
+6.16 Nhom P - Delete flow
+TC-RE-P01: delete PENDING -> 200 + message deleted
+TC-RE-P02: delete APPROVED -> 500 UNCATEGORIZED_EXCEPTION
+TC-RE-P03: delete REJECTED -> 500 UNCATEGORIZED_EXCEPTION
+TC-RE-P04: delete id khong ton tai -> 500 UNCATEGORIZED_EXCEPTION
+TC-RE-P05: delete khong token -> 401
+
+
+6.17 Nhom Q - Header/media/protocol
+TC-RE-Q01: POST create dung multipart/form-data -> 201
+TC-RE-Q02: POST create Content-Type application/json -> 415
+TC-RE-Q03: POST create Accept text/plain -> 406
+TC-RE-Q04: POST create request part khong phai JSON -> 400
+TC-RE-Q05: POST create thieu request part -> 400
+TC-RE-Q06: PUT approve voi Content-Type JSON body (khong can body) -> van 200 neu route hop le
+
+
+6.18 Nhom R - Payload robustness
+TC-RE-R01: request JSON malformed trong request part -> 400
+TC-RE-R02: orderId la string -> 400
+TC-RE-R03: items quantity la string -> 400
+TC-RE-R04: items orderDetailId am -> co the ITEM_NOT_FOUND
+TC-RE-R05: fields unknown trong request -> neu parser bo qua thi pass
+
+
+6.19 Nhom S - Multi-user va phan quyen nghiep vu
+TC-RE-S01: user A tao request, user B GET by id -> code hien tai service khong check owner cho getById
+TC-RE-S02: user B approve request cua user A -> code hien tai co the cho phep neu security role khong chan
+TC-RE-S03: user B delete request cua user A -> code hien tai co the cho phep neu status PENDING
+TC-RE-S04: danh gia can bo sung authorization theo role/owner
+
+
+6.20 Nhom T - Concurrency
+TC-RE-T01: 2 request tao ITEM cung item va qty vua du -> 1 pass 1 fail INVALID_REQUEST
+TC-RE-T02: 2 request tao ORDER cung returnType cung luc -> 1 pass 1 fail INVALID_REQUEST
+TC-RE-T03: approve va reject cung luc tren cung id -> status cuoi phu thuoc request den sau
+TC-RE-T04: delete va approve cung luc -> can xac nhan transaction outcome
+
+
+6.21 Nhom U - Regression va consistency
+TC-RE-U01: create thanh cong -> GET by id thay dung returnCode, status PENDING
+TC-RE-U02: create ITEM voi normal detail -> itemSource ORDER_DETAIL
+TC-RE-U03: create ITEM voi prescription detail -> itemSource PRESCRIPTION_ORDER_DETAIL
+TC-RE-U04: approve xong -> GET by status APPROVED co ban ghi
+TC-RE-U05: reject xong -> GET by status REJECTED co ban ghi
+TC-RE-U06: delete PENDING xong -> GET by id khong tim thay
+
+
+6.22 Nhom V - SQL/data constraints
+TC-RE-V01: refundAccountName qua 100 ky tu -> co the loi DB constraint
+TC-RE-V02: refundAccountNumber qua 100 ky tu -> co the loi DB constraint
+TC-RE-V03: returnReason qua 500 ky tu -> co the loi DB constraint
+TC-RE-V04: requestNote qua 1000 ky tu -> co the loi DB constraint
+TC-RE-V05: rejectReason qua 500 ky tu -> co the loi DB constraint
+
+
+6.23 Nhom W - Negative security inputs
+TC-RE-W01: inject chuoi SQL vao refundAccountName -> he thong khong crash
+TC-RE-W02: XSS script trong requestNote -> du lieu luu nguyen van, FE phai encode khi render
+TC-RE-W03: path variable returnCode chua ky tu dac biet -> route van dung, neu ton tai thi tra data
+
+
+7) Mau curl test nhanh
+
+7.1 Create ITEM scope
+curl --location 'http://localhost:8080/api/return-exchanges' \
+--header 'Authorization: Bearer <token>' \
+--form 'request={"orderId":123,"returnType":"RETURN","requestScope":"ITEM","requestNote":"khach yeu cau","returnReason":"ly do","refundMethod":"BANK_TRANSFER","refundAccountNumber":"123456","refundAccountName":"NGUYEN VAN A","items":[{"orderDetailId":9991,"quantity":1,"itemReason":"loi","note":"note"}]};type=application/json' \
+--form 'itemImages=@"C:/tmp/item1.jpg"' \
+--form 'customerImageQr=@"C:/tmp/qr.jpg"'
+
+7.2 Get by id
+curl --location 'http://localhost:8080/api/return-exchanges/1' \
+--header 'Authorization: Bearer <token>'
+
+7.3 Get by code
+curl --location 'http://localhost:8080/api/return-exchanges/code/RT2603300001' \
+--header 'Authorization: Bearer <token>'
+
+7.4 Approve
+curl --location --request PUT 'http://localhost:8080/api/return-exchanges/1/approve' \
+--header 'Authorization: Bearer <token>'
+
+7.5 Reject
+curl --location --request PUT 'http://localhost:8080/api/return-exchanges/1/reject?rejectReason=Khong du dieu kien' \
+--header 'Authorization: Bearer <token>'
+
+7.6 Delete
+curl --location --request DELETE 'http://localhost:8080/api/return-exchanges/1' \
+--header 'Authorization: Bearer <token>'
+
+
+8) De xuat bo test tu dong
+- Controller tests (MockMvc): 30-40 case
+- Service unit tests (Mockito): 40-55 case
+- Integration tests (SpringBootTest + DB): 20-30 case
+- Concurrency tests (JMeter/Gatling): 5-8 case
+- Tong muc tieu: 95-133 case
+
+
+9) Priority de chay truoc (neu can nhanh)
+- P0:
+	TC-RE-A01, D01, D02, D03, E01, E02, F01, G01, H01, I05, J01, N01, P01
+- P1:
+	C01, C06, H05, I01, L01, M01, O01, Q02, R01, T01
+- P2:
+	K07, N03, O05, S02, T03, V01, W02
+
+
+10) Cac diem can luu y cho FE/QA
+- itemImages dang required=true tren controller: khong gui part nay se fail ngay.
+- Nhieu cho dang throw UNCATEGORIZED_EXCEPTION thay vi error code cu the (get by id/code, approve/reject/delete not found, quantity vuot).
+- Chua thay check owner/role trong service cho getById/approve/reject/delete; can xac nhan o SecurityConfig.
+- ReturnExchangeResponse hien tai khong map danh sach item con va khong map customerAccountQr sang response field customerEvidenceUrl.
+
