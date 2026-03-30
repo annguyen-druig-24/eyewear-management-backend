@@ -102,9 +102,9 @@ public class SupplierServiceImpl implements SupplierService {
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy Supplier với ID: " + supplierId));
 
         List<String> duplicatedBrandNames = collectDuplicateBrandNamesInDb(brands);
-        if (!duplicatedBrandNames.isEmpty()) {
-            throw new IllegalArgumentException("Không thể thêm brand vì đã tồn tại trong DB: " + String.join(", ", duplicatedBrandNames));
-        }
+//        if (!duplicatedBrandNames.isEmpty()) {
+//            throw new IllegalArgumentException("Không thể thêm brand vì đã tồn tại trong DB: " + String.join(", ", duplicatedBrandNames));
+//        }
 
         if (brands != null && !brands.isEmpty()) {
             List<Brand> brandsToCreate = new ArrayList<>();
