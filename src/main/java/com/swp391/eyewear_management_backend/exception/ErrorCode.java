@@ -97,6 +97,11 @@ public enum ErrorCode {
     PRESCRIPTION_OCR_EMPTY_TEXT(2008, "No readable prescription text found", HttpStatus.BAD_REQUEST),
     SKU_ALREADY_EXISTS(2009, "SKU already exists", HttpStatus.CONFLICT),
     SKU_REQUIRED(2010, "SKU is required", HttpStatus.BAD_REQUEST),
+    CHATBOT_MESSAGE_REQUIRED(2020, "Chatbot message is required", HttpStatus.BAD_REQUEST),
+    CHATBOT_MESSAGE_TOO_LONG(2021, "Chatbot message must not exceed 1000 characters", HttpStatus.BAD_REQUEST),
+    GEMINI_NOT_CONFIGURED(2017, "Gemini chatbot is not configured", HttpStatus.SERVICE_UNAVAILABLE),
+    GEMINI_REQUEST_FAILED(2018, "Gemini request failed", HttpStatus.BAD_GATEWAY),
+    GEMINI_INVALID_RESPONSE(2019, "Gemini returned an invalid response", HttpStatus.BAD_GATEWAY),
     ;
 
     private final int code;

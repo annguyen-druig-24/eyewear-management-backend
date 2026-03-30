@@ -5,6 +5,7 @@ import com.swp391.eyewear_management_backend.dto.response.ProductResponse;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Data
@@ -15,6 +16,9 @@ public class FrameResponse extends ProductDetailResponse {
     private String color;
     private String material;
     private String frameShape;
+    private BigDecimal templeLength;
+    private BigDecimal lensWidth;
+    private BigDecimal bridgeWidth;
     private List<ProductResponse> relatedLenses;
     private List<ProductResponse> relatedFrames;
 

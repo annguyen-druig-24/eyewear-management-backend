@@ -10,4 +10,6 @@ public interface DashboardService {
     DashboardResponse getDashboardStatistics(LocalDate startDate, LocalDate endDate);
 
     List<TopProductResponse> getTopSellingProducts(LocalDate startDate, LocalDate endDate);
+
+    List<TopProductResponse> getTopSellingProductsByType(LocalDate startDate, LocalDate endDate, String productTypeName);
 }

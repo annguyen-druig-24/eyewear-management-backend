@@ -65,10 +65,10 @@ public class SupplierServiceImpl implements SupplierService {
             throw new IllegalArgumentException("Không thể thêm supplier vì tên đã tồn tại trong DB: " + normalizedSupplierName);
         }
 
-        List<String> duplicatedBrandNames = collectDuplicateBrandNamesInDb(request.getBrands());
-        if (!duplicatedBrandNames.isEmpty()) {
-            throw new IllegalArgumentException("Không thể thêm brand vì đã tồn tại trong DB: " + String.join(", ", duplicatedBrandNames));
-        }
+//        List<String> duplicatedBrandNames = collectDuplicateBrandNamesInDb(request.getBrands());
+//        if (!duplicatedBrandNames.isEmpty()) {
+//            throw new IllegalArgumentException("Không thể thêm brand vì đã tồn tại trong DB: " + String.join(", ", duplicatedBrandNames));
+//        }
 
         // 1. Tạo và lưu Supplier mới
         Supplier supplier = new Supplier();
@@ -78,27 +78,27 @@ public class SupplierServiceImpl implements SupplierService {
 
         Supplier savedSupplier = supplierRepo.save(supplier);
 
-        // 2. Duyệt qua list Brand, lưu từng Brand và tạo quan hệ
-        if (request.getBrands() != null && !request.getBrands().isEmpty()) {
-            for (BrandDto brandDto : request.getBrands()) {
-                // Tạo Brand mới
-                Brand brand = new Brand();
-                brand.setBrandName(brandDto.getBrandName());
-                brand.setDescription(brandDto.getDescription());
-                brand.setLogoUrl(resolveBrandLogoUrl(brandDto));
-                // Set status mặc định là true nếu client không gửi lên
-                brand.setStatus(brandDto.getStatus() != null ? brandDto.getStatus() : true);
-
-                Brand savedBrand = brandRepo.save(brand);
-
-                // 3. Liên kết Brand và Supplier vào bảng Brand_Supplier
-                BrandSupplier brandSupplier = new BrandSupplier();
-                brandSupplier.setSupplier(savedSupplier);
-                brandSupplier.setBrand(savedBrand);
-
-                brandSupplierRepo.save(brandSupplier);
-            }
-        }
+//        // 2. Duyệt qua list Brand, lưu từng Brand và tạo quan hệ
+//        if (request.getBrands() != null && !request.getBrands().isEmpty()) {
+//            for (BrandDto brandDto : request.getBrands()) {
+//                // Tạo Brand mới
+//                Brand brand = new Brand();
+//                brand.setBrandName(brandDto.getBrandName());
+//                brand.setDescription(brandDto.getDescription());
+//                brand.setLogoUrl(resolveBrandLogoUrl(brandDto));
+//                // Set status mặc định là true nếu client không gửi lên
+//                brand.setStatus(brandDto.getStatus() != null ? brandDto.getStatus() : true);
+//
+//                Brand savedBrand = brandRepo.save(brand);
+//
+//                // 3. Liên kết Brand và Supplier vào bảng Brand_Supplier
+//                BrandSupplier brandSupplier = new BrandSupplier();
+//                brandSupplier.setSupplier(savedSupplier);
+//                brandSupplier.setBrand(savedBrand);
+//
+//                brandSupplierRepo.save(brandSupplier);
+//            }
+//        }
     }
 
     @Override

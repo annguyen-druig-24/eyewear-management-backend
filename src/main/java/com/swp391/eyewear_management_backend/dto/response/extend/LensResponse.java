@@ -5,6 +5,7 @@ import com.swp391.eyewear_management_backend.dto.response.ProductResponse;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Data
@@ -12,7 +13,12 @@ import java.util.List;
 public class LensResponse extends ProductDetailResponse {
     private Long lensId;
     private String Description;
-    private String indexValue; // Chiết suất
+    private BigDecimal indexValue;
+    private BigDecimal diameter;
+    private String availablePowerRange;
+    private Boolean isBlueLightBlock;
+    private Boolean isPhotochromic;
+    private String lensTypeName;
     private List<ProductResponse> relatedLenses;
     private List<ProductResponse> relatedFrames;
 }
