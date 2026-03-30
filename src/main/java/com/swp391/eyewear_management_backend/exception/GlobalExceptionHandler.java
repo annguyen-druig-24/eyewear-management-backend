@@ -2,9 +2,11 @@ package com.swp391.eyewear_management_backend.exception;
 
 import com.swp391.eyewear_management_backend.dto.response.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.catalina.connector.ClientAbortException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotAcceptableException;
@@ -12,6 +14,7 @@ import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -23,10 +26,6 @@ public class GlobalExceptionHandler {
     private static final String MIN_ATTRIBUTE = "min";
     private static final String MAX_ATTRIBUTE = "max";
 
-    /**
-     * 1) Lỗi nghiệp vụ chủ động (AppException)
-     * - Dùng ErrorCode của bạn để set httpStatus + code + message.
-     */
     @ExceptionHandler(AppException.class)
     public ResponseEntity<ApiResponse> handleAppException(AppException ex) {
         ErrorCode ec = ex.getErrorCode();
@@ -40,9 +39,6 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(ec.getHttpStatusCode()).body(body);
     }
 
-    /**
-     * 2) Không đủ quyền (Spring Security)
-     */
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiResponse> handleAccessDenied(AccessDeniedException ex) {
         ErrorCode ec = ErrorCode.UNAUTHORIZED;
@@ -55,14 +51,8 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(ec.getHttpStatusCode()).body(body);
     }
 
-    /**
-     * 3) Validate DTO (@Valid) lỗi
-     * - Bạn đang dùng kiểu “defaultMessage là key của enum ErrorCode”.
-     * - Nếu fieldError null hoặc key sai -> fallback INVALID_KEY.
-     */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse> handleValidation(MethodArgumentNotValidException ex) {
-
         FieldError fieldError = ex.getBindingResult().getFieldError();
 
         ErrorCode ec = ErrorCode.INVALID_KEY;
@@ -88,11 +78,6 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(body);
     }
 
-    /**
-     * 4) Lỗi ràng buộc DB (FK/CK/NOT NULL/unique)
-     * - Trả 409 CONFLICT hoặc 400 tuỳ bạn, nhưng 409 hợp lý hơn cho constraint.
-     * - message lấy MostSpecificCause để bạn biết constraint nào fail.
-     */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse> handleDataIntegrity(DataIntegrityViolationException ex) {
         log.error("DataIntegrityViolationException", ex);
@@ -109,43 +94,44 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
-    /**
-     * 5) Client Accept không phù hợp (406)
-     */
     @ExceptionHandler(HttpMediaTypeNotAcceptableException.class)
     public ResponseEntity<ApiResponse> handleNotAcceptable(HttpMediaTypeNotAcceptableException ex) {
         ApiResponse body = ApiResponse.builder()
                 .code(406)
-                .message("Header Accept phải hỗ trợ application/json")
+                .message("Header Accept phai ho tro application/json")
                 .build();
 
         return ResponseEntity.status(HttpStatus.NOT_ACCEPTABLE).body(body);
     }
 
-    /**
-     * 6) Client Content-Type không phù hợp (415)
-     */
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
     public ResponseEntity<ApiResponse> handleNotSupported(HttpMediaTypeNotSupportedException ex) {
         ApiResponse body = ApiResponse.builder()
                 .code(415)
-                .message("Header Content-Type phải là application/json")
+                .message("Header Content-Type phai la application/json")
                 .build();
 
         return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).body(body);
     }
 
-    /**
-     * 5) Catch-all: lỗi hệ thống chưa dự đoán (NPE, IllegalState, Hibernate lỗi...)
-     * - Trả 500.
-     * - message cho debug: ex.getMessage() (bạn có thể đổi thành message chung khi production)
-     */
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse> handleException(Exception ex) {
-        log.error("Unhandled exception", ex);
+    @ExceptionHandler({ClientAbortException.class, AsyncRequestNotUsableException.class})
+    public void handleClientAbort(Exception ex) {
+        // Browser refresh, route change, or closed tab can abort the socket while
+        // Spring is still flushing JSON. This is not a business failure.
+        log.warn("Client disconnected before response completed: {}", ex.getMessage());
+    }
 
+    @ExceptionHandler(HttpMessageNotWritableException.class)
+    public ResponseEntity<ApiResponse> handleMessageNotWritable(HttpMessageNotWritableException ex) {
+        // Keep client-abort noise out of the generic 500 handler, but still surface
+        // real JSON serialization problems as server errors.
+        if (isClientAbort(ex)) {
+            log.warn("Response write interrupted because the client disconnected: {}", ex.getMessage());
+            return ResponseEntity.noContent().build();
+        }
+
+        log.error("HttpMessageNotWritableException", ex);
         ErrorCode ec = ErrorCode.UNCATEGORIZED_EXCEPTION;
-
         ApiResponse body = ApiResponse.builder()
                 .code(ec.getCode())
                 .message(ex.getMessage() != null ? ex.getMessage() : ec.getMessage())
@@ -154,19 +140,39 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
     }
 
-    // ---------------- helpers ----------------
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiResponse> handleException(Exception ex) {
+        log.error("Unhandled exception", ex);
+
+        ErrorCode ec = ErrorCode.UNCATEGORIZED_EXCEPTION;
+        ApiResponse body = ApiResponse.builder()
+                .code(ec.getCode())
+                .message(ex.getMessage() != null ? ex.getMessage() : ec.getMessage())
+                .build();
+
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
+    }
 
     private Map<String, Object> extractMinMax(Object[] args) {
-        if (args == null) return null;
+        if (args == null) {
+            return null;
+        }
 
-        Integer min = null, max = null;
-        for (Object a : args) {
-            if (a instanceof Integer i) {
-                if (min == null) min = i;
-                else if (max == null) max = i;
+        Integer min = null;
+        Integer max = null;
+        for (Object arg : args) {
+            if (arg instanceof Integer integerValue) {
+                if (min == null) {
+                    min = integerValue;
+                } else if (max == null) {
+                    max = integerValue;
+                }
             }
         }
-        if (min == null && max == null) return null;
+
+        if (min == null && max == null) {
+            return null;
+        }
 
         Map<String, Object> map = new HashMap<>();
         map.put(MIN_ATTRIBUTE, min);
@@ -185,5 +191,23 @@ public class GlobalExceptionHandler {
         }
 
         return result;
+    }
+
+    private boolean isClientAbort(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof ClientAbortException || current instanceof AsyncRequestNotUsableException) {
+                return true;
+            }
+
+            String message = current.getMessage();
+            if (message != null && message.toLowerCase().contains("connection was aborted")) {
+                return true;
+            }
+
+            current = current.getCause();
+        }
+
+        return false;
     }
 }
