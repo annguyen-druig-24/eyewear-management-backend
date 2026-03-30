@@ -16,7 +16,7 @@ spring:
   jpa:
     hibernate:
       ddl-auto: none
-    show-sql: true
+    #show-sql: true
     properties:
       hibernate:
         format_sql: true
@@ -109,6 +109,12 @@ app:
     success-path: /success
     cancel-path: /cancel
     fail-path: /payment-result
+  gemini:
+    enabled: ${GEMINI_ENABLED:true}
+    api-key: ${GEMINI_API_KEY:AIzaSyDfu9XDTl-ibJRoN6AJ_FczlmZnQFiK7Lk}
+    model: ${GEMINI_MODEL:gemini-2.5-flash}
+    base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com}
+    timeout-seconds: ${GEMINI_TIMEOUT_SECONDS:20}
   ocr:
     enabled: ${PRESCRIPTION_OCR_ENABLED:true}
     endpoint: ${PRESCRIPTION_OCR_ENDPOINT:https://api.ocr.space/parse/image}

@@ -35,4 +35,20 @@ public interface OrderDetailRepo extends JpaRepository<OrderDetail, Long> {
             "GROUP BY p.productID, p.productName, p.price " +
             "ORDER BY SUM(od.quantity) DESC")
     List<TopProductProjection> getTopSellingProducts(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate, Pageable pageable);
+
+    @Query("SELECT p.productID AS id, p.productName AS name, p.price AS price, CAST(SUM(od.quantity) AS int) AS sold, " +
+            "(SELECT pi.imageUrl FROM ProductImage pi WHERE pi.product.productID = p.productID AND pi.isAvatar = true) AS image " +
+            "FROM OrderDetail od " +
+            "JOIN od.product p " +
+            "JOIN p.productType pt " +
+            "JOIN od.order o " +
+            "WHERE o.orderStatus IN ('COMPLETED', 'PAID') " +
+            "AND o.orderDate >= :startDate AND o.orderDate <= :endDate " +
+            "AND LOWER(pt.typeName) = LOWER(:typeName) " +
+            "GROUP BY p.productID, p.productName, p.price " +
+            "ORDER BY SUM(od.quantity) DESC")
+    List<TopProductProjection> getTopSellingProductsByType(@Param("startDate") LocalDateTime startDate,
+                                                           @Param("endDate") LocalDateTime endDate,
+                                                           @Param("typeName") String typeName,
+                                                           Pageable pageable);
 }

@@ -50,6 +50,26 @@ public class DashboardServiceImpl implements DashboardService {
     }
 
     @Override
+    public List<TopProductResponse> getTopSellingProductsByType(LocalDate startDateInput, LocalDate endDateInput, String productTypeName) {
+        if (startDateInput != null && endDateInput != null && startDateInput.isAfter(endDateInput)) {
+            throw new IllegalArgumentException("Start Date must before End Date!");
+        }
+
+        LocalDateTime endDateTime = (endDateInput != null)
+                ? endDateInput.atTime(LocalTime.MAX)
+                : LocalDateTime.now();
+
+        LocalDateTime startDateTime = (startDateInput != null)
+                ? startDateInput.atStartOfDay()
+                : endDateTime.minusDays(6).with(LocalTime.MIN);
+
+        return orderDetailRepository.getTopSellingProductsByType(startDateTime, endDateTime, productTypeName, PageRequest.of(0, 5))
+                .stream()
+                .map(dashboardMapper::toTopProductDto)
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public DashboardResponse getDashboardStatistics(LocalDate startDateInput, LocalDate endDateInput) {
 
         // =========================================================================
