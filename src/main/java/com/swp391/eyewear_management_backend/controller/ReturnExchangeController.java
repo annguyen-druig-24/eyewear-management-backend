@@ -32,7 +32,7 @@ public class ReturnExchangeController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<String>> createReturnExchange(
             @RequestPart("request") @Valid ReturnExchangeRequest request,
-            @RequestPart(value = "itemImages", required = false) List<MultipartFile> itemImages,
+            @RequestPart(value = "itemImages", required = true) List<MultipartFile> itemImages,
             @RequestPart(value = "customerImageQr", required = false) MultipartFile customerImageQr) {
 
         // Truyền thêm danh sách ảnh xuống Service v1
