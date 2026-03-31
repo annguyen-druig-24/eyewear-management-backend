@@ -1354,8 +1354,6 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 
         if (isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_SHIPPING)) {
             actions.add(OrderConstants.OPERATION_ACTION_MARK_DELIVERED);
-            actions.add(OrderConstants.OPERATION_ACTION_MARK_FAILED);
-            actions.add(OrderConstants.OPERATION_ACTION_MARK_RETURNED);
         }
 
         if (isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_DELIVERED)) {
