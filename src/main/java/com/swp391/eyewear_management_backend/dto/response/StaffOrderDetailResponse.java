@@ -31,6 +31,7 @@ public class StaffOrderDetailResponse {
     private LocalDateTime expectedDeliveryAt;
     private Boolean isPastExpectedDeliveryAt;
     private Boolean hasPrescriptionItem;
+    private Boolean inventoryReadyForOperationUpdate;
     private Boolean requiresFinalPayment;
     private List<String> availableActions;
     private Boolean canCancelOrder;

@@ -52,4 +52,6 @@ public final class OrderConstants {
     public static final String PAYMENT_STATUS_REFUNDED = "REFUNDED";
 
     public static final String PAYMENT_METHOD_COD = "COD";
+
+    public static final String INVENTORY_TRANSACTION_TYPE_SALE_OUT = "SALE_OUT";
 }

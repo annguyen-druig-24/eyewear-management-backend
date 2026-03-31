@@ -55,6 +55,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     private final OrderRepo orderRepo;
     private final OrderDetailRepo orderDetailRepo;
     private final PrescriptionOrderRepo prescriptionOrderRepo;
+    private final InventoryTransactionRepo inventoryTransactionRepo;
     private final StaffOrderMapper staffOrderMapper;
     private final ReturnExchangeRepo returnExchangeRepo;
     private final ReturnExchangeMapper returnExchangeMapper;
@@ -126,6 +127,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
        ========================================================= */
 
     // Hàm này dùng để xác minh/ktra ai là người đang thao tác
+    // Lấy user đang đăng nhập để kiểm tra ai đang thao tác nghiệp vụ hiện tại
     private User getCurrentUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated()) {
@@ -137,24 +139,29 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
     }
 
+    // Tải order kèm các quan hệ cần thiết cho màn hình chi tiết và xử lý status
     private Order getOrderByIdFetchStatus(Long orderId) {
         return orderRepo.findByIdFetchStatus(orderId)
                 .orElseThrow(() -> new AppException(ErrorCode.ORDER_NOT_FOUND));
     }
 
+    // Tải yêu cầu Return_Exchange theo id và ném lỗi nếu ko tồn tại
     private ReturnExchange getReturnExchangeByIdOrThrow(Long returnExchangeId) {
         return returnExchangeRepo.findById(returnExchangeId)
                 .orElseThrow(() -> new AppException(ErrorCode.RETURN_EXCHANGE_NOT_FOUND));
     }
 
+    // Chuẩn hóa chuỗi text thành UPPERCASE để so sánh status
     private String normalize(String value) {
         return value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
     }
 
+    // So sánh 2 giá trị status theo Kiểu ko phân biệt hoa thường
     private boolean isStatus(String value, String expected) {
         return expected != null && expected.equalsIgnoreCase(normalize(value));
     }
 
+    // Suy ra loaại request trả hàng dựa trên thông tin refund đc lưu (ko dùng)
     private String resolveReturnType(ReturnExchange returnExchange) {
         if (returnExchange.getRefundAmount() != null || StringUtils.hasText(returnExchange.getRefundMethod())) {
             return "RETURN";
@@ -162,6 +169,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         return "EXCHANGE";
     }
 
+    // Ghép toàn bộ dữ liệu header, item, prescription, customer và action thành payload OrderDetail
     private StaffOrderDetailResponse buildOrderDetailResponse(Order order, boolean operationStaffView) {
         Long orderId = order.getOrderID();
         ShippingInfo shippingInfo = order.getShippingInfo();
@@ -172,7 +180,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 
         List<OrderDetail> orderDetails = orderDetailRepo.findByOrderIdFetchProduct(orderId);
         PrescriptionOrder prescriptionOrder = prescriptionOrderRepo.findByOrder_OrderID(orderId).orElse(null);
-        boolean preOrderInventoryReady = hasSufficientInventoryForOperationUpdate(order, orderDetails, prescriptionOrder);
+        boolean inventoryReadyForOperationUpdate = hasSufficientInventoryForOperationUpdate(order, orderDetails, prescriptionOrder);
 
         List<StaffOrderItemResponse> orderItems = orderDetails.stream()
                 .map(this::toOrderItemResponse)
@@ -183,7 +191,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         boolean requiresFinalPayment = isRequiresFinalPayment(order);
 
         List<String> availableActions = operationStaffView
-                ? resolveOperationActions(order.getOrderStatus(), shippingStatus, hasPrescriptionItem, requiresFinalPayment, preOrderInventoryReady)
+                ? resolveOperationActions(order.getOrderStatus(), shippingStatus, hasPrescriptionItem, requiresFinalPayment, inventoryReadyForOperationUpdate)
                 : resolveSalesActions(order.getOrderStatus());
 
         return StaffOrderDetailResponse.builder()
@@ -198,6 +206,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                 .expectedDeliveryAt(expectedDeliveryAt)
                 .isPastExpectedDeliveryAt(isPastExpectedDeliveryAt)
                 .hasPrescriptionItem(hasPrescriptionItem)
+                .inventoryReadyForOperationUpdate(inventoryReadyForOperationUpdate)
                 .requiresFinalPayment(requiresFinalPayment)
                 .availableActions(availableActions)
                 .customerName(order.getUser() != null ? order.getUser().getName() : null)
@@ -213,6 +222,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                 .build();
     }
 
+    // Map 1 dòng OrderDetail thường sang response item cho FE
     private StaffOrderItemResponse toOrderItemResponse(OrderDetail detail) {
         Product product = detail.getProduct();
         Integer quantity = detail.getQuantity() == null ? 0 : detail.getQuantity();
@@ -228,6 +238,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                 .build();
     }
 
+    // Gom các Prescription_Order_Detail giống nhau thành item tổng hợp để FE hiển thị gọn hơn
     private List<StaffPrescriptionOrderItemResponse> mapPrescriptionItems(PrescriptionOrder prescriptionOrder) {
         if (prescriptionOrder == null || prescriptionOrder.getPrescriptionOrderDetails() == null) {
             return List.of();
@@ -313,10 +324,12 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         return aggregates.values().stream().map(a -> a.response).toList();
     }
 
+    // Lấy giá bán an toàn của product, null thì trả về 0
     private BigDecimal productPrice(Product product) {
         return product != null && product.getPrice() != null ? product.getPrice() : BigDecimal.ZERO;
     }
 
+    // Chọn avatar image của product, nếu ko có thì lấy image đầu tiên hợp lệ
     private String pickPrimaryImage(Product product) {
         if (product == null || product.getImages() == null || product.getImages().isEmpty()) {
             return null;
@@ -334,14 +347,17 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                         .orElse(null));
     }
 
+    // Chuyển BigDecimal sang text gọn cho FE hiển thị thông số
     private String bdToText(BigDecimal value) {
         return value == null ? null : value.stripTrailingZeros().toPlainString();
     }
 
+    // Chuyển Double sang text gọn cho FE hiển thị thông số
     private String bdToText(Double value) {
         return value == null ? null : BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
     }
 
+    // Tạo Pageable từ request và áp dụng rule page-size-sort hợp lệ cho danh sách order
     private Pageable buildPageable(StaffOrderSearchRequest request) {
         int page = request.getPage() == null ? 0 : Math.max(request.getPage(), 0);
         int size = request.getSize() == null ? 50 : Math.min(Math.max(request.getSize(), 1), 100);
@@ -359,6 +375,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         return PageRequest.of(page, size, sort);
     }
 
+    // Tạo điều kiện filter động cho danh sách order của SALES STAFF hoặc OPERATIONS STAFF
     private Specification<Order> buildSpecification(StaffOrderSearchRequest request, boolean operationStaffScope) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -405,6 +422,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         };
     }
 
+    // tạo 1 option status để tái sử dụng cho các API trả về danh sách trạng thái
     private OrderStatusOptionResponse statusOption(String code, String displayName) {
         return OrderStatusOptionResponse.builder()
                 .code(code)
@@ -412,6 +430,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                 .build();
     }
 
+    // Đóng gói các status thành group response cho FE render dropdown/tab
     private List<OrderStatusGroupResponse> buildOrderStatusGroups(List<OrderStatusOptionResponse> statuses) {
         return List.of(
                 OrderStatusGroupResponse.builder()
@@ -422,6 +441,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         );
     }
 
+    // Map projection từ query danh sách Return_Exchange sang DTO trả về cho FE Staff
     private StaffReturnExchangeListResponse mapToStaffReturnExchangeListResponse(StaffReturnExchangeListProjection source) {
         return StaffReturnExchangeListResponse.builder()
                 .returnExchangeId(source.getReturnExchangeId())
@@ -448,6 +468,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                 .build();
     }
 
+    // Map tung item trong yeu cau return/exchange sang response chi tiet.
     private List<ReturnExchangeItemResponse> mapReturnExchangeItems(List<ReturnExchangeItem> items) {
         if (items == null || items.isEmpty()) {
             return List.of();
@@ -475,6 +496,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                 .toList();
     }
 
+    // Tinh so ngay con lai de request return/exchange con hieu luc.
     private Long calculateRemainingTimeValid(LocalDateTime deliveredAt) {
         if (deliveredAt == null) {
             return null;
@@ -485,6 +507,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         return Math.max(remainingDays, 0L);
     }
 
+    // Ghep thong tin order + return/exchange thanh payload chi tiet de FE staff hien thi.
     private StaffReturnExchangeDetailResponse buildReturnExchangeDetailResponse(ReturnExchange returnExchange) {
         Long orderId = returnExchange.getOrder() == null ? null : returnExchange.getOrder().getOrderID();
         if (orderId == null) {
@@ -545,6 +568,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                 .build();
     }
 
+    // Chuyen action tu FE thanh status dich cua yeu cau return/exchange.
     private String resolveReturnStatusAction(String action) {
         if (RETURN_ACTION_APPROVE.equals(action) || RETURN_ACTION_APPROVED.equals(action)) {
             return RETURN_STATUS_APPROVED;
@@ -555,6 +579,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         return null;
     }
 
+    // Kiem tra request con nam trong cua so cho phep de approve hay khong.
     private void validateApproveWithinWindow(ReturnExchange returnExchange) {
         Order order = returnExchange.getOrder();
         ShippingInfo shippingInfo = order == null ? null : order.getShippingInfo();
@@ -571,6 +596,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     }
 
     //Hàm này test deploy
+    // Nhan dien day co phai flow huy don + hoan tien toan don hay khong.
     private boolean isCancelRefundRequestFlow(ReturnExchange returnExchange) {
         if (returnExchange == null) {
             return false;
@@ -592,12 +618,14 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         return order != null && OrderConstants.ORDER_STATUS_CANCELED.equals(normalize(order.getOrderStatus()));
     }
 
+    // Chan cac API chi danh rieng cho flow huy don neu request hien tai khong hop le.
     private void validateCancelRefundRequestFlow(ReturnExchange returnExchange) {
         if (!isCancelRefundRequestFlow(returnExchange)) {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
     }
 
+    // Ap dung quyet dinh approve/reject len request return/exchange va cap nhat audit field.
     private void applyReturnExchangeDecision(ReturnExchange returnExchange,
                                              ReturnExchangeDecisionRequest request,
                                              boolean validateApprovalWindow) {
@@ -636,6 +664,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         }
     }
 
+    // Upload anh/chung tu staff cung cap khi xu ly hoan tien.
     private String uploadStaffRefundEvidence(MultipartFile staffEvidenceFile) {
         if (staffEvidenceFile == null || staffEvidenceFile.isEmpty()) {
             return null;
@@ -647,11 +676,13 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         }
     }
 
+    // Xac dinh request hien tai co phai warranty hay khong de ap dung rule refund dung.
     private boolean isWarrantyReturnExchange(ReturnExchange returnExchange) {
         return returnExchange != null
                 && "WARRANTY".equals(normalize(returnExchange.getReturnType()));
     }
 
+    // Kiem tra so tien staff nhap khi complete refund co khop so tien du kien phai hoan hay khong.
     private void validateCompleteRefundAmount(ReturnExchange returnExchange,
                                               StaffCompleteRefundRequest request) {
         if (isWarrantyReturnExchange(returnExchange)) {
@@ -667,6 +698,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         }
     }
 
+    // Hoan tat nghiep vu refund, luu bang chung va danh dau request da xu ly xong.
     private void completeRefund(ReturnExchange returnExchange,
                                 StaffCompleteRefundRequest request,
                                 MultipartFile staffEvidenceFile) {
@@ -691,6 +723,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         returnExchange.setProcessedDate(LocalDateTime.now(APP_ZONE_ID));
     }
 
+    // Chuyen cac payment da thanh cong cua order sang trang thai REFUNDED sau khi staff hoan tien.
     private void updateSuccessfulPaymentsToRefunded(Order order) {
         if (order == null || order.getPayments() == null || order.getPayments().isEmpty()) {
             return;
@@ -709,6 +742,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         paymentRepo.saveAll(successfulPayments);
     }
 
+    // Cong tra ton kho cho cac item thong thuong khi huy don va da xu ly hoan tien.
     private void restockCanceledOrderInventory(Order order) {
         if (order == null || order.getOrderID() == null) {
             return;
@@ -753,6 +787,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         productRepo.saveAll(products);
     }
 
+    // Xac dinh nhung action sales staff duoc phep thuc hien tren OrderDetail.
     private List<String> resolveSalesActions(String orderStatus) {
         String currentStatus = orderStatus == null ? "" : orderStatus.trim().toUpperCase(Locale.ROOT);
         if (SALES_CONFIRMABLE_STATUSES.contains(currentStatus)) {
@@ -761,6 +796,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         return List.of();
     }
 
+    // Kiem tra order co thanh phan prescription de doi workflow va action tuong ung hay khong.
     private boolean hasPrescriptionItem(PrescriptionOrder prescriptionOrder) {
         return prescriptionOrder != null
                 && prescriptionOrder.getPrescriptionOrderDetails() != null
@@ -768,6 +804,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     }
 
     // Hàm này kiểm tra xem Invoice.Status = PARTIALLY_PAID hoặc Order.Order_Status = PARTIALLY_PAID --> Thỏa trả về true
+    // Kiem tra order co con can thu phan thanh toan cuoi sau khi giao hay khong.
     private boolean isRequiresFinalPayment(Order order) {
         if (order == null) {
             return false;
@@ -780,6 +817,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     }
 
     // Hàm này cập kiểm tra và cập nhật Payment.Status = SUCCESS khi remainingPayment != null và Payment.Status = PENDING
+    // Danh dau payment REMAINING da thu thanh cong khi don giao xong.
     private void markRemainingPaymentSuccess(Order order) {
         Payment remainingPayment = findPayment(order, OrderConstants.PAYMENT_PURPOSE_REMAINING);
         if (remainingPayment == null || !isStatus(remainingPayment.getStatus(), OrderConstants.PAYMENT_STATUS_PENDING)) {
@@ -790,6 +828,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     }
 
     // Hàm này kiểm tra và cập nhật Payment.Status = SUCCESS khi Payment.Payment_Purpose = FULL và Payment.Status = PENDING
+    // Danh dau payment FULL/COD da thanh cong neu den luc giao hang moi thu tien.
     private void markFullCodPaymentSuccessIfPending(Order order) {
         Payment fullPayment = findPayment(order, OrderConstants.PAYMENT_PURPOSE_FULL);
         if (fullPayment == null) {
@@ -804,6 +843,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         }
     }
 
+    // Tim payment theo muc dich thanh toan trong danh sach payment cua order.
     private Payment findPayment(Order order, String paymentPurpose) {
         if (order == null || order.getPayments() == null || order.getPayments().isEmpty()) {
             return null;
@@ -1100,6 +1140,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 //        return false;
 //    }
 
+    // Chan staff set delivered/completed som hon ngay du kien giao hang.
     private void validateReachedExpectedDeliveryAt(ShippingInfo shippingInfo) {
         if (shippingInfo == null) {
             return;
@@ -1115,6 +1156,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         }
     }
 
+    // Chot payment va invoice khi don da duoc danh dau DELIVERED.
     private void settlePaymentsAndInvoiceOnDelivered(Order order) {
         if (order == null) {
             return;
@@ -1144,14 +1186,16 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         }
     }
 
+    // Kiem tra order da roi vao trang thai chi doc, khong cho sua nghiep vu nua.
     private boolean isReadOnlyStatus(String orderStatus, String shippingStatus) {
         return isStatus(orderStatus, OrderConstants.ORDER_STATUS_CANCELED)
                 || isStatus(orderStatus, OrderConstants.ORDER_STATUS_COMPLETED)
                 || isStatus(shippingStatus, OrderConstants.SHIPPING_STATUS_CANCELED);
     }
 
-    private void validatePreOrderInventoryForOperationUpdate(Order order, String action) {
-        if (!requiresPreOrderInventoryValidation(action)) {
+    // Validate don da du hang de thuc hien cac action operations can ton kho thuc te.
+    private void validateInventoryForOperationUpdate(Order order, String action) {
+        if (!requiresInventoryValidationForOperationAction(action)) {
             return;
         }
         List<OrderDetail> orderDetails = orderDetailRepo.findByOrderIdFetchProduct(order.getOrderID());
@@ -1162,28 +1206,34 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         throw new AppException(ErrorCode.INVENTORY_INSUFFICIENT_QUANTITY);
     }
 
+    // Kiem tra tong so luong co the fulfill cua tung product da du cho don hay chua.
     private boolean hasSufficientInventoryForOperationUpdate(Order order,
                                                              List<OrderDetail> orderDetails,
                                                              PrescriptionOrder prescriptionOrder) {
         if (order == null) {
             return true;
         }
-        if (!isPreOrderInventoryCheckRequired(order.getOrderType(), prescriptionOrder)) {
-            return true;
-        }
 
         Map<Long, ProductQuantityRequirement> requiredProducts = new HashMap<>();
         collectNormalOrderDetailRequirements(requiredProducts, orderDetails);
         collectPrescriptionOrderRequirements(requiredProducts, prescriptionOrder);
+        Map<Long, Integer> allocatedQuantitiesByProductId = loadAllocatedQuantitiesByProductId(order.getOrderID());
 
         for (ProductQuantityRequirement requirement : requiredProducts.values()) {
-            if (requirement.availableQuantity() < requirement.requiredQuantity()) {
+            Product product = requirement.product();
+            Long productId = product != null ? product.getProductID() : null;
+            int currentAvailableQuantity = product != null && product.getAvailableQuantity() != null
+                    ? product.getAvailableQuantity()
+                    : 0;
+            int allocatedQuantity = productId == null ? 0 : allocatedQuantitiesByProductId.getOrDefault(productId, 0);
+            if (currentAvailableQuantity + allocatedQuantity < requirement.requiredQuantity()) {
                 return false;
             }
         }
         return true;
     }
 
+    // Cong don so luong product can co tu cac Order_Detail thong thuong.
     private void collectNormalOrderDetailRequirements(Map<Long, ProductQuantityRequirement> requiredProducts,
                                                       List<OrderDetail> orderDetails) {
         if (orderDetails == null) {
@@ -1197,6 +1247,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         }
     }
 
+    // Cong don so luong product can co tu cac Prescription_Order_Detail.
     private void collectPrescriptionOrderRequirements(Map<Long, ProductQuantityRequirement> requiredProducts,
                                                       PrescriptionOrder prescriptionOrder) {
         if (prescriptionOrder == null || prescriptionOrder.getPrescriptionOrderDetails() == null) {
@@ -1211,6 +1262,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         }
     }
 
+    // Merge requirement cua 1 product vao map tong hop de so sanh ton kho.
     private void addRequiredProduct(Map<Long, ProductQuantityRequirement> requiredProducts,
                                     Product product,
                                     Integer quantity) {
@@ -1221,22 +1273,39 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         if (requiredQuantity <= 0) {
             return;
         }
-        int availableQuantity = product.getAvailableQuantity() != null ? product.getAvailableQuantity() : 0;
         requiredProducts.merge(
                 product.getProductID(),
-                new ProductQuantityRequirement(product, requiredQuantity, availableQuantity),
+                new ProductQuantityRequirement(product, requiredQuantity),
                 (current, ignored) -> current.increaseRequiredQuantity(requiredQuantity)
         );
     }
 
-    private boolean isPreOrderInventoryCheckRequired(String orderType, PrescriptionOrder prescriptionOrder) {
-        return isStatus(orderType, OrderConstants.ORDER_TYPE_PRE)
-                || isStatus(orderType, OrderConstants.ORDER_TYPE_MIX)
-                || isStatus(orderType, OrderConstants.ORDER_TYPE_PRESCRIPTION)
-                || hasPrescriptionItem(prescriptionOrder);
+    // Lay so luong da bi tru kho cho chinh order nay theo tung product.
+    private Map<Long, Integer> loadAllocatedQuantitiesByProductId(Long orderId) {
+        if (orderId == null) {
+            return Map.of();
+        }
+
+        Map<Long, Integer> allocatedQuantities = new HashMap<>();
+        List<InventoryTransaction> transactions = inventoryTransactionRepo.findByOrderOrderIDAndTransactionTypeIgnoreCase(
+                orderId,
+                OrderConstants.INVENTORY_TRANSACTION_TYPE_SALE_OUT
+        );
+        for (InventoryTransaction transaction : transactions) {
+            if (transaction == null || transaction.getProduct() == null || transaction.getProduct().getProductID() == null) {
+                continue;
+            }
+            int allocatedQuantity = transaction.getQuantityChange() == null ? 0 : Math.max(-transaction.getQuantityChange(), 0);
+            if (allocatedQuantity <= 0) {
+                continue;
+            }
+            allocatedQuantities.merge(transaction.getProduct().getProductID(), allocatedQuantity, Integer::sum);
+        }
+        return allocatedQuantities;
     }
 
-    private boolean requiresPreOrderInventoryValidation(String action) {
+    // Liet ke nhung action operations can duoc chan neu don chua du hang de fulfill.
+    private boolean requiresInventoryValidationForOperationAction(String action) {
         return isStatus(action, OrderConstants.OPERATION_ACTION_START_PROCESSING)
                 || isStatus(action, OrderConstants.OPERATION_ACTION_START_PACKING)
                 || isStatus(action, OrderConstants.OPERATION_ACTION_MOVE_TO_PACKING)
@@ -1245,6 +1314,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
                 || isStatus(action, OrderConstants.OPERATION_ACTION_COMPLETE_ORDER);
     }
 
+    // Bat buoc order phai co ShippingInfo truoc khi operations cap nhat workflow giao hang.
     private ShippingInfo requireShippingInfo(Order order) {
         ShippingInfo shippingInfo = order.getShippingInfo();
         if (shippingInfo == null) {
@@ -1253,11 +1323,12 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         return shippingInfo;
     }
 
+    // Xac dinh danh sach action operations staff duoc phep thay tren OrderDetail.
     private List<String> resolveOperationActions(String orderStatus,
                                                  String shippingStatus,
                                                  boolean hasPrescriptionItem,
                                                  boolean requiresFinalPayment,
-                                                 boolean preOrderInventoryReady) {
+                                                 boolean inventoryReadyForOperationUpdate) {
         if (isReadOnlyStatus(orderStatus, shippingStatus)) {
             return List.of();
         }
@@ -1291,19 +1362,21 @@ public class StaffOrderServiceImpl implements StaffOrderService {
             actions.add(OrderConstants.OPERATION_ACTION_COMPLETE_ORDER);
         }
 
-        if (!preOrderInventoryReady) {
-            actions.removeIf(this::requiresPreOrderInventoryValidation);
+        if (!inventoryReadyForOperationUpdate) {
+            actions.removeIf(this::requiresInventoryValidationForOperationAction);
         }
 
         return actions;
     }
 
-    private record ProductQuantityRequirement(Product product, int requiredQuantity, int availableQuantity) {
+    // Dong goi requirement cua 1 product trong order de tinh du hang hay chua.
+    private record ProductQuantityRequirement(Product product, int requiredQuantity) {
+        // Tang so luong can co khi cung 1 product xuat hien nhieu dong trong order.
         private ProductQuantityRequirement increaseRequiredQuantity(int additionalQuantity) {
             if (additionalQuantity <= 0) {
                 throw new IllegalArgumentException("additionalQuantity must be > 0");
             }
-            return new ProductQuantityRequirement(product, requiredQuantity + additionalQuantity, availableQuantity);
+            return new ProductQuantityRequirement(product, requiredQuantity + additionalQuantity);
         }
     }
 
@@ -1338,6 +1411,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 
     @Override
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    // Tra danh sach order mac dinh cho sales staff, da sap xep moi nhat truoc.
     public List<StaffOrderListResponse> getOrdersForStaff() {
         StaffOrderSearchRequest request = StaffOrderSearchRequest.builder().build();
         Specification<Order> specification = buildSpecification(request, false);
@@ -1347,6 +1421,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 
     @Override
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    // Tim kiem order cho sales staff theo filter, sort va paging.
     public Page<StaffOrderListResponse> searchOrdersForStaff(StaffOrderSearchRequest request) {
         Pageable pageable = buildPageable(request);
         Specification<Order> specification = buildSpecification(request, false);
@@ -1358,6 +1433,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 
     @Override
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    // Tra payload OrderDetail cho sales staff khi mo chi tiet 1 don.
     public StaffOrderDetailResponse getOrderDetailForSalesStaff(Long orderId) {
         Order order = getOrderByIdFetchStatus(orderId);
         return buildOrderDetailResponse(order, false);
@@ -1367,6 +1443,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     @Override
     @Transactional
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    // Cho sales staff xac nhan don va chuyen order sang trang thai CONFIRMED.
     public StaffOrderDetailResponse confirmOrderForSalesStaff(Long orderId) {
         Order order = getOrderByIdFetchStatus(orderId);
         String currentStatus = order.getOrderStatus() == null
@@ -1383,6 +1460,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 
     @Override
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    // Tra danh sach status de FE sales staff hien thi bo loc/trang thai workflow.
     public List<OrderStatusGroupResponse> getSalesStaffOrderStatuses() {
         return buildOrderStatusGroups(List.of(
                 statusOption(OrderConstants.ORDER_STATUS_PENDING, "Đang chờ"),
@@ -1398,6 +1476,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 
     @Override
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    // Tra danh sach tat ca request return/exchange de sales staff xu ly.
     public List<StaffReturnExchangeListResponse> getReturnExchangeOrders() {
         return returnExchangeRepo.findStaffReturnExchangeSummaries().stream()
                 .map(this::mapToStaffReturnExchangeListResponse)
@@ -1406,6 +1485,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 
     @Override
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    // Tra danh sach request huy don + hoan tien toan don cho sales staff.
     public List<StaffReturnExchangeListResponse> getCancelRefundRequestsForSalesStaff() {
         return returnExchangeRepo.findCancelRefundRequestsForSalesStaff().stream()
                 .map(this::mapToStaffReturnExchangeListResponse)
@@ -1414,6 +1494,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 
     @Override
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    // Tra chi tiet 1 request huy don + hoan tien toan don cho sales staff.
     public StaffReturnExchangeDetailResponse getCancelRefundRequestDetailForSalesStaff(Long returnExchangeId) {
         ReturnExchange returnExchange = getReturnExchangeByIdOrThrow(returnExchangeId);
         validateCancelRefundRequestFlow(returnExchange);
@@ -1422,12 +1503,14 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 
     @Override
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    // Tra chi tiet 1 request return/exchange thong thuong cho sales staff.
     public StaffReturnExchangeDetailResponse getReturnExchangeDetailForSalesStaff(Long returnExchangeId) {
         ReturnExchange returnExchange = getReturnExchangeByIdOrThrow(returnExchangeId);
         return buildReturnExchangeDetailResponse(returnExchange);
     }
 
     @Override
+    // Tra entity return/exchange da map sang response tong quat theo id.
     public ReturnExchangeResponse getReturnExchangeById(Long returnExchangeId) {
         ReturnExchange returnExchange = getReturnExchangeByIdOrThrow(returnExchangeId);
         return returnExchangeMapper.toReturnExchangeResponse(returnExchange);
@@ -1436,6 +1519,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     @Override
     @Transactional
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    // Cap nhat approve/reject cho request huy don + hoan tien toan don.
     public ReturnExchangeResponse updateCancelRefundRequestStatusForSalesStaff(Long returnExchangeId,
                                                                                ReturnExchangeDecisionRequest request) {
         ReturnExchange returnExchange = getReturnExchangeByIdOrThrow(returnExchangeId);
@@ -1449,6 +1533,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     @Override
     @Transactional
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    // Cap nhat approve/reject cho request return/exchange thong thuong.
     public ReturnExchangeResponse updateReturnExchangeStatusForSalesStaff(Long returnExchangeId,
                                                                           ReturnExchangeDecisionRequest request) {
         ReturnExchange returnExchange = getReturnExchangeByIdOrThrow(returnExchangeId);
@@ -1461,6 +1546,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     @Override
     @Transactional
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    // Hoan tat flow huy don + hoan tien, cap nhat payment va cong tra ton neu can.
     public ReturnExchangeResponse completeCancelRefundRequestForSalesStaff(Long returnExchangeId,
                                                                            StaffCompleteRefundRequest request,
                                                                            MultipartFile staffEvidenceFile) {
@@ -1494,6 +1580,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     @Override
     @Transactional
     @PreAuthorize("hasAnyAuthority('ROLE_SALES STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    // Hoan tat flow refund cho request return/exchange da duoc approve.
     public ReturnExchangeResponse completeRefundForSalesStaff(Long returnExchangeId,
                                                               StaffCompleteRefundRequest request,
                                                               MultipartFile staffEvidenceFile) {
@@ -1527,6 +1614,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 
     @Override
     @PreAuthorize("hasAnyAuthority('ROLE_OPERATIONS STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    // Tim kiem order cho operations staff theo filter, sort va paging.
     public Page<StaffOrderListResponse> searchOrdersForOperationStaff(StaffOrderSearchRequest request) {
         Pageable pageable = buildPageable(request);
         Specification<Order> specification = buildSpecification(request, true);
@@ -1538,6 +1626,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 
     @Override
     @PreAuthorize("hasAnyAuthority('ROLE_OPERATIONS STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    // Tra payload OrderDetail cho operations staff khi mo chi tiet 1 don.
     public StaffOrderDetailResponse getOrderDetailForOperationStaff(Long orderId) {
         Order order = getOrderByIdFetchStatus(orderId);
         return buildOrderDetailResponse(order, true);
@@ -1546,6 +1635,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
     @Override
     @Transactional
     @PreAuthorize("hasAnyAuthority('ROLE_OPERATIONS STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    // Xu ly action nghiep vu cua operations staff va cap nhat order/shipping status tuong ung.
     public StaffOrderDetailResponse updateOrderForOperationStaff(Long orderId, String action) {
         Order order = getOrderByIdFetchStatus(orderId);
         ShippingInfo shippingInfo = requireShippingInfo(order);
@@ -1560,7 +1650,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
         }
 
         String normalizedAction = normalize(action);
-        validatePreOrderInventoryForOperationUpdate(order, normalizedAction);
+        validateInventoryForOperationUpdate(order, normalizedAction);
 
         switch (normalizedAction) {
             case OrderConstants.OPERATION_ACTION_START_PROCESSING -> {
@@ -1632,6 +1722,7 @@ public class StaffOrderServiceImpl implements StaffOrderService {
 
     @Override
     @PreAuthorize("hasAnyAuthority('ROLE_OPERATIONS STAFF','ROLE_ADMIN','ROLE_MANAGER')")
+    // Tra danh sach status de FE operations staff hien thi workflow hien tai.
     public List<OrderStatusGroupResponse> getOperationStaffOrderStatuses() {
         return buildOrderStatusGroups(List.of(
                 statusOption(OrderConstants.ORDER_STATUS_CONFIRMED, "Đã xác nhận và đang chuẩn bị hàng"),

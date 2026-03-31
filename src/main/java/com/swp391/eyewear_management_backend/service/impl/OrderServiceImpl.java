@@ -495,7 +495,7 @@ public class OrderServiceImpl implements OrderService {
 
             InventoryTransaction tx = new InventoryTransaction();
             tx.setProduct(product);
-            tx.setTransactionType("SALE_OUT");
+            tx.setTransactionType(OrderConstants.INVENTORY_TRANSACTION_TYPE_SALE_OUT);
             tx.setQuantityBefore(onHandBefore);
             tx.setQuantityAfter(onHandAfter);
             tx.setQuantityChange(-deductedQty);
@@ -1426,7 +1426,8 @@ public class OrderServiceImpl implements OrderService {
         LocalDateTime expectedDeliveryAt = shippingInfo != null ? shippingInfo.getExpectedDeliveryAt() : null;
         Boolean isPastExpectedDeliveryAt = expectedDeliveryAt != null && LocalDateTime.now(APP_ZONE_ID).isAfter(expectedDeliveryAt);
 
-        List<StaffOrderItemResponse> orderItems = orderDetailRepo.findByOrderIdFetchProduct(orderEntityId).stream()
+        List<OrderDetail> orderDetails = orderDetailRepo.findByOrderIdFetchProduct(orderEntityId);
+        List<StaffOrderItemResponse> orderItems = orderDetails.stream()
                 .map(this::toOrderItemResponse)
                 .toList();
 
