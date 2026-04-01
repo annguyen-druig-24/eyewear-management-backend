@@ -16,13 +16,17 @@ public interface VnpayCallbackService {
      * @return kết quả xử lý để controller/IPN trả đúng response code cho VNPAY
      */
     //IpResult handleCallback(Long paymentId, long vnpAmount, String vnpResponseCode);
+    /*
+        1) Mục đích: contract xử lý callback VNPAY.
+        2) Trả về: enum `IpResult` để controller trả response code phù hợp.
+     */
     IpResult handleCallback(Long paymentId, long vnpAmount, String vnpResponseCode, String vnpTransactionStatus);
 
     enum IpResult {
-        CONFIRM_SUCCESS,        // RspCode 00
-        ALREADY_CONFIRMED,      // RspCode 02
-        INVALID_AMOUNT,         // RspCode 04
-        ORDER_NOT_FOUND,        // RspCode 01
-        CONFIRM_FAILED          // vẫn trả 00 cho VNPAY nhưng trong DB status FAILED
+        CONFIRM_SUCCESS,        // RspCode 00   --> xử lý thành công.
+        ALREADY_CONFIRMED,      // RspCode 02   --> callback trùng lặp.
+        INVALID_AMOUNT,         // RspCode 04   --> amount mismatch.
+        ORDER_NOT_FOUND,        // RspCode 01   --> không tìm thấy payment/order.
+        CONFIRM_FAILED          // vẫn trả 00 cho VNPAY nhưng trong DB status FAILED    --> callback hợp lệ nhưng giao dịch thất bại.
     }
 }

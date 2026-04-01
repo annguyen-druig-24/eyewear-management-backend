@@ -35,6 +35,22 @@ public class VnpayController {
      * Return URL (browser redirect from VNPAY)
      * => BE verify + update DB + redirect về FE success page
      */
+    /*
+        1) Mục đích: xử lý callback return qua browser và redirect người dùng về FE.
+        2) Dùng ở đâu: endpoint `GET /payments/vnpay/return`.
+        3) Steps:
+              1. Trích params `vnp_*` bằng `extractVnpParams`.
+              2. Verify signature (`verifySignature`).
+              3. Parse `rspCode`, `txnStatus`, `paymentId`, `amount`.
+              4. Nếu signature lỗi hoặc thiếu paymentId -> redirect fail page FE.
+              5. Gọi callback service cập nhật DB.
+              6. Quyết định targetPath:
+                 - success khi `rspCode=00` + `txnStatus=00` + service confirm success,
+                 - cancel khi mã cancel (`24` hoặc `02`),
+                 - còn lại fail.
+              7. Redirect 302 về FE.
+         4) Logic: return endpoint ưu tiên UX redirect user; nghiệp vụ update DB vẫn thực hiện.
+    */
     @GetMapping("/return")
     public ResponseEntity<Void> vnpayReturn(HttpServletRequest request) {
         Map<String, String> vnpParams = extractVnpParams(request.getParameterMap());
@@ -113,6 +129,18 @@ public class VnpayController {
      * IPN URL (server-to-server)
      * VNPAY gọi vào đây để confirm chính thức (production nên dùng).
      */
+    /*
+         1) Mục đích: xử lý IPN server-server chính thức từ VNPAY.
+         2) Dùng ở đâu: endpoint `GET /payments/vnpay/ipn`.
+         3) Steps:
+              1. Validate input rỗng.
+              2. Verify signature.
+              3. Parse paymentId/amount/responseCode/transactionStatus.
+              4. Gọi callback service.
+              5. Map `IpResult` -> `RspCode/Message` chuẩn để trả VNPAY.
+         4) Logic: đây là endpoint chuẩn đối soát chính xác trong production.
+
+    */
     @GetMapping(value = "/ipn", produces = MediaType.APPLICATION_JSON_VALUE)
     public Map<String, String> vnpayIpn(HttpServletRequest request) {
         Map<String, String> vnpParams = extractVnpParams(request.getParameterMap());
@@ -159,6 +187,17 @@ public class VnpayController {
         return m;
     }
 
+    /*
+        1) Mục đích: xác thực callback đúng từ VNPAY.
+        2) Steps:
+              1. Lấy `vnp_SecureHash`.
+              2. Copy map và remove `vnp_SecureHash`, `vnp_SecureHashType`.
+              3. Sort params.
+              4. Build `hashData`.
+              5. Ký lại bằng `hashSecret`.
+              6. So sánh ignore-case với hash nhận được.
+         3) Logic: chặn giả mạo callback.
+    */
     private boolean verifySignature(Map<String, String> params) {
         String secureHash = params.get("vnp_SecureHash");               // Lấy chữ ký từ VNPAY: vnp_SecureHash
         if (secureHash == null || secureHash.isBlank()) return false;   // Nếu ko có chữ ký --> fail
@@ -198,6 +237,7 @@ public class VnpayController {
         catch (Exception e) { return 0; }
     }
 
+    //Mục đích: build URL redirect FE an toàn slash.
     private String buildFrontendRedirectUrl(String path) {
         String baseUrl = feProps.getBaseUrl();
         String safePath = (path == null || path.isBlank()) ? "/" : path;

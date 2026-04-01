@@ -23,6 +23,13 @@ public class PaymentGatewayServiceImpl implements PaymentGatewayService {
     private final PaymentService paymentService;
     private final FrontendProperties frontendProperties;
 
+    /*
+        1) Mục đích: gateway router cho nhiều cổng thanh toán.
+        2) Dùng ở đâu: `OrderServiceImpl` khi tạo đơn.
+        3) Logic nhánh VNPAY:
+            - chuẩn hóa method uppercase,
+            - nếu `VNPAY` => gọi `vnpayService.createVnpayPaymentUrl(...)`
+    */
     @Override
     public String createPaymentUrl(String method, Long orderId, Long paymentId, BigDecimal amount) {
         String m = method == null ? "" : method.trim().toUpperCase();

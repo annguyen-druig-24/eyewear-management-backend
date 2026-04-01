@@ -42,6 +42,18 @@ public class VnpayService {
     /*
         1) Mục đích: sinh URL thanh toán VNPAY sandbox hoàn chỉnh.
         2) Được dùng ở đâu: `PaymentGatewayServiceImpl#createPaymentUrl` khi method=VNPAY.
+        3) Steps:
+              1. Chuẩn hóa `amount` về số nguyên VND (`setScale(0)`).
+              2. Tính `vnp_Amount = amount * 100` (quy ước VNPAY).
+              3. Tạo `txnRef = paymentId` (mapping callback ngược về DB).
+              4. Tạo `orderInfo` và sanitize để không lỗi ký tự.
+              5. Tạo `createDate`, `expireDate` theo múi giờ VN.
+              6. Put đủ params chuẩn vào map.
+              7. Sort params.
+              8. Build hashData + ký HMAC SHA512.
+              9. Add `vnp_SecureHash`.
+              10. Trả redirect URL.
+         4) Logic: bảo đảm params đúng chuẩn VNPAY, signed đúng secret, có `txnRef` để đối soát callback.
     */
     public String createVnpayPaymentUrl(Long orderId, Long paymentId, BigDecimal amount) {
         BigDecimal vnd = (amount == null ? BigDecimal.ZERO : amount).setScale(0, RoundingMode.HALF_UP);
@@ -77,6 +89,12 @@ public class VnpayService {
         return VnpayUtils.buildRedirectUrl(props.getPayUrl(), sorted);
     }
 
+    /*
+        1) Mục đích: xác định URL return sẽ gửi cho VNPAY.
+        2) Logic:
+            - Nếu cấu hình return-url là URL public hợp lệ và **không phải localhost backend** => dùng luôn.
+            - Nếu localhost/misconfig => fallback dùng FE base URL + normalized path.
+    */
     private String buildVnpayReturnUrl() {
         String configured = props.getReturnUrl();
         if (configured != null && (configured.startsWith("http://") || configured.startsWith("https://"))) {
@@ -101,6 +119,9 @@ public class VnpayService {
         return joinUrl(base, path);
     }
 
+    /*
+        1) Mục đích: chuẩn hóa path return cho FE.
+    */
     private String normalizeFrontendReturnPath(String configured) {
         String path = configured;
         if (path == null || path.isBlank()) {
@@ -125,6 +146,7 @@ public class VnpayService {
         return path;
     }
 
+    // - Mục đích: join URL tránh lỗi `//` hoặc thiếu `/`.
     private String joinUrl(String base, String path) {
         String b = base.trim();
         String p = (path == null ? "" : path.trim());
@@ -138,6 +160,10 @@ public class VnpayService {
         return b + p;
     }
 
+    /*
+        1) Mục đích: lấy IPv4 client để gửi `vnp_IpAddr`.
+        2) ưu tiên `X-Forwarded-For`, fallback `remoteAddr`, normalize localhost/IPv6 về `127.0.0.1`.
+    */
     private String getClientIpV4() {
         try {
             var attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
@@ -157,6 +183,10 @@ public class VnpayService {
         }
     }
 
+    /*
+        1) Mục đích: làm sạch chuỗi order info.
+        2) Steps: bỏ dấu tiếng Việt, remove ký tự lạ, rút gọn whitespace, cắt max 255.
+    */
     private String sanitizeOrderInfo(String input) {
         if (input == null) return "Thanh toan don hang";
         String s = input.trim();
