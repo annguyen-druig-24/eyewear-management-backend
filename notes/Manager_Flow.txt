@@ -1,0 +1,452 @@
+MANAGER FLOW - TONG HOP NGHIEP VU QUAN LY (Dashboard + Account + Product + Supplier + Nhap kho)
+
+I. MUC TIEU TAI LIEU
+- Mo ta day du luong nghiep vu cua role Manager trong he thong backend.
+- Tap trung vao cac nhu cau ban da yeu cau:
+	1) Manager xem tong hop du lieu dashboard.
+	2) Manager cap nhat thong tin, xoa/sua account.
+	3) Manager quan ly product (them/sua/xoa/tim kiem).
+	4) Manager cap nhat phan supplier va nghiep vu lien quan nhap kho.
+- Tai lieu nay dung de giao tiep giua Backend, Frontend, QA va Business.
+
+====================================================================
+II. TONG QUAN QUYEN MANAGER TRONG CAC API HIEN CO
+====================================================================
+
+1) Dashboard
+- GET /api/v1/dashboard
+	Co @PreAuthorize cho ROLE_MANAGER.
+	Muc dich: Lay thong ke tong quan theo khoang ngay (startDate, endDate).
+
+- GET /api/v1/dashboard/top-products
+	Hien tai KHONG thay @PreAuthorize trong controller.
+	Muc dich: Lay danh sach top san pham ban chay theo khoang ngay.
+	Luu y bao mat: Nen xac nhan SecurityConfig hoac bo sung @PreAuthorize neu can gioi han role.
+
+2) User/Account management
+- GET /users
+	Co @PreAuthorize cho ROLE_MANAGER.
+	Muc dich: Lay danh sach nguoi dung.
+
+- DELETE /users/{username}
+	Co @PreAuthorize cho ROLE_MANAGER.
+	Muc dich: Xoa account theo username.
+
+- PUT /users/admin/update
+	Co @PreAuthorize cho ROLE_MANAGER.
+	Muc dich: Cap nhat thong tin account boi admin/manager.
+
+- POST /users/admin/create
+	Co @PreAuthorize cho ROLE_MANAGER.
+	Muc dich: Tao account moi boi admin/manager.
+
+3) Product management
+- GET /api/products/admin/search
+	Co @PreAuthorize cho ROLE_MANAGER.
+	Muc dich: Tim kiem product danh cho admin/staff/manager (co the xem ca du lieu noi bo tuy service).
+
+- POST /api/products
+	Co @PreAuthorize cho ROLE_MANAGER.
+	Muc dich: Tao product moi, ho tro imageFiles.
+
+- PUT /api/products
+	Co @PreAuthorize cho ROLE_MANAGER.
+	Muc dich: Cap nhat product.
+
+- DELETE /api/products/{id}
+	Co @PreAuthorize cho ROLE_MANAGER.
+	Muc dich: Xoa product.
+
+4) Supplier + Nhap kho + Inventory
+- GET /api/suppliers
+	Lay danh sach supplier.
+
+- POST /api/suppliers/with-brands
+	Tao supplier moi kem danh sach brand.
+
+- POST /api/suppliers/{supplierId}/brands
+	Them brand vao supplier da ton tai.
+
+- GET /api/inventory-receipts/products/search?supplierId=...
+	Co @PreAuthorize cho ROLE_MANAGER.
+	Lay danh sach product theo supplier de lap don nhap kho.
+
+- POST /api/inventory-receipts
+	Co @PreAuthorize cho ROLE_MANAGER.
+	Tao don nhap kho.
+
+- GET /api/inventory-receipts
+	Co @PreAuthorize cho ROLE_MANAGER.
+	Lay danh sach don nhap kho va trang thai.
+
+- GET /api/inventory-receipts/{id}
+	Co @PreAuthorize cho ROLE_MANAGER.
+	Lay chi tiet don nhap kho.
+
+- PUT /api/inventory-receipts/{id}/receive
+	Co @PreAuthorize cho ROLE_MANAGER.
+	Xac nhan nhan hang thuc te, cap nhat ton kho.
+
+- GET /api/inventory/products
+	Co @PreAuthorize cho ROLE_MANAGER.
+	Lay danh sach ton kho tong hop.
+
+====================================================================
+III. FLOW CHINH CHO MANAGER (END-TO-END)
+====================================================================
+
+FLOW A - MANAGER DANG NHAP VA VAO TRANG QUAN LY
+1) Manager dang nhap thanh cong va nhan access token.
+2) Frontend luu token va gui Authorization Bearer cho cac API can phan quyen.
+3) Manager vao dashboard de xem tong quan.
+4) Tu dashboard, manager co the di chuyen den:
+	 - Quan ly account
+	 - Quan ly san pham
+	 - Quan ly supplier
+	 - Quan ly nhap kho/ton kho
+
+Ket qua mong doi:
+- Khong co role manager thi khong truy cap duoc API duoc bao ve.
+- Co role manager thi truy cap duoc day du luong nghiep vu noi bo.
+
+--------------------------------------------------------------------
+FLOW B - XEM DASHBOARD TONG HOP DU LIEU
+--------------------------------------------------------------------
+
+B1. Muc tieu
+- Manager theo doi suc khoe kinh doanh theo ngay/thang/quy.
+- Xem nhanh cac chi so tong quan va top-product.
+
+B2. API su dung
+- GET /api/v1/dashboard?startDate=yyyy-MM-dd&endDate=yyyy-MM-dd
+- GET /api/v1/dashboard/top-products?startDate=yyyy-MM-dd&endDate=yyyy-MM-dd
+
+B3. Luong chi tiet
+1) Frontend mo dashboard, set mac dinh range (VD: 30 ngay gan nhat).
+2) Goi API dashboard tong quan.
+3) Goi API top-products.
+4) Hien thi card KPI + chart + bang top san pham.
+5) Manager doi bo loc ngay, frontend goi lai 2 API.
+
+B4. Du lieu manager thuong can xem
+- Tong doanh thu theo range.
+- So don hang thanh cong/huy/hoan.
+- Gia tri trung binh don hang.
+- Top san pham ban chay (so luong, doanh thu).
+- Bien dong so lieu theo ngay.
+
+B5. Tinh huong loi va cach xu ly
+- startDate > endDate: frontend can chan truoc; backend tra loi hop le.
+- Range qua lon: can pagination/aggregation de tranh cham.
+- API top-products khong co @PreAuthorize trong controller:
+	+ Neu SecurityConfig da chan route thi OK.
+	+ Neu chua chan thi de xuat bo sung phan quyen ro rang.
+
+B6. Acceptance criteria
+- Manager xem duoc dashboard theo moi khoang ngay hop le.
+- Khi doi bo loc, du lieu cap nhat dung.
+- Khong co token/role sai thi bi 401/403.
+
+--------------------------------------------------------------------
+FLOW C - QUAN LY ACCOUNT (TAO/SUA/XOA/XEM)
+--------------------------------------------------------------------
+
+C1. Muc tieu
+- Manager quan ly tai khoan nhan su trong he thong.
+
+C2. API su dung
+- GET /users
+- POST /users/admin/create
+- PUT /users/admin/update
+- DELETE /users/{username}
+
+C3. Luong tao account (Manager tao user moi)
+1) Manager vao man hinh account management.
+2) Frontend load danh sach users tu GET /users.
+3) Manager bam "Create User", nhap thong tin.
+4) Frontend validate co ban (required, email format, so dien thoai...).
+5) Goi POST /users/admin/create.
+6) Backend tao user, tra ve thong tin user moi.
+7) Frontend thong bao thanh cong, refresh danh sach.
+
+C4. Luong sua account
+1) Manager chon 1 user trong danh sach.
+2) Frontend mo form update, preload du lieu user.
+3) Manager sua role/trang thai/thong tin cho phep.
+4) Goi PUT /users/admin/update.
+5) Backend cap nhat va tra ve user sau cap nhat.
+6) Frontend cap nhat row, ghi log thao tac (neu co).
+
+C5. Luong xoa account
+1) Manager chon user can xoa.
+2) Frontend hien modal xac nhan lan 2.
+3) Goi DELETE /users/{username}.
+4) Backend xoa user va tra message.
+5) Frontend refresh danh sach.
+
+C6. Rule nghiep vu can thong nhat
+- Khong cho manager xoa chinh minh.
+- Khong cho xoa account admin root (neu co).
+- Neu user da gan du lieu quan trong, can soft-delete thay vi hard-delete.
+- Moi thao tac account nen ghi audit log.
+
+C7. Loi thuong gap
+- Username khong ton tai -> 404/Business error.
+- Trung email/so dien thoai khi tao -> 400.
+- Role manager khong du quyen route nao do config sai -> 403.
+
+C8. Acceptance criteria
+- Manager tao/sua/xoa account theo dung quyen.
+- Danh sach account cap nhat dung sau moi thao tac.
+- Loi validation hien thi ro rang cho nguoi dung.
+
+--------------------------------------------------------------------
+FLOW D - QUAN LY PRODUCT (TIM KIEM/THEM/SUA/XOA)
+--------------------------------------------------------------------
+
+D1. Muc tieu
+- Manager quan ly catalog san pham va noi dung ban hang.
+
+D2. API su dung
+- GET /api/products/admin/search
+- POST /api/products (ModelAttribute + imageFiles)
+- PUT /api/products
+- DELETE /api/products/{id}
+- GET /api/products/brands (ho tro bo loc)
+- GET /api/products/{id} (xem chi tiet)
+
+D3. Luong tim kiem/loc product
+1) Manager vao trang quan ly product.
+2) Frontend goi GET /api/products/admin/search voi cac filter:
+	 - name
+	 - minPrice
+	 - maxPrice
+	 - brand
+3) Render bang ket qua.
+4) Manager thay doi filter -> goi lai API.
+
+D4. Luong them product moi
+1) Manager bam "Create Product".
+2) Nhap thong tin product va upload image.
+3) Frontend gui request multipart:
+	 - ProductCreateRequest
+	 - imageFiles[]
+4) Backend tao product, luu image, tra ProductResponse.
+5) Frontend them dong moi vao danh sach.
+
+D5. Luong sua product
+1) Manager chon product can sua.
+2) Frontend load chi tiet qua GET /api/products/{id} (neu can).
+3) Manager cap nhat gia, ten, mo ta, thuoc tinh.
+4) Goi PUT /api/products voi ProductUpdateRequest.
+5) Backend cap nhat, tra response moi.
+6) Frontend refresh danh sach/chi tiet.
+
+D6. Luong xoa product
+1) Manager bam xoa product.
+2) Frontend xac nhan thao tac.
+3) Goi DELETE /api/products/{id}.
+4) Backend xoa thanh cong tra 204 No Content.
+5) Frontend bo dong vua xoa khoi UI.
+
+D7. Rule nghiep vu de xuat
+- Khong cho xoa san pham dang duoc tham chieu boi don hang chua ket thuc.
+- Neu can bao toan du lieu bao cao: nen soft-delete.
+- Gia ban khong nho hon 0.
+- Product name khong trung theo cung brand (neu business yeu cau uniqueness).
+
+D8. Acceptance criteria
+- Manager tim kiem nhanh va dung bo loc.
+- Them/sua/xoa product thanh cong khi input hop le.
+- Upload image hoat dong on dinh.
+- Loi duoc tra ve ro rang khi vi pham rule.
+
+--------------------------------------------------------------------
+FLOW E - QUAN LY SUPPLIER (THEM MOI + BO SUNG BRAND)
+--------------------------------------------------------------------
+
+E1. Muc tieu
+- Manager quan ly nha cung cap va bo danh muc brand de phuc vu nhap kho.
+
+E2. API su dung
+- GET /api/suppliers
+- POST /api/suppliers/with-brands
+- POST /api/suppliers/{supplierId}/brands
+
+E3. Luong xem danh sach supplier
+1) Frontend goi GET /api/suppliers.
+2) Hien thi danh sach nha cung cap + thong tin chinh.
+
+E4. Luong tao supplier moi kem brands
+1) Manager chon "Create Supplier".
+2) Nhap thong tin supplier.
+3) Them danh sach brands ban dau.
+4) Frontend gui multipart len /with-brands.
+5) Backend tao supplier + lien ket brands.
+6) Frontend thong bao thanh cong va reload danh sach.
+
+E5. Luong bo sung brands cho supplier da ton tai
+1) Manager chon supplier cu the.
+2) Mo man hinh "Add brands".
+3) Nhap danh sach brand moi.
+4) Goi POST /api/suppliers/{supplierId}/brands voi JSON list.
+5) Backend them brands vao supplier.
+6) Frontend cap nhat danh sach brand cua supplier.
+
+E6. Rule nghiep vu quan trong
+- Khong cho tao supplier trung ten/ma (neu business co quy dinh).
+- Khong cho add brand trung lap trong cung supplier.
+- Can thong bao ro neu supplierId khong ton tai.
+
+E7. Acceptance criteria
+- Manager tao supplier va add brand thanh cong.
+- Danh sach supplier/brand cap nhat ngay sau thao tac.
+- Loi duplicate/not found duoc tra ve dung.
+
+--------------------------------------------------------------------
+FLOW F - CAP NHAT PHAN NHAP KHO THEO SUPPLIER (phan ban goi la "cap nhat ... supplier")
+--------------------------------------------------------------------
+
+F1. Muc tieu
+- Manager dat don nhap tu supplier.
+- Theo doi trang thai don nhap.
+- Xac nhan nhan hang thuc te va cap nhat ton kho.
+
+F2. API su dung
+- GET /api/inventory-receipts/products/search?supplierId=...
+- POST /api/inventory-receipts
+- GET /api/inventory-receipts
+- GET /api/inventory-receipts/{id}
+- PUT /api/inventory-receipts/{id}/receive
+- GET /api/inventory/products
+
+F3. Luong lap don nhap kho
+1) Manager chon supplier.
+2) Frontend goi API products/search theo supplierId de lay mat hang kha dung.
+3) Manager chon cac item can nhap, so luong, gia nhap du kien.
+4) Frontend gui POST /api/inventory-receipts.
+5) Backend tao phieu nhap o trang thai ban dau.
+6) Frontend hien thi ma phieu nhap va danh sach vua tao.
+
+F4. Luong theo doi danh sach phieu nhap
+1) Manager vao trang inventory receipts.
+2) Goi GET /api/inventory-receipts.
+3) Hien thi list phieu + trang thai (pending/received... tuy business status).
+4) Manager click 1 phieu de xem chi tiet (GET /{id}).
+
+F5. Luong nhan hang thuc te va cap nhat ton
+1) Hang ve kho, manager/staff doi chieu so lieu thuc nhan.
+2) Goi PUT /api/inventory-receipts/{id}/receive kem InventoryReceiptReceiveRequest.
+3) Backend:
+	 - Cap nhat so luong/gia tri thuc nhan tren phieu.
+	 - Chuyen trang thai phieu sang da nhan.
+	 - Cong ton kho cho cac product lien quan.
+4) Frontend thong bao thanh cong.
+5) Frontend goi GET /api/inventory/products de hien ton kho moi nhat.
+
+F6. Tinh huong loi can test ky
+- supplierId khong ton tai khi search product.
+- receiptId khong ton tai khi receive.
+- receive 2 lan cung 1 phieu (idempotency/business lock).
+- so luong nhan am hoac khong hop le.
+- gia tri nhap khong hop le.
+
+F7. Acceptance criteria
+- Tao phieu nhap thanh cong tu du lieu supplier.
+- Xac nhan nhan hang cap nhat dung ton kho.
+- Khong cho cap nhat sai trang thai nghiep vu.
+
+====================================================================
+IV. MA TRAN CHUC NANG MANAGER (GOI Y CHO UI/QA)
+====================================================================
+
+1) Dashboard module
+- View KPI tong hop: PASS
+- Loc theo ngay: PASS
+- Xem top products: PASS
+
+2) User module
+- List users: PASS
+- Create user by manager: PASS
+- Update user by manager: PASS
+- Delete user by manager: PASS
+
+3) Product module
+- Search admin scope: PASS
+- Create product: PASS
+- Update product: PASS
+- Delete product: PASS
+
+4) Supplier module
+- List supplier: PASS
+- Create supplier with brands: PASS
+- Add brands to existing supplier: PASS
+
+5) Inventory receipt module
+- Search products by supplier: PASS
+- Create inventory receipt: PASS
+- View all receipts: PASS
+- View receipt detail: PASS
+- Receive receipt and update stock: PASS
+- View inventory quantity: PASS
+
+====================================================================
+V. DE XUAT NANG CAP DE LUONG MANAGER CHAC CHAN HON
+====================================================================
+
+1) Bao mat
+- Bo sung/ra soat @PreAuthorize cho tat ca route nhay cam, dac biet dashboard top-products va supplier APIs.
+- Audit log cho hanh dong quan tri: tao/sua/xoa user, tao/sua/xoa product, receive inventory.
+
+2) Do on dinh
+- Them pagination/sort cho list lon (users, products, receipts).
+- Them optimistic locking hoac business lock cho receive receipt tranh thao tac dong thoi.
+
+3) Du lieu va nghiep vu
+- Chuan hoa business status cho inventory receipt.
+- Soft delete cho user/product neu can bao cao lich su.
+- Validation sau hon cho gia, so luong, duplicate rules.
+
+4) Trai nghiem giao dien
+- Dashboard co preset thoi gian: Today, 7 days, 30 days, Month-to-date.
+- Form product va supplier co preview loi truoc khi submit.
+- Co modal xac nhan cho thao tac nguy co cao.
+
+====================================================================
+VI. CHECKLIST TEST NHANH CHO TEAM QA (MANAGER)
+====================================================================
+
+1) Dashboard
+- Token manager hop le -> xem duoc dashboard.
+- Token role khac khong du quyen -> 403.
+- Loc date invalid -> bao loi ro.
+
+2) User
+- Tao user moi thanh cong.
+- Tao user trung thong tin -> fail dung message.
+- Sua user thanh cong.
+- Xoa user thanh cong va list giam 1.
+
+3) Product
+- Tao product co image thanh cong.
+- Sua product cap nhat dung field.
+- Xoa product dung id -> 204.
+- Search theo name/price/brand dung ket qua.
+
+4) Supplier
+- Tao supplier + brands thanh cong.
+- Add brands cho supplier ton tai thanh cong.
+- Add brands cho supplier khong ton tai -> fail dung.
+
+5) Inventory
+- Search products theo supplier dung.
+- Tao receipt thanh cong.
+- Receive receipt cap nhat ton kho dung.
+- Receive lai phieu da nhan -> bi chan theo rule.
+
+====================================================================
+VII. TOM TAT 1 CAU
+====================================================================
+
+Manager trong he thong nay co the giai quyet tron ven cac nghiep vu quan tri: theo doi hieu qua kinh doanh tren dashboard, van hanh account nhan su, quan ly danh muc product, quan ly supplier, va dieu phoi nhap kho de cap nhat ton theo du lieu thuc te.
+

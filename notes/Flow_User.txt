@@ -1,0 +1,1189 @@
+﻿FLOW USER - EYEWEAR MANAGEMENT BACKEND
+
+1) MUC TIEU
+- Tai lieu nay mo ta dung luong nghiep vu cua USER/CUSTOMER.
+- Tap trung vao hanh trinh mua hang thuc te, khong viet lan man.
+- Moi buoc gan voi API backend hien co.
+
+2) PHAM VI USER
+- Dang ky, dang nhap, refresh token, logout.
+- Tim kiem san pham, xem chi tiet, thu kinh (try-on).
+- OCR don kinh tu anh.
+- Quan ly gio hang.
+- Checkout preview.
+- Tao don hang.
+- Thanh toan online (PayOS/VNPAY) hoac COD.
+- Theo doi lich su/trang thai don.
+- Huy don.
+- Tao yeu cau doi tra.
+- Cap nhat thong tin ca nhan va dia chi mac dinh.
+
+3) API USER SU DUNG
+3.1 Auth
+- POST /auth/token
+- POST /auth/refresh
+- POST /auth/introspect
+- POST /auth/logout
+
+3.2 User profile
+- POST /users
+- GET /users/my-info
+- PUT /users/my-info
+- PUT /users/my-address
+
+3.3 Product
+- GET /api/products/search
+- GET /api/products/brands
+- GET /api/products/{id}
+- GET /api/products/{productId}/try-on-config
+
+3.4 Prescription OCR
+- POST /api/prescriptions/parse-image
+
+3.5 Cart
+- POST /api/cart/add
+- GET /api/cart/getAllCart
+- PUT /api/cart/update
+- DELETE /api/cart/delete/{cartItemId}
+- DELETE /api/cart/deleteAllCart
+
+3.6 Checkout + Shipping
+- GET /ghn/provinces
+- GET /ghn/districts?provinceId=...
+- GET /ghn/wards?districtId=...
+- POST /checkout/preview
+
+3.7 Order
+- POST /orders
+- GET /orders/history
+- GET /orders/{orderId}
+- GET /orders/{orderId}/detail
+- POST /orders/{orderId}/cancel
+
+3.8 Payment
+- POST /api/payment/create-payos
+- GET /api/payment/check-status/{orderCode}
+- GET /api/payment/payos-return
+- GET /api/payment/payos-cancel
+- GET /payments/vnpay/return
+- GET /payments/vnpay/ipn
+
+3.9 Return exchange
+- POST /api/return-exchanges
+- GET /api/return-exchanges/my-requests
+- GET /api/return-exchanges/{returnExchangeId}
+- GET /api/return-exchanges/code/{returnCode}
+- DELETE /api/return-exchanges/{returnExchangeId}
+
+==================================================
+FLOW CHI TIET THEO NGHIEP VU USER
+==================================================
+
+FLOW 1: DANG KY TAI KHOAN MOI
+Muc tieu:
+- User tao tai khoan de mua hang va theo doi don.
+
+Buoc xu ly:
+1. User mo man hinh Register.
+2. User nhap thong tin (username/password/email/phone... theo request).
+3. Frontend validate form co ban:
+   - Required field.
+   - Email format.
+   - Password rule.
+4. Frontend goi POST /users.
+5. Backend tao user moi.
+6. Frontend thong bao tao tai khoan thanh cong.
+7. User chuyen sang man hinh Dang nhap.
+
+Ket qua mong doi:
+- Tai khoan duoc tao thanh cong.
+- Neu trung username/email thi thong bao ro.
+
+--------------------------------------------------
+FLOW 2: DANG NHAP + DUY TRI PHIEN LAM VIEC
+Muc tieu:
+- User nhan access token de goi API can xac thuc.
+
+Buoc xu ly:
+1. User nhap thong tin dang nhap.
+2. Frontend goi POST /auth/token.
+3. Backend xac thuc va tra token.
+4. Frontend luu token (theo chinh sach bao mat cua du an).
+5. Frontend gui Authorization: Bearer <token> cho API private.
+6. Khi token sap het han, goi POST /auth/refresh.
+7. Khi user bam logout, goi POST /auth/logout va xoa token local.
+
+Luu y:
+- POST /auth/introspect co the dung de kiem tra token hop le neu can.
+
+--------------------------------------------------
+FLOW 3: USER XEM DANH SACH SAN PHAM
+Muc tieu:
+- User browse va loc san pham phu hop nhu cau.
+
+Buoc xu ly:
+1. Frontend load danh sach brand: GET /api/products/brands.
+2. User nhap tu khoa va bo loc (name/minPrice/maxPrice/brand).
+3. Frontend goi GET /api/products/search.
+4. Backend tra list ProductResponse.
+5. Frontend render list card san pham.
+6. User chon 1 san pham de xem chi tiet.
+7. Frontend goi GET /api/products/{id}.
+8. Backend tra ProductDetailResponse.
+9. Frontend hien thi thong so day du.
+
+Ket qua mong doi:
+- Tim kiem nhanh.
+- Loc dung theo brand va khoang gia.
+
+--------------------------------------------------
+FLOW 4: USER THU KINH AO (TRY-ON)
+Muc tieu:
+- User trai nghiem truoc khi mua.
+
+Buoc xu ly:
+1. User dang o trang chi tiet product.
+2. Frontend goi GET /api/products/{productId}/try-on-config.
+3. Neu co config:
+   - Frontend nap model/config de hien thi try-on.
+4. Neu khong co config:
+   - Frontend thong bao "San pham chua ho tro try-on".
+5. User quay lai buoc them gio hoac tiep tuc xem san pham khac.
+
+Luu y:
+- Upload/xoa try-on config la quyen staff/admin/manager, khong phai user.
+
+--------------------------------------------------
+FLOW 5: USER OCR DON KINH TU ANH
+Muc tieu:
+- User khong can nhap tay thong so don kinh.
+
+Buoc xu ly:
+1. User mo man hinh "Upload prescription".
+2. User chon anh don kinh.
+3. Frontend goi POST /api/prescriptions/parse-image (multipart).
+4. Backend OCR va tra ve PrescriptionOcrResponse.
+5. Frontend hien thi ket qua OCR.
+6. User xac nhan/chinh sua neu can.
+7. Frontend dung thong so nay cho buoc them gio/checkout.
+
+Ket qua mong doi:
+- Giam sai sot do nhap tay.
+
+--------------------------------------------------
+FLOW 6: USER QUAN LY GIO HANG
+Muc tieu:
+- User gom san pham can mua vao gio.
+
+Buoc xu ly:
+1. User bam "Add to cart" tai trang chi tiet.
+2. Frontend goi POST /api/cart/add.
+3. Backend add hoac merge item trong gio.
+4. Frontend cap nhat icon/cart badge.
+5. User vao trang cart:
+   - GET /api/cart/getAllCart.
+6. User cap nhat so luong:
+   - PUT /api/cart/update.
+7. User xoa 1 item:
+   - DELETE /api/cart/delete/{cartItemId}.
+8. User xoa toan bo gio:
+   - DELETE /api/cart/deleteAllCart.
+
+Business expectation:
+- So luong <= 0 bi chan.
+- Vuot ton kho bi bao loi.
+
+--------------------------------------------------
+FLOW 7: USER CHON DIA CHI GIAO HANG (GHN)
+Muc tieu:
+- Chon dia chi dung cau truc tinh/quan/phuong.
+
+Buoc xu ly:
+1. Frontend load tinh: GET /ghn/provinces.
+2. User chon tinh.
+3. Frontend load quan/huyen: GET /ghn/districts?provinceId=...
+4. User chon quan/huyen.
+5. Frontend load phuong/xa: GET /ghn/wards?districtId=...
+6. User nhap so nha/duong.
+7. Frontend tao full shipping address.
+
+Ket qua mong doi:
+- Dia chi hop le de tinh phi van chuyen/chot don.
+
+--------------------------------------------------
+FLOW 8: CHECKOUT PREVIEW
+Muc tieu:
+- User xem tong tien truoc khi dat don.
+
+Buoc xu ly:
+1. User bam "Checkout" tu gio hang.
+2. Frontend tao CheckoutPreviewRequest.
+3. Frontend goi POST /checkout/preview.
+4. Backend tinh preview:
+   - Tam tinh item.
+   - Discount (neu co).
+   - Phi van chuyen (neu logic co).
+   - Tong thanh toan.
+5. Frontend hien thi bang tong hop.
+6. User xac nhan thong tin giao hang va payment method.
+
+Ket qua mong doi:
+- User thay so tien ro rang truoc khi tao order.
+
+--------------------------------------------------
+FLOW 9: TAO DON HANG
+Muc tieu:
+- Chot thong tin mua hang thanh order.
+
+Buoc xu ly:
+1. User bam "Place order".
+2. Frontend tao CreateOrderRequest.
+3. Frontend goi POST /orders.
+4. Backend tao order, tao order items, set trang thai ban dau.
+5. Backend tra CreateOrderResponse (co orderId/orderCode tuy model).
+6. Frontend chuyen user den trang ket qua dat hang.
+
+Nhanh nhanh sau buoc nay:
+- Neu COD: coi nhu xong buoc thanh toan online.
+- Neu online payment: chuyen qua flow 10 hoac 11.
+
+--------------------------------------------------
+FLOW 10: THANH TOAN PAYOS
+Muc tieu:
+- User thanh toan online qua PayOS.
+
+Buoc xu ly:
+1. User chon payment method = PayOS.
+2. Frontend goi POST /api/payment/create-payos voi PaymentRequest.
+3. Backend tra ve payment link.
+4. Frontend redirect user sang trang PayOS.
+5. User thanh toan tren cong PayOS.
+6. Sau khi xong:
+   - PayOS redirect ve /api/payment/payos-return hoac /api/payment/payos-cancel.
+7. Backend redirect tiep ve frontend success/cancel page.
+8. Frontend co the poll trang thai:
+   - GET /api/payment/check-status/{orderCode}.
+9. Webhook PayOS vao /api/payment/payos-webhook de cap nhat trang thai chinh xac.
+
+Luu y ky thuat:
+- Frontend nen uu tien trang thai do backend xac nhan (webhook + check-status), khong tin moi redirect URL.
+
+--------------------------------------------------
+FLOW 11: THANH TOAN VNPAY
+Muc tieu:
+- User thanh toan online qua VNPAY.
+
+Buoc xu ly:
+1. User chon VNPAY (neu du an co nut thanh toan nay tren FE).
+2. User duoc redirect sang cong VNPAY.
+3. VNPAY redirect browser ve GET /payments/vnpay/return.
+4. Backend tai /return:
+   - Doc vnp params.
+   - Verify signature.
+   - Xu ly callback service cap nhat DB.
+   - Xac dinh success/cancel/fail.
+   - Redirect ve frontend success/cancel/fail path.
+5. VNPAY goi server-to-server GET /payments/vnpay/ipn:
+   - Backend verify signature.
+   - Confirm ket qua chinh thuc.
+
+Ket qua mong doi:
+- Trang thai payment duoc cap nhat dung, tranh double confirm.
+
+--------------------------------------------------
+FLOW 12: USER XEM LICH SU DON VA CHI TIET DON
+Muc tieu:
+- User theo doi sau khi dat hang.
+
+Buoc xu ly:
+1. User vao "My orders".
+2. Frontend goi GET /orders/history.
+3. Backend tra list CustomerOrderHistoryResponse.
+4. User bam vao 1 don:
+   - GET /orders/{orderId} de lay trang thai.
+   - GET /orders/{orderId}/detail de lay chi tiet day du.
+5. Frontend hien thi timeline trang thai don.
+
+Ket qua mong doi:
+- User biet don dang o buoc nao.
+
+--------------------------------------------------
+FLOW 13: USER HUY DON HANG
+Muc tieu:
+- User huy don khi con nam trong rule cho phep.
+
+Buoc xu ly:
+1. User vao chi tiet don.
+2. User bam "Cancel order".
+3. Frontend mo form ly do huy.
+4. Neu can thong tin QR tai khoan nhan tien (refund):
+   - User upload customerAccountQrFile.
+5. Frontend goi POST /orders/{orderId}/cancel (multipart):
+   - request = CustomerCancelOrderRequest
+   - customerAccountQrFile (optional)
+6. Backend validate:
+   - Trang thai don co cho phep huy khong.
+   - Du lieu request hop le khong.
+7. Backend cap nhat trang thai don.
+8. Frontend hien ket qua huy don thanh cong/that bai.
+
+Ket qua mong doi:
+- Khong cho huy don sai trang thai.
+
+--------------------------------------------------
+FLOW 14: USER DOI TRA (RETURN/EXCHANGE)
+Muc tieu:
+- Ho tro hau mai sau ban.
+
+Buoc xu ly tao request doi tra:
+1. User vao man hinh Return/Exchange.
+2. User nhap thong tin request + item detail.
+3. User upload itemImages va co the upload customerImageQr.
+4. Frontend goi POST /api/return-exchanges (multipart):
+   - request (json)
+   - itemImages[]
+   - customerImageQr (optional)
+5. Backend tao return exchange request.
+6. Frontend thong bao tao yeu cau thanh cong.
+
+Buoc user theo doi request doi tra:
+1. Frontend goi GET /api/return-exchanges/my-requests.
+2. User chon tung request:
+   - GET /api/return-exchanges/{returnExchangeId}
+   hoac GET /api/return-exchanges/code/{returnCode}
+3. Frontend hien trang thai xu ly.
+
+Buoc user xoa request (neu rule cho phep):
+1. User bam xoa.
+2. Frontend goi DELETE /api/return-exchanges/{returnExchangeId}.
+3. Backend xoa request.
+4. Frontend cap nhat list.
+
+--------------------------------------------------
+FLOW 15: USER CAP NHAT THONG TIN CA NHAN
+Muc tieu:
+- User tu quan ly profile cua minh.
+
+Buoc xu ly:
+1. User vao trang account.
+2. Frontend goi GET /users/my-info de do du lieu.
+3. User sua ten/sdt/thong tin cho phep.
+4. Frontend goi PUT /users/my-info.
+5. Backend cap nhat profile.
+6. Frontend thong bao thanh cong.
+
+Cap nhat dia chi mac dinh:
+1. User vao phan dia chi.
+2. Frontend goi PUT /users/my-address.
+3. Backend cap nhat dia chi default.
+4. Frontend hien message "Update default address successfully".
+
+==================================================
+SCENARIO END-TO-END MAU
+==================================================
+
+SCENARIO A: MUA NHANH KHONG OCR - COD
+1. Login.
+2. Search product.
+3. Xem detail.
+4. Add to cart.
+5. Cart update quantity.
+6. Checkout preview.
+7. Tao order.
+8. Chon COD.
+9. Xem order history.
+
+SCENARIO B: MUA KINH CO OCR + THANH TOAN PAYOS
+1. Login.
+2. Upload prescription image OCR.
+3. Chon product phu hop.
+4. Add to cart kem thong so can thiet.
+5. Checkout preview.
+6. Tao order.
+7. Tao link PayOS.
+8. Thanh toan tren cong PayOS.
+9. Quay ve success page.
+10. Check order status/history.
+
+SCENARIO C: DAT HANG ROI HUY DON
+1. Login.
+2. Tao order.
+3. Vao chi tiet don.
+4. Gui request cancel + ly do.
+5. Backend kiem tra trang thai.
+6. Don duoc huy neu hop le.
+
+SCENARIO D: DOI TRA SAU MUA
+1. Login.
+2. Vao Return/Exchange.
+3. Tao request kem hinh anh.
+4. Theo doi trong my-requests.
+
+==================================================
+RULE NGHIEP VU KHUYEN NGHI (CHO TEAM CHOT)
+==================================================
+
+1. Auth
+- Sai thong tin dang nhap -> thong bao gon gon, khong lo ly do chi tiet.
+- Token het han -> FE thu refresh 1 lan truoc khi bat user login lai.
+
+2. Cart
+- So luong item phai > 0.
+- Vuot ton kho -> chan ngay tai backend.
+- Gia/khuyen mai tinh theo server, khong tin FE.
+
+3. Checkout/Order
+- Don gia, phi ship, discount tinh tai backend.
+- Tao order can idempotent o muc can thiet de tranh double click.
+
+4. Payment
+- Redirect success khong du de ket luan da thanh toan.
+- Trang thai thanh toan phai co xac nhan callback/webhook.
+- Verify signature la bat buoc cho VNPAY callback.
+
+5. Cancel
+- Chi cho huy trong trang thai duoc phep.
+- Neu co refund thi luu du thong tin can thiet.
+
+6. Return exchange
+- Chi cho tao request trong cua so thoi gian cho phep.
+- Bat buoc anh minh chung cho item loi/hong (neu business yeu cau).
+
+==================================================
+CHECKLIST QA NGAN GON CHO FLOW USER
+==================================================
+
+1. Dang ky
+- Tao account hop le -> pass.
+- Duplicate account -> fail dung message.
+
+2. Dang nhap
+- Token nhan dung.
+- Refresh hoat dong khi token het han.
+
+3. Product
+- Search theo ten/brand/gia dung.
+- Detail product tra dung data.
+
+4. Try-on
+- Product co config -> hien thi try-on.
+- Product khong config -> thong bao hop ly.
+
+5. OCR
+- Upload anh ro -> parse ra data.
+- Upload anh loi -> thong bao dung.
+
+6. Cart
+- Add item pass.
+- Update quantity pass.
+- Delete item pass.
+- Clear cart pass.
+
+7. Checkout + Order
+- Preview tinh tong dung.
+- Tao order thanh cong.
+
+8. Payment PayOS
+- Tao link pass.
+- Return/cancel redirect dung.
+- Check status dung.
+
+9. Payment VNPAY
+- Return verify signature dung.
+- IPN confirm dung.
+
+10. Order sau mua
+- History hien dung.
+- Detail/status dung.
+- Cancel theo rule dung.
+
+11. Return exchange
+- Tao request thanh cong voi multipart.
+- Xem my-requests dung.
+- Xoa request theo rule dung.
+
+==================================================
+KET LUAN
+==================================================
+
+- Day la flow user dung nghiep vu, di theo hanh trinh mua hang thuc te.
+- Co the dua tai lieu nay cho FE/QA de implement va test E2E.
+- Neu ban muon, buoc tiep theo toi se tach thanh 3 file:
+  + Flow_User_Main_Purchase.txt
+  + Flow_User_Payment.txt
+  + Flow_User_AfterSales.txt
+ de team de doc hon.
+
+==================================================
+PHU LUC: TEST CASE CHI TIET THEO TUNG API USER
+==================================================
+
+Ghi chu:
+- Muc tieu la cung cap testcase co the convert thanh test script ngay.
+- Bo case gom happy path, validation, auth, edge case, resiliency.
+- Cac endpoint private bat buoc co case 401 va 403.
+
+API01. POST /auth/token
+- Muc dich: Dang nhap lay access token
+- Loai endpoint: public
+API01-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API01-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API01-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API01-TC04 | Public access | Khong token van truy cap duoc endpoint neu thiet ke public.
+API01-TC05 | Optional token | Co token hoac khong token deu khong gay sai logic endpoint public.
+API01-TC06 | Abuse check | Verify endpoint public co gioi han request/rate-limit neu can.
+API01-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API01-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API01-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API01-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API01-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API01-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API01-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API02. POST /auth/refresh
+- Muc dich: Lam moi access token
+- Loai endpoint: private
+API02-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API02-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API02-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API02-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API02-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API02-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API02-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API02-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API02-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API02-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API02-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API02-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API02-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API03. POST /auth/introspect
+- Muc dich: Kiem tra token hop le
+- Loai endpoint: private
+API03-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API03-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API03-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API03-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API03-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API03-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API03-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API03-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API03-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API03-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API03-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API03-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API03-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API04. POST /auth/logout
+- Muc dich: Dang xuat phien hien tai
+- Loai endpoint: private
+API04-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API04-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API04-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API04-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API04-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API04-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API04-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API04-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API04-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API04-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API04-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API04-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API04-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API05. POST /users
+- Muc dich: Dang ky tai khoan user moi
+- Loai endpoint: public
+API05-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API05-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API05-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API05-TC04 | Public access | Khong token van truy cap duoc endpoint neu thiet ke public.
+API05-TC05 | Optional token | Co token hoac khong token deu khong gay sai logic endpoint public.
+API05-TC06 | Abuse check | Verify endpoint public co gioi han request/rate-limit neu can.
+API05-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API05-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API05-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API05-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API05-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API05-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API05-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API06. GET /users/my-info
+- Muc dich: Lay profile cua user dang nhap
+- Loai endpoint: private
+API06-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API06-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API06-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API06-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API06-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API06-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API06-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API06-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API06-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API06-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API06-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API06-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API06-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API07. PUT /users/my-info
+- Muc dich: Cap nhat profile user
+- Loai endpoint: private
+API07-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API07-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API07-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API07-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API07-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API07-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API07-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API07-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API07-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API07-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API07-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API07-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API07-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API08. PUT /users/my-address
+- Muc dich: Cap nhat dia chi mac dinh
+- Loai endpoint: private
+API08-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API08-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API08-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API08-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API08-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API08-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API08-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API08-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API08-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API08-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API08-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API08-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API08-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API09. GET /api/products/search
+- Muc dich: Tim kiem san pham theo bo loc
+- Loai endpoint: public
+API09-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API09-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API09-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API09-TC04 | Public access | Khong token van truy cap duoc endpoint neu thiet ke public.
+API09-TC05 | Optional token | Co token hoac khong token deu khong gay sai logic endpoint public.
+API09-TC06 | Abuse check | Verify endpoint public co gioi han request/rate-limit neu can.
+API09-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API09-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API09-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API09-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API09-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API09-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API09-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API10. GET /api/products/brands
+- Muc dich: Lay danh sach brand
+- Loai endpoint: public
+API10-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API10-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API10-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API10-TC04 | Public access | Khong token van truy cap duoc endpoint neu thiet ke public.
+API10-TC05 | Optional token | Co token hoac khong token deu khong gay sai logic endpoint public.
+API10-TC06 | Abuse check | Verify endpoint public co gioi han request/rate-limit neu can.
+API10-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API10-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API10-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API10-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API10-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API10-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API10-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API11. GET /api/products/{id}
+- Muc dich: Lay chi tiet san pham
+- Loai endpoint: public
+API11-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API11-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API11-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API11-TC04 | Public access | Khong token van truy cap duoc endpoint neu thiet ke public.
+API11-TC05 | Optional token | Co token hoac khong token deu khong gay sai logic endpoint public.
+API11-TC06 | Abuse check | Verify endpoint public co gioi han request/rate-limit neu can.
+API11-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API11-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API11-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API11-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API11-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API11-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API11-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API12. GET /api/products/{productId}/try-on-config
+- Muc dich: Lay cau hinh try-on
+- Loai endpoint: public
+API12-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API12-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API12-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API12-TC04 | Public access | Khong token van truy cap duoc endpoint neu thiet ke public.
+API12-TC05 | Optional token | Co token hoac khong token deu khong gay sai logic endpoint public.
+API12-TC06 | Abuse check | Verify endpoint public co gioi han request/rate-limit neu can.
+API12-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API12-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API12-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API12-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API12-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API12-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API12-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API13. POST /api/prescriptions/parse-image
+- Muc dich: OCR anh don kinh
+- Loai endpoint: public
+API13-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API13-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API13-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API13-TC04 | Public access | Khong token van truy cap duoc endpoint neu thiet ke public.
+API13-TC05 | Optional token | Co token hoac khong token deu khong gay sai logic endpoint public.
+API13-TC06 | Abuse check | Verify endpoint public co gioi han request/rate-limit neu can.
+API13-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API13-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API13-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API13-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API13-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API13-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API13-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API14. POST /api/cart/add
+- Muc dich: Them hoac gop item vao gio
+- Loai endpoint: private
+API14-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API14-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API14-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API14-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API14-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API14-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API14-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API14-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API14-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API14-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API14-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API14-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API14-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API15. GET /api/cart/getAllCart
+- Muc dich: Lay tat ca item trong gio
+- Loai endpoint: private
+API15-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API15-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API15-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API15-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API15-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API15-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API15-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API15-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API15-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API15-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API15-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API15-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API15-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API16. PUT /api/cart/update
+- Muc dich: Cap nhat so luong cart item
+- Loai endpoint: private
+API16-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API16-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API16-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API16-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API16-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API16-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API16-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API16-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API16-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API16-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API16-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API16-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API16-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API17. DELETE /api/cart/delete/{cartItemId}
+- Muc dich: Xoa 1 item khoi gio
+- Loai endpoint: private
+API17-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API17-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API17-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API17-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API17-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API17-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API17-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API17-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API17-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API17-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API17-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API17-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API17-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API18. DELETE /api/cart/deleteAllCart
+- Muc dich: Xoa toan bo gio
+- Loai endpoint: private
+API18-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API18-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API18-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API18-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API18-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API18-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API18-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API18-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API18-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API18-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API18-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API18-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API18-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API19. GET /ghn/provinces
+- Muc dich: Lay danh sach tinh thanh
+- Loai endpoint: public
+API19-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API19-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API19-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API19-TC04 | Public access | Khong token van truy cap duoc endpoint neu thiet ke public.
+API19-TC05 | Optional token | Co token hoac khong token deu khong gay sai logic endpoint public.
+API19-TC06 | Abuse check | Verify endpoint public co gioi han request/rate-limit neu can.
+API19-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API19-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API19-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API19-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API19-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API19-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API19-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API20. GET /ghn/districts
+- Muc dich: Lay danh sach quan huyen theo provinceId
+- Loai endpoint: public
+API20-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API20-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API20-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API20-TC04 | Public access | Khong token van truy cap duoc endpoint neu thiet ke public.
+API20-TC05 | Optional token | Co token hoac khong token deu khong gay sai logic endpoint public.
+API20-TC06 | Abuse check | Verify endpoint public co gioi han request/rate-limit neu can.
+API20-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API20-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API20-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API20-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API20-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API20-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API20-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API21. GET /ghn/wards
+- Muc dich: Lay danh sach phuong xa theo districtId
+- Loai endpoint: public
+API21-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API21-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API21-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API21-TC04 | Public access | Khong token van truy cap duoc endpoint neu thiet ke public.
+API21-TC05 | Optional token | Co token hoac khong token deu khong gay sai logic endpoint public.
+API21-TC06 | Abuse check | Verify endpoint public co gioi han request/rate-limit neu can.
+API21-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API21-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API21-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API21-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API21-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API21-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API21-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API22. POST /checkout/preview
+- Muc dich: Tinh tong tien va thong tin checkout
+- Loai endpoint: private
+API22-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API22-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API22-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API22-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API22-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API22-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API22-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API22-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API22-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API22-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API22-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API22-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API22-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API23. POST /orders
+- Muc dich: Tao don hang
+- Loai endpoint: private
+API23-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API23-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API23-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API23-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API23-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API23-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API23-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API23-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API23-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API23-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API23-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API23-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API23-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API24. GET /orders/history
+- Muc dich: Lay lich su don hang cua user
+- Loai endpoint: private
+API24-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API24-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API24-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API24-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API24-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API24-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API24-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API24-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API24-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API24-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API24-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API24-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API24-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API25. GET /orders/{orderId}
+- Muc dich: Lay trang thai don hang
+- Loai endpoint: private
+API25-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API25-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API25-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API25-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API25-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API25-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API25-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API25-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API25-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API25-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API25-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API25-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API25-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API26. GET /orders/{orderId}/detail
+- Muc dich: Lay chi tiet don hang
+- Loai endpoint: private
+API26-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API26-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API26-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API26-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API26-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API26-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API26-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API26-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API26-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API26-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API26-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API26-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API26-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API27. POST /orders/{orderId}/cancel
+- Muc dich: User gui yeu cau huy don
+- Loai endpoint: private
+API27-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API27-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API27-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API27-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API27-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API27-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API27-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API27-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API27-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API27-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API27-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API27-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API27-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API28. POST /api/payment/create-payos
+- Muc dich: Tao payment link PayOS
+- Loai endpoint: private
+API28-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API28-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API28-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API28-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API28-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API28-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API28-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API28-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API28-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API28-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API28-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API28-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API28-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API29. GET /api/payment/check-status/{orderCode}
+- Muc dich: Kiem tra trang thai thanh toan PayOS
+- Loai endpoint: private
+API29-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API29-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API29-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API29-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API29-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API29-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API29-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API29-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API29-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API29-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API29-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API29-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API29-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API30. POST /api/payment/payos-webhook
+- Muc dich: Nhan webhook tu PayOS
+- Loai endpoint: public
+API30-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API30-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API30-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API30-TC04 | Public access | Khong token van truy cap duoc endpoint neu thiet ke public.
+API30-TC05 | Optional token | Co token hoac khong token deu khong gay sai logic endpoint public.
+API30-TC06 | Abuse check | Verify endpoint public co gioi han request/rate-limit neu can.
+API30-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API30-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API30-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API30-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API30-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API30-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API30-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API31. GET /api/payment/payos-return
+- Muc dich: Redirect thanh toan thanh cong ve FE
+- Loai endpoint: public
+API31-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API31-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API31-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API31-TC04 | Public access | Khong token van truy cap duoc endpoint neu thiet ke public.
+API31-TC05 | Optional token | Co token hoac khong token deu khong gay sai logic endpoint public.
+API31-TC06 | Abuse check | Verify endpoint public co gioi han request/rate-limit neu can.
+API31-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API31-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API31-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API31-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API31-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API31-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API31-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API32. GET /api/payment/payos-cancel
+- Muc dich: Redirect huy thanh toan ve FE
+- Loai endpoint: public
+API32-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API32-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API32-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API32-TC04 | Public access | Khong token van truy cap duoc endpoint neu thiet ke public.
+API32-TC05 | Optional token | Co token hoac khong token deu khong gay sai logic endpoint public.
+API32-TC06 | Abuse check | Verify endpoint public co gioi han request/rate-limit neu can.
+API32-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API32-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API32-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API32-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API32-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API32-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API32-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API33. GET /payments/vnpay/return
+- Muc dich: Nhan return tu VNPAY va redirect FE
+- Loai endpoint: public
+API33-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API33-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API33-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API33-TC04 | Public access | Khong token van truy cap duoc endpoint neu thiet ke public.
+API33-TC05 | Optional token | Co token hoac khong token deu khong gay sai logic endpoint public.
+API33-TC06 | Abuse check | Verify endpoint public co gioi han request/rate-limit neu can.
+API33-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API33-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API33-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API33-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API33-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API33-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API33-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API34. GET /payments/vnpay/ipn
+- Muc dich: Nhan IPN VNPAY xac nhan server-to-server
+- Loai endpoint: public
+API34-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API34-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API34-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API34-TC04 | Public access | Khong token van truy cap duoc endpoint neu thiet ke public.
+API34-TC05 | Optional token | Co token hoac khong token deu khong gay sai logic endpoint public.
+API34-TC06 | Abuse check | Verify endpoint public co gioi han request/rate-limit neu can.
+API34-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API34-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API34-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API34-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API34-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API34-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API34-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API35. POST /api/return-exchanges
+- Muc dich: Tao yeu cau doi tra
+- Loai endpoint: private
+API35-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API35-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API35-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API35-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API35-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API35-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API35-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API35-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API35-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API35-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API35-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API35-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API35-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API36. GET /api/return-exchanges/my-requests
+- Muc dich: Lay danh sach doi tra cua user
+- Loai endpoint: private
+API36-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API36-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API36-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API36-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API36-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API36-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API36-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API36-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API36-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API36-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API36-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API36-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API36-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API37. GET /api/return-exchanges/{returnExchangeId}
+- Muc dich: Lay chi tiet doi tra theo id
+- Loai endpoint: private
+API37-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API37-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API37-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API37-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API37-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API37-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API37-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API37-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API37-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API37-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API37-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API37-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API37-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API38. GET /api/return-exchanges/code/{returnCode}
+- Muc dich: Lay chi tiet doi tra theo code
+- Loai endpoint: private
+API38-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API38-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API38-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API38-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API38-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API38-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API38-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API38-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API38-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API38-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API38-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API38-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API38-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+API39. DELETE /api/return-exchanges/{returnExchangeId}
+- Muc dich: Xoa/huy yeu cau doi tra
+- Loai endpoint: private
+API39-TC01 | Happy path | Input hop le, response status dung va data dung schema.
+API39-TC02 | Required field | Thieu field bat buoc, he thong tra loi validation ro rang.
+API39-TC03 | Invalid format | Truyen sai format du lieu, he thong reject dung quy tac.
+API39-TC04 | Auth missing | Khong gui bearer token, he thong tra 401.
+API39-TC05 | Auth expired | Token het han, he thong tra 401 de FE refresh.
+API39-TC06 | Forbidden role | Role khong du quyen, he thong tra 403.
+API39-TC07 | Not found case | ID/code khong ton tai (neu co tham so), he thong tra loi hop ly.
+API39-TC08 | Boundary min | Gia tri bien nho nhat hop le duoc xu ly dung.
+API39-TC09 | Boundary max | Gia tri bien lon nhat hop le duoc xu ly dung.
+API39-TC10 | Business rule | Input vi pham rule nghiep vu thi bi chan dung message.
+API39-TC11 | Idempotent/retry | Goi lap request do network retry khong tao sai du lieu.
+API39-TC12 | 5xx handling | Gia lap loi server, FE hien thong bao va cho phep retry.
+API39-TC13 | Logging/trace | Kiem tra log co thong tin can debug (khong lo data nhay cam).
+
+
