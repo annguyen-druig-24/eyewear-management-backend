@@ -31,6 +31,10 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/*
+    - Nơi tạo bản ghi Payment (PENDING) và gọi `PaymentGatewayService` để lấy `paymentUrl` trả về FE.
+*/
+
 @Service
 @RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
@@ -95,6 +99,14 @@ public class OrderServiceImpl implements OrderService {
     }
 
     // Xac dinh dia chi giao hang uu tien tu request, neu khong co thi lay dia chi mac dinh cua user.
+    /*
+        1) Mục đích: - Chuẩn hóa địa chỉ giao hàng trước khi tính ship và lưu shipping info
+        2) Dùng ở đâu: - Được gọi trong `createOrder` trước khi gọi `preview`
+        3) Logic:
+            - Nếu request đã đủ district/ward -> dùng request.
+            - Nếu thiếu -> fallback địa chỉ mặc định của user.
+            - Nếu user cũng chưa có default address code -> trả `null` (ship có thể về 0 hoặc FE phải bắt user chọn địa chỉ).
+     */
     private ShippingAddressRequest resolveAddress(ShippingAddressRequest reqAddr, User user) {
         if (reqAddr != null && reqAddr.getDistrictCode() != null && reqAddr.getWardCode() != null) {
             return reqAddr;
@@ -171,25 +183,33 @@ public class OrderServiceImpl implements OrderService {
     }
 
     // Xay dung ke hoach thanh toan day du hoac dat coc dua tren ket qua preview.
-    private PaymentPlan buildPaymentPlan(CheckoutPreviewResponse preview, CreateOrderRequest req) {
+    /*
+        1) Mục đích: - Quyết định tạo payment kiểu FULL hay DEPOSIT
+        2) Dùng ở đâu: - Được gọi trong `createOrder` sau khi có kết quả preview.
+        3) Logic:
+            - Không cần cọc: luôn FULL.
+            - Cần cọc + COD: bắt buộc method đặt cọc online riêng.
+            - Cần cọc + online: cho phép FULL hoặc DEPOSIT theo `payStrategy`.
+     */
+    private PaymentPlan buildPaymentPlan(CheckoutPreviewResponse preview, CreateOrderRequest request) {
         boolean depositRequired = preview.isDepositRequired();
 
-        String method = req.getPaymentMethod(); // COD/VNPAY/MOMO/PAYOS
-        String payStrategy = req.getPayStrategy(); // FULL/DEPOSIT
+        String method = request.getPaymentMethod(); // COD/VNPAY/PAYOS
+        String payStrategy = request.getPayStrategy(); // FULL/DEPOSIT
 
-        if (!depositRequired) {
+        if (!depositRequired) {     //Nếu ko cần cọc -> thanh toán full
             return PaymentPlan.full(method, preview.getTotalAmount());
         }
 
-        BigDecimal dep = preview.getDepositAmount();
-        BigDecimal rem = preview.getRemainingAmount();
+        BigDecimal depositAmount = preview.getDepositAmount();
+        BigDecimal remainingAmount = preview.getRemainingAmount();
 
         if ("COD".equalsIgnoreCase(method)) {
             // COD main but deposit must be online
-            if (req.getDepositPaymentMethod() == null) {
+            if (request.getDepositPaymentMethod() == null) {
                 throw new AppException(ErrorCode.DEPOSIT_PAYMENT_METHOD_REQUIRED);
             }
-            return PaymentPlan.deposit(req.getDepositPaymentMethod(), dep, rem);
+            return PaymentPlan.deposit(request.getDepositPaymentMethod(), depositAmount, remainingAmount);
         }
 
         // online main
@@ -198,7 +218,7 @@ public class OrderServiceImpl implements OrderService {
         }
 
         // default: DEPOSIT
-        return PaymentPlan.deposit(method, dep, rem);
+        return PaymentPlan.deposit(method, depositAmount, remainingAmount);
     }
 
     // Dong goi thong tin thanh toan tam thoi de xu ly trong luong tao don.
@@ -453,6 +473,16 @@ public class OrderServiceImpl implements OrderService {
     }
 
     // Tru ton kho va tao lich su giao dich kho sau khi don hang duoc tao.
+    /*
+        1) Mục đích: - Trừ tồn kho thật ngay sau khi tạo order thành công.
+        2) Dùng ở đâu: - Gọi trong `createOrder` sau khi lưu details.
+        3) Logic:
+            1. Gom quantity theo `productId` từ cart items.
+            2. Lock danh sách product bằng query `findByIdsForUpdate`.
+            3. Check thiếu hàng nếu không cho preorder.
+            4. Trừ onHand theo quantity có thể trừ.
+            5. Tạo log `InventoryTransaction` loại `SALE_OUT`.
+     */
     private void deductInventoryAfterOrderCreated(Order order, List<CartItem> cartItems, User user) {
         Map<Long, Integer> requiredByProductId = new HashMap<>();
 
@@ -560,6 +590,14 @@ public class OrderServiceImpl implements OrderService {
     }
 
     // Tao ban ghi order detail cho item khong luu o bang prescription order detail.
+    /*
+        1) Mục đích: - Build line item cho bảng `OrderDetail` (nhánh không lưu prescription detail).
+        2) Dùng ở đâu: - Trong vòng lặp item của `createOrder`.
+        3) Logic:
+            - Resolve product đúng ngữ cảnh cart item.
+            - Set unitPrice/quantity từ line preview.
+            - Nếu không resolve được product -> ném lỗi invalid checkout data.
+     */
     private OrderDetail buildNormalOrderDetail(Order order, CartItem ci, CheckoutLineItemResponse li) {
         Product product = resolveOrderDetailProduct(ci);
         if (product == null) {
@@ -611,7 +649,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
     // Phan loai cart item co duoc xem la prescription item theo rule hien tai hay khong.
-    private boolean isPrescriptionItemByBusinessRule(CartItem ci, CartItemPrescription rx) {
+    private boolean isPrescriptionItem(CartItem ci, CartItemPrescription rx) {
         if (ci.getFrame() != null && ci.getLens() != null) return true;
         if (ci.getLens() != null && ci.getFrame() == null) return rx != null && hasPrescriptionData(rx);
         if (ci.getContactLens() != null) return rx != null && hasPrescriptionData(rx);
@@ -619,9 +657,9 @@ public class OrderServiceImpl implements OrderService {
     }
 
     // Xac dinh loai don hang tong the dua tren tap item duoc checkout.
-    private String determineOrderTypeByBusinessRule(List<CheckoutLineItemResponse> previewItems,
-                                                    List<CartItem> cartItems,
-                                                    Map<Long, CartItemPrescription> rxMap) {
+    private String determineOrderType(List<CheckoutLineItemResponse> previewItems,
+                                      List<CartItem> cartItems,
+                                      Map<Long, CartItemPrescription> rxMap) {
         Map<Long, CheckoutLineItemResponse> previewMap = new HashMap<>();
         for (CheckoutLineItemResponse li : previewItems) {
             previewMap.put(li.getCartItemId(), li);
@@ -631,7 +669,7 @@ public class OrderServiceImpl implements OrderService {
         boolean hasPrescription = false;
         for (CartItem ci : cartItems) {
             CheckoutLineItemResponse li = previewMap.get(ci.getCartItemId());
-            boolean isPrescription = isPrescriptionItemByBusinessRule(ci, rxMap.get(ci.getCartItemId()));
+            boolean isPrescription = isPrescriptionItem(ci, rxMap.get(ci.getCartItemId()));
             boolean isPre = li != null && "PRE_ORDER".equals(li.getItemType());
             if (isPrescription) {
                 hasPrescription = true;
@@ -825,13 +863,34 @@ public class OrderServiceImpl implements OrderService {
 
     // Tao don hang tu cac cart item duoc chon va khoi tao shipping, invoice, payment lien quan.
     /*
-        Hàm này làm 6 nhóm việc chính trong 1 transaction:
-        - Xác thực user hiện tại
-        - Lấy và kiểm tra cart items của user
-        - Tính toán tiền/ship/discount (re-use checkoutService.preview)
-        - Tạo dữ liệu DB: Order, OrderDetail / PrescriptionOrderDetail, ShippingInfo, Invoice, Payment
-        - Update promotion used_count + xóa cart items
-        - Nếu online payment → tạo paymentUrl trả về cho FE redirect
+        1) Mục đích: toàn bộ nghiệp vụ đặt hàng trong **1 transaction**
+        2) Được dùng ở đâu: - Được gọi từ `OrderController.create(...)`.
+        3) Quy trình hoạt động (chi tiết theo step trong code):
+            1. **Auth**: lấy user hiện tại từ SecurityContext.
+            2. **Normalize cart IDs**: loại null/duplicate, reject nếu rỗng.
+            3. **Validate ownership cart items**: query theo `userId + ids`, thiếu item là lỗi.
+            4. **Load prescription map** cho các cart item.
+            5. **Resolve shipping address**: lấy từ request hoặc default user.
+            6. **Preview tiền** qua `checkoutService.preview` để dùng số tiền chuẩn.
+            7. **Validate promotion** FE gửi có áp dụng được không.
+            8. **Build payment plan** theo deposit rule + payment method.
+            9. **Insert Order**.
+            10. **Insert detail lines**:
+                - Normal items -> `OrderDetail`.
+                - Prescription items -> `PrescriptionOrderDetail`.
+            11. **Deduct inventory** + ghi transaction kho.
+            12. **Insert ShippingInfo**.
+            13. **Insert Invoice**.
+            14. **Insert Payment record(s)** theo plan FULL/DEPOSIT.
+            15. **Update promotion used_count**.
+            16. **Delete cart items** nếu không cần chờ online payment callback.
+            17. **Tạo payment URL** nếu cần redirect.
+            18. **Gửi email xác nhận** cho case không redirect.
+            19. **Build response** trả cho FE.
+        4) Các logic khác:
+            - Dùng `checkoutService.preview` để chống lệch tiền giữa màn preview và lúc tạo đơn thật.
+            - Với prescription (frame+lens) có quantity > 1: tạo nhiều dòng `PrescriptionOrderDetail` vì bảng không có cột quantity.
+            - Với COD + đơn yêu cầu cọc: bắt buộc `depositPaymentMethod` online.
      */
     @Override
     @Transactional
@@ -867,16 +926,16 @@ public class OrderServiceImpl implements OrderService {
         /*
             Tác dụng:
             - Với cartItem kiểu PRESCRIPTION, bạn cần thông số mắt (SPH/CYL/AXIS).
-            - Tạo rxMap để tra nhanh theo cartItemId khi loop items.
+            - Tạo cartItemPrescriptionMap để tra nhanh theo cartItemId khi loop items.
             Mục tiêu:
             - Tránh mỗi vòng lặp lại query DB -> tối ưu.
             - Tách dữ liệu “kính thuốc” (prescription) khỏi CartItem.
          */
-        Map<Long, CartItemPrescription> rxMap = new HashMap<>();
-        List<CartItemPrescription> rxList = cartItemPrescriptionRepo.findByCartItem_CartItemIdIn(ids);
-        for (CartItemPrescription rx : rxList) {
-            if (rx.getCartItem() != null && rx.getCartItem().getCartItemId() != null) {
-                rxMap.put(rx.getCartItem().getCartItemId(), rx);
+        Map<Long, CartItemPrescription> cartItemPrescriptionMap = new HashMap<>();
+        List<CartItemPrescription> cartItemPrescriptionList = cartItemPrescriptionRepo.findByCartItem_CartItemIdIn(ids);
+        for (CartItemPrescription cartItemPrescription : cartItemPrescriptionList) {
+            if (cartItemPrescription.getCartItem() != null && cartItemPrescription.getCartItem().getCartItemId() != null) {
+                cartItemPrescriptionMap.put(cartItemPrescription.getCartItem().getCartItemId(), cartItemPrescription);
             }
         }
 
@@ -911,7 +970,7 @@ public class OrderServiceImpl implements OrderService {
         order.setDiscountAmount(preview.getDiscountAmount());
         order.setShippingFee(preview.getShippingFee());
 
-        String orderType = determineOrderTypeByBusinessRule(preview.getItems(), cartItems, rxMap);
+        String orderType = determineOrderType(preview.getItems(), cartItems, cartItemPrescriptionMap);
         order.setOrderType(orderType);
         order.setOrderStatus("PENDING");
 
@@ -935,34 +994,34 @@ public class OrderServiceImpl implements OrderService {
 
         // 8.1) create prescription header if needed
         boolean hasPrescription = cartItems.stream()
-                .anyMatch(ci -> isPrescriptionItemByBusinessRule(ci, rxMap.get(ci.getCartItemId())));
-        PrescriptionOrder savedRxOrder = null;
+                .anyMatch(ci -> isPrescriptionItem(ci, cartItemPrescriptionMap.get(ci.getCartItemId())));
+        PrescriptionOrder savedPrescriptionOrder = null;
 
         if (hasPrescription) {
-            PrescriptionOrder rxOrder = new PrescriptionOrder();
-            rxOrder.setOrder(savedOrder);
-            rxOrder.setUser(user);
-            rxOrder.setPrescriptionDate(now());
-            savedRxOrder = prescriptionOrderRepo.save(rxOrder);
+            PrescriptionOrder prescriptionOrder = new PrescriptionOrder();
+            prescriptionOrder.setOrder(savedOrder);
+            prescriptionOrder.setUser(user);
+            prescriptionOrder.setPrescriptionDate(now());
+            savedPrescriptionOrder = prescriptionOrderRepo.save(prescriptionOrder);
         }
 
         // 8.2) loop items
         List<OrderDetail> normalDetails = new ArrayList<>();
-        List<PrescriptionOrderDetail> rxDetails = new ArrayList<>();
+        List<PrescriptionOrderDetail> prescriptionOrderDetails = new ArrayList<>();
 
         for (CartItem ci : cartItems) {
             CheckoutLineItemResponse li = lineMap.get(ci.getCartItemId());
             if (li == null) continue;
 
-            CartItemPrescription rx = rxMap.get(ci.getCartItemId());
-            boolean isPrescriptionItem = isPrescriptionItemByBusinessRule(ci, rx);
+            CartItemPrescription cartItemPrescription = cartItemPrescriptionMap.get(ci.getCartItemId());
+            boolean isPrescriptionItem = isPrescriptionItem(ci, cartItemPrescription);
             if (!isPrescriptionItem) {
                 normalDetails.add(buildNormalOrderDetail(savedOrder, ci, li));
             } else if (ci.getContactLens() != null) {
                 normalDetails.add(buildNormalOrderDetail(savedOrder, ci, li));
             } else {
                 // === PRESCRIPTION -> Prescription_Order_Detail
-                if (savedRxOrder == null) {
+                if (savedPrescriptionOrder == null) {
                     throw new AppException(ErrorCode.CART_ITEM_INVALID_FOR_CHECKOUT);
                 }
 
@@ -974,24 +1033,24 @@ public class OrderServiceImpl implements OrderService {
                 // => insert N dòng tương ứng qty (MVP)
                 for (int i = 0; i < qty; i++) {
                     PrescriptionOrderDetail pod = new PrescriptionOrderDetail();
-                    pod.setPrescriptionOrder(savedRxOrder);
+                    pod.setPrescriptionOrder(savedPrescriptionOrder);
                     pod.setFrame(ci.getFrame());
                     pod.setLens(ci.getLens());
 
-                    if (rx != null) {
-                        pod.setRightEyeSph(rx.getRightEyeSph());
-                        pod.setRightEyeCyl(rx.getRightEyeCyl());
-                        pod.setRightEyeAxis(rx.getRightEyeAxis());
-                        pod.setRightEyeAdd(rx.getRightEyeAdd());
+                    if (cartItemPrescription != null) {
+                        pod.setRightEyeSph(cartItemPrescription.getRightEyeSph());
+                        pod.setRightEyeCyl(cartItemPrescription.getRightEyeCyl());
+                        pod.setRightEyeAxis(cartItemPrescription.getRightEyeAxis());
+                        pod.setRightEyeAdd(cartItemPrescription.getRightEyeAdd());
 
-                        pod.setLeftEyeSph(rx.getLeftEyeSph());
-                        pod.setLeftEyeCyl(rx.getLeftEyeCyl());
-                        pod.setLeftEyeAxis(rx.getLeftEyeAxis());
-                        pod.setLeftEyeAdd(rx.getLeftEyeAdd());
+                        pod.setLeftEyeSph(cartItemPrescription.getLeftEyeSph());
+                        pod.setLeftEyeCyl(cartItemPrescription.getLeftEyeCyl());
+                        pod.setLeftEyeAxis(cartItemPrescription.getLeftEyeAxis());
+                        pod.setLeftEyeAdd(cartItemPrescription.getLeftEyeAdd());
 
-                        pod.setPd(rx.getPd());
-                        pod.setPdRight(rx.getPdRight());
-                        pod.setPdLeft(rx.getPdLeft());
+                        pod.setPd(cartItemPrescription.getPd());
+                        pod.setPdRight(cartItemPrescription.getPdRight());
+                        pod.setPdLeft(cartItemPrescription.getPdLeft());
                     }
 
                     // Sub_Total = unitPrice - perUnitDiscount (net per unit)
@@ -999,7 +1058,7 @@ public class OrderServiceImpl implements OrderService {
                     if (net.compareTo(BigDecimal.ZERO) < 0) net = BigDecimal.ZERO;
                     pod.setSubTotal(net);
 
-                    rxDetails.add(pod);
+                    prescriptionOrderDetails.add(pod);
                 }
             }
         }
@@ -1007,8 +1066,8 @@ public class OrderServiceImpl implements OrderService {
         if (!normalDetails.isEmpty()) {
             orderDetailRepo.saveAll(normalDetails);
         }
-        if (!rxDetails.isEmpty()) {
-            prescriptionOrderDetailRepo.saveAll(rxDetails);
+        if (!prescriptionOrderDetails.isEmpty()) {
+            prescriptionOrderDetailRepo.saveAll(prescriptionOrderDetails);
         }
 
         deductInventoryAfterOrderCreated(savedOrder, cartItems, user);
@@ -1048,21 +1107,21 @@ public class OrderServiceImpl implements OrderService {
         Payment createdPayment = null;
 
         if (plan.createDepositPayment) {
-            BigDecimal depAmount = normalizeOnlineAmount(plan.depositAmount);
-            Payment dep = Payment.builder()
+            BigDecimal depositAmount = normalizeOnlineAmount(plan.depositAmount);
+            Payment deposit = Payment.builder()
                     .order(savedOrder)
                     .paymentPurpose("DEPOSIT")
                     .createdAt(now())
                     .paymentDate(null)
                     .paymentMethod(plan.depositMethod)
-                    .amount(depAmount)
+                    .amount(depositAmount)
                     .status("PENDING")
                     .build();
-            paymentRepo.save(dep);
+            paymentRepo.save(deposit);
 
-            createdPayment = dep; // payment cần redirect
+            createdPayment = deposit; // payment cần redirect
 
-            Payment rem = Payment.builder()
+            Payment remaining = Payment.builder()
                     .order(savedOrder)
                     .paymentPurpose("REMAINING")
                     .createdAt(now())
@@ -1071,7 +1130,7 @@ public class OrderServiceImpl implements OrderService {
                     .amount(plan.remainingAmount)
                     .status("PENDING")
                     .build();
-            paymentRepo.save(rem);
+            paymentRepo.save(remaining);
 
         } else {
             BigDecimal fullAmount = normalizeOnlineAmount(plan.fullAmount);
@@ -1128,7 +1187,7 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
-        // Gửi mail Xác nhận đơn hàng luông nếu là COD
+        // Gửi mail Xác nhận đơn hàng luôn nếu là COD
         if (!redirect) {
             emailService.sendOrderSuccessEmail(
                     request.getRecipientEmail(),

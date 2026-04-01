@@ -16,6 +16,12 @@ import org.springframework.stereotype.Component;
 
 import com.nimbusds.jose.JOSEException;
 
+/*
+    - Decoder JWT tùy chỉnh.
+    - Kiểm tra token qua `introspect()` trước, sau đó verify chữ ký HS512.
+    --> Giải mã/kiểm tra token inbound
+ */
+
 @Component
 public class CustomJwtDecoder implements JwtDecoder {
     @Value("${jwt.signerKey}")
@@ -26,6 +32,19 @@ public class CustomJwtDecoder implements JwtDecoder {
 
     private NimbusJwtDecoder nimbusJwtDecoder = null;
 
+    /*
+        1) Dùng để làm gì? --> Giải mã + xác thực token cho Spring Security khi request mang Bearer token
+        2) Được dùng ở đâu? --> Được gọi tự động bởi OAuth2 Resource Server trong `SecurityConfig`
+        3) Quy trình:
+            1. Gọi `authenticationService.introspect(token)`.
+            2. Nếu `valid=false` thì throw `JwtException`.
+            3. Lazy-init `NimbusJwtDecoder` với `signerKey` HS512.
+            4. `nimbusJwtDecoder.decode(token)` để parse claims cho security context.
+        4) Ý nghĩa:
+            - Kết hợp 2 lớp bảo vệ:
+                + lớp nghiệp vụ (`introspect`: check hết hạn + blacklist),
+                + lớp crypto (`Nimbus`: verify chữ ký).
+     */
     @Override
     public Jwt decode(String token) throws JwtException {
 

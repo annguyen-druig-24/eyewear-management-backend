@@ -7,6 +7,12 @@ import lombok.experimental.FieldDefaults;
 
 import java.util.Date;
 
+/*
+    - Entity blacklist token theo `jti`.
+    - Lưu `id` (= JWT `jti`) và `expiryTime`.
+    - Dùng như blacklist để chặn token đã logout/refresh.
+*/
+
 @Entity
 @Getter
 @Setter

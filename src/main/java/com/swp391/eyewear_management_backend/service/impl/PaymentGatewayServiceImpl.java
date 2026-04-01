@@ -10,6 +10,11 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
+/*
+    - Dispatcher chọn cổng thanh toán (VNPAY/PAYOS/COD).
+    - Khi method=VNPAY thì gọi `vnpayService.createVnpayPaymentUrl(...)`.
+*/
+
 @Service
 @RequiredArgsConstructor
 public class PaymentGatewayServiceImpl implements PaymentGatewayService {
@@ -35,7 +40,7 @@ public class PaymentGatewayServiceImpl implements PaymentGatewayService {
             return paymentService.createPayOSPaymentUrl(paymentId, payosAmount, orderCodeStr);
         }
 
-        if ("MOMO".equals(m)) {
+        if ("MOMO".equals(m)) {     //Chưa làm
             // Mock MOMO: redirect về frontend success page thay vì backend
             return frontendProperties.getBaseUrl() + frontendProperties.getSuccessPath() 
                     + "?status=SUCCESS&paymentId=" + paymentId + "&orderId=" + orderId;

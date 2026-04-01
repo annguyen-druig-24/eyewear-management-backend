@@ -18,6 +18,18 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 
+/*
+    - Service chính tạo URL redirect sang VNPAY sandbox.
+          - chuẩn hóa amount về integer VND,
+          - nhân 100 theo chuẩn VNPAY,
+          - set params chuẩn (`vnp_Version`, `vnp_Command`, ...),
+          - sort params,
+          - tạo `hashData`,
+          - ký HMAC SHA512 bằng `hashSecret`,
+          - append `vnp_SecureHash`,
+          - trả URL sandbox hoàn chỉnh.
+*/
+
 @Service
 @RequiredArgsConstructor
 public class VnpayService {
@@ -27,6 +39,10 @@ public class VnpayService {
     private final VnpayProperties props;
     private final FrontendProperties feProps;
 
+    /*
+        1) Mục đích: sinh URL thanh toán VNPAY sandbox hoàn chỉnh.
+        2) Được dùng ở đâu: `PaymentGatewayServiceImpl#createPaymentUrl` khi method=VNPAY.
+    */
     public String createVnpayPaymentUrl(Long orderId, Long paymentId, BigDecimal amount) {
         BigDecimal vnd = (amount == null ? BigDecimal.ZERO : amount).setScale(0, RoundingMode.HALF_UP);
         long vnpAmount = vnd.multiply(new BigDecimal("100")).longValue();

@@ -16,6 +16,11 @@ import org.springframework.web.util.UriComponentsBuilder;
 import java.util.HashMap;
 import java.util.Map;
 
+/*
+    - Expose endpoint `/payments/vnpay/return` và `/payments/vnpay/ipn`.
+    - Verify signature, parse dữ liệu callback, gọi service xử lý kết quả.
+*/
+
 @RestController
 @RequestMapping("/payments/vnpay")
 @RequiredArgsConstructor

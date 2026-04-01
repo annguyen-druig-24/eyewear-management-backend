@@ -1,5 +1,9 @@
 package com.swp391.eyewear_management_backend.config;
 
+/*
+    - Chứa constants status/payment purpose/payment method dùng trong callback để cập nhật nghiệp vụ.
+*/
+
 public final class OrderConstants {
     private OrderConstants() {
     }

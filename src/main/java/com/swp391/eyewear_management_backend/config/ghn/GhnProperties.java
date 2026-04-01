@@ -10,7 +10,7 @@ public class GhnProperties {
     private String token;
     private Long shopId;
 
-    // điểm gửi (shop) - bạn phải set trong application.yml
+    // điểm gửi (shop) - phải set trong application.yml
     private Integer fromDistrictId;
     private String fromWardCode;
 

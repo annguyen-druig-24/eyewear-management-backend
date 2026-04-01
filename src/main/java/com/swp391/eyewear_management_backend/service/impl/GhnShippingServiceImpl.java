@@ -31,7 +31,7 @@ public class GhnShippingServiceImpl implements GhnShippingService {
             return new ShippingResult(BigDecimal.ZERO, null);
         }
 
-        PackageSpec spec = buildPackage(cartItems);
+        PackageSpec spec = buildPackage(cartItems); //tính trọng lượng đơn hàng theo các số đo đc set sẵn trong config vì khối lượng nhỏ
 
         // 1) get serviceId
         int serviceId = chooseServiceId(address.getDistrictCode());

@@ -14,9 +14,18 @@ import java.io.IOException;
 
 /*
     * Class này dùng để chặn quyền khi gọi method nhưng chỉ chặn quyền khi sử hasAnyAuthority(String ...) chứ ko dùng hasAnyRole(String ...)
+    * Trả JSON lỗi chuẩn khi có token nhưng không đủ quyền (403).
  */
 public class JwtAccessDeniedHandler implements AccessDeniedHandler {
 
+    /*
+        1) Dùng để làm gì? --> Trả response chuẩn khi user đã xác thực nhưng thiếu quyền (403)
+        2) Được dùng ở đâu? --> Khi `@PreAuthorize` hoặc `hasAnyAuthority` không thỏa
+        3) Steps:
+            1. Lấy `ErrorCode.UNAUTHORIZED`.
+            2. Set status/content type.
+            3. Trả JSON lỗi thống nhất.
+     */
     @Override
     public void handle(HttpServletRequest request, HttpServletResponse response, AccessDeniedException accessDeniedException) throws IOException, ServletException {
         ErrorCode errorCode = ErrorCode.UNAUTHORIZED;

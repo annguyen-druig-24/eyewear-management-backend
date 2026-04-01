@@ -1,5 +1,9 @@
 package com.swp391.eyewear_management_backend.service;
 
+/*
+    - Interface nghiệp vụ callback và enum kết quả xử lý.
+*/
+
 public interface VnpayCallbackService {
 
     /**

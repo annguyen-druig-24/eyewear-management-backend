@@ -20,6 +20,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.text.ParseException;
 
+/*
+    - API auth: `/auth/token`, `/auth/introspect`, `/auth/logout`, `/auth/refresh`.
+*/
+
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
@@ -28,6 +32,10 @@ public class AuthenticationController {
 
     AuthenticationService authenticationService;
 
+    /*
+        - Nhận username/password, gọi `AuthenticationService.authenticate()`.
+        - Trả token + thông tin role/name.
+     */
     @PostMapping("/token")
     ApiResponse<AuthenticationResponse> logIn(@RequestBody AuthenticationRequest request) {
         var result = authenticationService.authenticate(request);
@@ -36,6 +44,9 @@ public class AuthenticationController {
                 .build();
     }
 
+    /*
+        - Kiểm tra tính hợp lệ của token (không nhất thiết cấp quyền).
+     */
     @PostMapping("/introspect")
     ApiResponse<IntrospectResponse> logIn(@RequestBody IntrospectRequest request) throws ParseException, JOSEException {
         var result = authenticationService.introspect(request);
@@ -44,6 +55,9 @@ public class AuthenticationController {
                 .build();
     }
 
+    /*
+        - Vô hiệu hóa token hiện tại (blacklist theo `jti`).
+     */
     @PostMapping("/logout")
     ApiResponse<Void> logout(@RequestBody LogoutRequest request) throws ParseException, JOSEException {
         authenticationService.logout(request);
@@ -51,6 +65,9 @@ public class AuthenticationController {
                 .build();
     }
 
+    /*
+        - Verify refresh window, blacklist token cũ, cấp token mới.
+     */
     @PostMapping("/refresh")
     ApiResponse<AuthenticationResponse> refresh(@RequestBody RefreshRequest request) throws ParseException, JOSEException {
         var result = authenticationService.refreshToken(request);

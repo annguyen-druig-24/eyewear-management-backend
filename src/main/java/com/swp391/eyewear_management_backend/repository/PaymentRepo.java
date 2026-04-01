@@ -11,6 +11,11 @@ import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
 
+
+/*
+    - Query khóa bản ghi (`PESSIMISTIC_WRITE`) để callback idempotent/an toàn cạnh tranh.
+*/
+
 @Repository
 public interface PaymentRepo extends JpaRepository<Payment, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)

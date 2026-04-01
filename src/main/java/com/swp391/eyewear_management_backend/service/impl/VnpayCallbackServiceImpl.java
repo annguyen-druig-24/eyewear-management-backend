@@ -31,6 +31,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/*
+    - Logic cập nhật Payment/Order/Invoice/Shipping theo callback thành công/thất bại.
+*/
+
 @Service
 @RequiredArgsConstructor
 public class VnpayCallbackServiceImpl implements VnpayCallbackService {
