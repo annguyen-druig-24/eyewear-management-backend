@@ -1,121 +1,121 @@
 # Eyewear Management Backend
 
-Backend API cho hệ thống quản lý và kinh doanh kính mắt, được xây dựng bằng Spring Boot để phục vụ các nghiệp vụ bán hàng, quản lý sản phẩm, giỏ hàng, checkout, đơn hàng, thanh toán, vận chuyển, kho, đổi trả, dashboard và các tính năng AI hỗ trợ như chatbot gợi ý sản phẩm và OCR đơn kính thuốc.
+Backend API for an eyewear management and retail system, built with Spring Boot to support sales operations, product management, cart handling, checkout, orders, payments, shipping, inventory, returns, dashboards, and AI-powered features such as a product recommendation chatbot and OCR for prescription parsing.
 
-Project này không chỉ là một REST API cơ bản, mà còn tích hợp nhiều dịch vụ bên thứ ba để xử lý các bài toán thực tế:
+This project is more than just a basic REST API. It also integrates several third-party services to handle real-world business requirements:
 
-- Tính phí vận chuyển và thời gian giao dự kiến với GHN
-- Thanh toán online với VNPAY Sandbox và PayOS VietQR
-- Chatbot tư vấn sản phẩm bằng Gemini
-- OCR ảnh đơn kính thuốc bằng OCR.Space
-- Upload ảnh và tài nguyên try-on bằng Cloudinary
-- Gửi email HTML thông báo đơn hàng bằng Spring Mail + Thymeleaf
+- Shipping fee calculation and estimated delivery time via GHN
+- Online payments through VNPAY Sandbox and PayOS VietQR
+- Product recommendation chatbot powered by Gemini
+- Prescription image OCR via OCR.Space
+- Image and virtual try-on asset uploads via Cloudinary
+- HTML order notification emails using Spring Mail and Thymeleaf
 
-## Tính năng chính
+## Key Features
 
-- Xác thực và phân quyền bằng JWT, Spring Security và role-based authorization
-- Quản lý người dùng với các vai trò `CUSTOMER`, `ADMIN`, `MANAGER`, `SALES STAFF`, `OPERATIONS STAFF`
-- Quản lý sản phẩm, thương hiệu, supplier, hình ảnh sản phẩm
-- Quản lý giỏ hàng, xem trước checkout, áp dụng khuyến mãi, tính đặt cọc và số tiền còn lại
-- Tạo đơn hàng với các loại đơn `DIRECT_ORDER`, `PRE_ORDER`, `PRESCRIPTION_ORDER`, `MIX_ORDER`
-- Thanh toán online qua VNPAY và PayOS, bao gồm callback/webhook để đồng bộ trạng thái thanh toán
-- Tính `shippingFee` và `expectedDeliveryAt` từ GHN
-- Hỗ trợ khách hàng hủy đơn, đổi trả, hoàn tiền và upload bằng chứng/QR hoàn tiền
-- Quản lý kho, phiếu nhập kho và tồn kho
-- Dashboard thống kê và top sản phẩm bán chạy
-- OCR ảnh đơn kính thuốc để trích xuất thông số mắt
-- Chatbot gợi ý sản phẩm với chiến lược hybrid: Gemini + heuristic fallback
-- Cấu hình file GLB cho tính năng virtual try-on của sản phẩm
+- Authentication and authorization with JWT, Spring Security, and role-based access control
+- User management with the roles `CUSTOMER`, `ADMIN`, `MANAGER`, `SALES STAFF`, and `OPERATIONS STAFF`
+- Management of products, brands, suppliers, and product images
+- Cart management, checkout preview, promotion application, deposit calculation, and remaining balance calculation
+- Order creation for `DIRECT_ORDER`, `PRE_ORDER`, `PRESCRIPTION_ORDER`, and `MIX_ORDER`
+- Online payment support through VNPAY and PayOS, including callback/webhook handling to sync payment statuses
+- `shippingFee` and `expectedDeliveryAt` calculation via GHN
+- Support for customer order cancellation, returns, refunds, and refund proof/QR uploads
+- Inventory and stock receipt management
+- Statistical dashboards and top-selling products
+- OCR for prescription images to extract optical parameters
+- Product recommendation chatbot with a hybrid strategy: Gemini + heuristic fallback
+- GLB file configuration for the product virtual try-on feature
 
-## Công nghệ sử dụng
+## Technology Stack
 
-| Nhóm | Công nghệ |
+| Group | Technology |
 | --- | --- |
-| Ngôn ngữ & build tool | Java 25, Maven 3.9+ |
-| Framework backend | Spring Boot 4.0.1 |
+| Language & build tool | Java 25, Maven 3.9+ |
+| Backend framework | Spring Boot 4.0.1 |
 | REST API | Spring Web, Spring Validation |
 | Data REST & Hypermedia | Spring Data REST, Spring HATEOAS |
-| Bảo mật | Spring Security, OAuth2 Resource Server, JWT, Nimbus JOSE JWT, BCrypt |
+| Security | Spring Security, OAuth2 Resource Server, JWT, Nimbus JOSE JWT, BCrypt |
 | Persistence | Spring Data JPA, Hibernate, Microsoft SQL Server |
 | Mapping | MapStruct, Lombok |
 | API docs | springdoc-openapi, Swagger UI |
-| Tối ưu hiệu năng | Spring Cache |
+| Performance optimization | Spring Cache |
 | Email | Spring Mail, Thymeleaf |
-| Upload file/media | Cloudinary |
-| Thanh toán | VNPAY Sandbox, PayOS VietQR |
-| Vận chuyển | GHN API |
+| File/media upload | Cloudinary |
+| Payments | VNPAY Sandbox, PayOS VietQR |
+| Shipping | GHN API |
 | AI / OCR | Gemini API, OCR.Space API |
 | Containerization | Docker multi-stage build |
 | Testing | JUnit 5, Mockito, Spring Test |
 
-## Kiến trúc và tổ chức mã nguồn
+## Architecture and Source Code Organization
 
-Project đang đi theo cấu trúc phân lớp khá rõ ràng:
+The project follows a fairly clear layered architecture:
 
-- `controller`: khai báo REST endpoints
-- `service`: business logic
-- `integration`: client/gateway cho GHN, VNPAY, Gemini
-- `repository`: truy cập dữ liệu qua JPA
-- `entity`: ánh xạ database
-- `dto`: request/response/projection
-- `mapper`: chuyển đổi entity <-> DTO bằng MapStruct
-- `config`: security, OpenAPI, payment, GHN, OCR, Gemini, CORS, Cloudinary
+- `controller`: defines REST endpoints
+- `service`: contains business logic
+- `integration`: clients/gateways for GHN, VNPAY, Gemini, and other external services
+- `repository`: data access via JPA
+- `entity`: database mappings
+- `dto`: request/response/projection models
+- `mapper`: entity <-> DTO conversion using MapStruct
+- `config`: security, OpenAPI, payment, GHN, OCR, Gemini, CORS, Cloudinary, and other configuration
 
 ```text
 backend/eyewear-management-backend
-├── docs
-├── markdown_files
-├── notes
-├── sql_files
-├── src
-│   ├── main
-│   │   ├── java/com/swp391/eyewear_management_backend
-│   │   │   ├── config
-│   │   │   ├── controller
-│   │   │   ├── dto
-│   │   │   ├── entity
-│   │   │   ├── exception
-│   │   │   ├── integration
-│   │   │   ├── mapper
-│   │   │   ├── repository
-│   │   │   └── service
-│   │   └── resources
-│   └── test
-├── Dockerfile
-└── pom.xml
+|-- docs
+|-- markdown_files
+|-- notes
+|-- sql_files
+|-- src
+|   |-- main
+|   |   |-- java/com/swp391/eyewear_management_backend
+|   |   |   |-- config
+|   |   |   |-- controller
+|   |   |   |-- dto
+|   |   |   |-- entity
+|   |   |   |-- exception
+|   |   |   |-- integration
+|   |   |   |-- mapper
+|   |   |   |-- repository
+|   |   |   `-- service
+|   |   `-- resources
+|   `-- test
+|-- Dockerfile
+`-- pom.xml
 ```
 
-## Các module API chính
+## Main API Modules
 
-| Module | Base path | Mô tả |
+| Module | Base path | Description |
 | --- | --- | --- |
-| Authentication | `/auth/**` | Login, introspect, refresh token, logout |
-| Users | `/users/**` | Đăng ký, hồ sơ người dùng, quản trị user |
-| Products | `/api/products/**` | Tìm kiếm, chi tiết, CRUD sản phẩm |
-| Cart | `/api/cart/**` | Thêm, sửa, xóa giỏ hàng |
-| Checkout | `/checkout/preview` | Tính preview đơn hàng, khuyến mãi, GHN fee, deposit |
-| Orders | `/orders/**` | Tạo đơn, lịch sử đơn, hủy đơn |
-| Staff Orders | `/api/staff/**`, `/api/operation-staff/orders/**` | Xử lý đơn cho sales staff và operations staff |
-| Payments | `/payments/vnpay/**`, `/api/payment/**` | VNPAY callback/IPN, PayOS tạo link, webhook, status |
-| Shipping | `/ghn/**` | Danh sách tỉnh/huyện/xã và hỗ trợ shipping |
-| OCR | `/api/prescriptions/parse-image` | Parse ảnh đơn kính thuốc |
-| Chatbot | `/api/chatbot/recommend` | Gợi ý sản phẩm bằng chatbot |
-| Returns | `/api/return-exchanges/**`, `/api/returns/**` | Đổi trả, hoàn tiền, upload ảnh |
-| Inventory | `/api/inventory/**`, `/api/inventory-receipts/**` | Tồn kho và phiếu nhập |
-| Dashboard | `/api/v1/dashboard/**` | Thống kê và top sản phẩm |
-| Try-on Config | `/api/products/{productId}/try-on-config` | Upload/cấu hình model GLB |
-| Suppliers | `/api/suppliers/**` | Quản lý supplier và brand liên quan |
+| Authentication | `/auth/**` | Login, introspection, token refresh, logout |
+| Users | `/users/**` | Registration, user profile, user administration |
+| Products | `/api/products/**` | Search, detail view, product CRUD |
+| Cart | `/api/cart/**` | Add, update, and remove cart items |
+| Checkout | `/checkout/preview` | Order preview, promotions, GHN fees, deposit calculation |
+| Orders | `/orders/**` | Order creation, order history, order cancellation |
+| Staff Orders | `/api/staff/**`, `/api/operation-staff/orders/**` | Order processing for sales staff and operations staff |
+| Payments | `/payments/vnpay/**`, `/api/payment/**` | VNPAY callback/IPN, PayOS payment link creation, webhook, status |
+| Shipping | `/ghn/**` | Province/district/ward lists and shipping support |
+| OCR | `/api/prescriptions/parse-image` | Parse prescription images |
+| Chatbot | `/api/chatbot/recommend` | Chatbot-based product recommendations |
+| Returns | `/api/return-exchanges/**`, `/api/returns/**` | Returns, refunds, image uploads |
+| Inventory | `/api/inventory/**`, `/api/inventory-receipts/**` | Stock management and inventory receipts |
+| Dashboard | `/api/v1/dashboard/**` | Statistics and top products |
+| Try-on Config | `/api/products/{productId}/try-on-config` | Upload/configure GLB models |
+| Suppliers | `/api/suppliers/**` | Supplier and related brand management |
 
-## Bảo mật và phân quyền
+## Security and Authorization
 
-- Dùng JWT tự ký với thuật toán `HS512`
-- Password được mã hóa bằng `BCrypt`
-- Token có hỗ trợ introspect, refresh và invalidation khi logout
-- Phân quyền theo authority dạng `ROLE_*`
-- CORS được cấu hình qua `app.cors.allowed-origin-patterns`
-- Swagger/OpenAPI được mở public để phục vụ tích hợp và test API
+- Uses self-signed JWTs with the `HS512` algorithm
+- Passwords are encrypted with `BCrypt`
+- Tokens support introspection, refresh, and invalidation on logout
+- Authorization is based on `ROLE_*` authorities
+- CORS is configured through `app.cors.allowed-origin-patterns`
+- Swagger/OpenAPI is publicly available for integration and API testing
 
-Các nhóm quyền hiện có trong hệ thống:
+Current roles available in the system:
 
 - `CUSTOMER`
 - `ADMIN`
@@ -123,18 +123,18 @@ Các nhóm quyền hiện có trong hệ thống:
 - `SALES STAFF`
 - `OPERATIONS STAFF`
 
-## Tích hợp bên thứ ba
+## Third-Party Integrations
 
 ### 1. GHN API
 
-Được dùng để:
+Used for:
 
-- Lấy danh sách tỉnh, huyện, xã
-- Tính `shippingFee`
-- Tính `expectedDeliveryAt`
-- Hỗ trợ các bước xử lý giao hàng trong nghiệp vụ đơn hàng
+- Retrieving province, district, and ward lists
+- Calculating `shippingFee`
+- Calculating `expectedDeliveryAt`
+- Supporting shipping-related steps in the order workflow
 
-Project có dùng `Spring Cache` để cache dữ liệu location từ GHN:
+The project uses `Spring Cache` to cache GHN location data:
 
 - `ghnProvinces`
 - `ghnDistricts`
@@ -142,33 +142,33 @@ Project có dùng `Spring Cache` để cache dữ liệu location từ GHN:
 
 ### 2. VNPAY Sandbox
 
-Được dùng cho thanh toán online qua redirect flow.
+Used for online payments through a redirect flow.
 
-- Tạo URL thanh toán VNPAY
-- Xác minh chữ ký callback
-- Xử lý `return` và `ipn`
-- Đồng bộ trạng thái `Payment`, `Order`, `Invoice`
+- Creates VNPAY payment URLs
+- Verifies callback signatures
+- Processes `return` and `ipn`
+- Synchronizes `Payment`, `Order`, and `Invoice` statuses
 
 ### 3. PayOS VietQR
 
-Được dùng cho luồng thanh toán VietQR:
+Used for the VietQR payment flow:
 
-- Tạo payment link
-- Nhận webhook xác thực từ PayOS
-- Đồng bộ trạng thái thanh toán và trạng thái đơn hàng
+- Creates payment links
+- Receives verified webhooks from PayOS
+- Synchronizes payment and order statuses
 
 ### 4. Gemini API
 
-Được dùng để phân tích ý định người dùng trong chatbot tư vấn sản phẩm.
+Used to analyze user intent in the product recommendation chatbot.
 
-Luồng chatbot hiện tại là hybrid:
+The current chatbot flow is hybrid:
 
-- Ưu tiên phân tích intent bằng Gemini
-- Nếu Gemini lỗi hoặc không khả dụng, fallback sang heuristic nội bộ để vẫn trả kết quả hữu ích
+- Gemini is used first for intent analysis
+- If Gemini fails or is unavailable, the system falls back to internal heuristics so it can still return useful results
 
 ### 5. OCR.Space API
 
-Được dùng để đọc ảnh đơn kính thuốc và chuyển thành dữ liệu cấu trúc:
+Used to read prescription images and convert them into structured data:
 
 - `SPH`
 - `CYL`
@@ -176,7 +176,7 @@ Luồng chatbot hiện tại là hybrid:
 - `ADD`
 - `PD`
 
-Response OCR có thêm:
+The OCR response also includes:
 
 - `confidence`
 - `requiresReview`
@@ -185,188 +185,188 @@ Response OCR có thêm:
 
 ### 6. Cloudinary
 
-Được dùng để upload và lưu trữ:
+Used to upload and store:
 
-- Hình ảnh sản phẩm
-- Ảnh bằng chứng đổi trả
-- Ảnh QR tài khoản hoàn tiền
-- File model `.glb` cho virtual try-on
+- Product images
+- Return/refund evidence images
+- Refund account QR images
+- `.glb` model files for virtual try-on
 
 ### 7. SMTP Email
 
-Được dùng để gửi email HTML thông báo liên quan đến đơn hàng bằng template Thymeleaf.
+Used to send HTML order-related notification emails with Thymeleaf templates.
 
-## Yêu cầu hệ thống
+## System Requirements
 
 - JDK 25
-- Maven 3.9 trở lên
+- Maven 3.9 or later
 - Microsoft SQL Server
-- Kết nối Internet để gọi các dịch vụ bên ngoài: GHN, VNPAY, PayOS, Gemini, OCR.Space, Cloudinary
+- Internet access to call external services: GHN, VNPAY, PayOS, Gemini, OCR.Space, Cloudinary
 
-## Cấu hình môi trường
+## Environment Configuration
 
-Template cấu hình mẫu nằm tại:
+The sample configuration template is located at:
 
 ```text
 src/main/resources/application.example.yml
 ```
 
-Khuyến nghị:
+Recommended setup:
 
-1. Copy file mẫu thành `src/main/resources/application.yml`
-2. Điền giá trị thật cho môi trường local
-3. Không commit file chứa secret thật lên Git
+1. Copy the sample file to `src/main/resources/application.yml`
+2. Fill in the real values for your local environment
+3. Do not commit files that contain real secrets to Git
 
-Các nhóm cấu hình quan trọng:
+Important configuration groups:
 
-| Nhóm cấu hình | Key tiêu biểu | Mục đích |
+| Configuration group | Representative keys | Purpose |
 | --- | --- | --- |
-| Database | `spring.datasource.*` | Kết nối SQL Server |
-| JWT | `jwt.*` | Ký và kiểm tra access token |
-| GHN | `ghn.*` | Cấu hình phí ship, shop ID, token, package defaults |
-| VNPAY | `vnpay.*` | Tích hợp thanh toán VNPAY Sandbox |
-| PayOS | `payos.*` | Tích hợp PayOS VietQR |
-| Gemini | `app.gemini.*` | Chatbot recommendation |
-| OCR | `app.ocr.*` | Parse ảnh đơn kính thuốc |
-| Cloudinary | `cloudinary.*` | Upload ảnh và model try-on |
-| Mail | `spring.mail.*` | Gửi email HTML |
-| Frontend/Backend URL | `app.frontend.*`, `app.backend.*` | Redirect callback thanh toán và liên kết frontend |
-| CORS | `app.cors.allowed-origin-patterns` | Domain được phép gọi API |
+| Database | `spring.datasource.*` | SQL Server connection |
+| JWT | `jwt.*` | Access token signing and validation |
+| GHN | `ghn.*` | Shipping fee config, shop ID, token, package defaults |
+| VNPAY | `vnpay.*` | VNPAY Sandbox integration |
+| PayOS | `payos.*` | PayOS VietQR integration |
+| Gemini | `app.gemini.*` | Chatbot recommendations |
+| OCR | `app.ocr.*` | Prescription image parsing |
+| Cloudinary | `cloudinary.*` | Image and try-on model uploads |
+| Mail | `spring.mail.*` | HTML email sending |
+| Frontend/Backend URL | `app.frontend.*`, `app.backend.*` | Payment callback redirects and frontend links |
+| CORS | `app.cors.allowed-origin-patterns` | Allowed API caller domains |
 
-Lưu ý vận hành:
+Operational notes:
 
-- `spring.jpa.hibernate.ddl-auto` đang để `none`, nên database schema phải được tạo sẵn trước khi chạy app
-- Time zone mặc định của ứng dụng là `Asia/Ho_Chi_Minh`
-- Multipart upload hiện cấu hình tối đa `50MB/file` và `100MB/request`
+- `spring.jpa.hibernate.ddl-auto` is currently set to `none`, so the database schema must already exist before running the application
+- The application's default time zone is `Asia/Ho_Chi_Minh`
+- Multipart upload is currently configured with a maximum of `50MB/file` and `100MB/request`
 
-## Chuẩn bị database
+## Database Setup
 
-Thư mục script:
+Script directory:
 
 ```text
 sql_files/
 ```
 
-Bạn có thể chọn một trong hai cách:
+You can choose one of the following approaches:
 
-### Cách 1: Dùng script tổng
+### Option 1: Use the all-in-one script
 
-Chạy file:
+Run:
 
 ```text
 sql_files/swp391_script.sql
 ```
 
-Script này đã bao gồm phần tạo database và schema tổng thể.
+This script already includes database creation and the full schema setup.
 
-### Cách 2: Tách schema và demo data
+### Option 2: Separate schema and demo data
 
-Chạy lần lượt:
+Run the following in order:
 
 ```text
 sql_files/SWP391_Eyewear_DB_Structure.sql
 sql_files/SWP391_Eyewear_DB_DemoData.sql
 ```
 
-Database mục tiêu là:
+Target database:
 
 ```text
 EyewearManagement
 ```
 
-## Chạy project local
+## Running the Project Locally
 
-Di chuyển vào thư mục backend:
+Move to the backend directory:
 
 ```bash
 cd backend/eyewear-management-backend
 ```
 
-Build project:
+Build the project:
 
 ```bash
 mvn clean install
 ```
 
-Chạy ứng dụng:
+Run the application:
 
 ```bash
 mvn spring-boot:run
 ```
 
-Ứng dụng mặc định chạy tại:
+By default, the application runs at:
 
 ```text
 http://localhost:8080
 ```
 
-Lưu ý:
+Note:
 
-- Hiện repository có file `mvnw` và `mvnw.cmd`, nhưng thiếu thư mục `.mvn/wrapper`, nên cần dùng `mvn` cài trên máy thay vì Maven Wrapper
+- The repository currently includes `mvnw` and `mvnw.cmd`, but the `.mvn/wrapper` directory is missing, so you need to use a locally installed `mvn` instead of Maven Wrapper
 
 ## Docker
 
-Project có sẵn `Dockerfile` multi-stage để build và chạy bằng container.
+The project already includes a multi-stage `Dockerfile` for building and running in a container.
 
-Build image:
+Build the image:
 
 ```bash
 docker build -t eyewear-management-backend .
 ```
 
-Run container:
+Run the container:
 
 ```bash
 docker run --rm -p 8080:8080 eyewear-management-backend
 ```
 
-Lưu ý:
+Notes:
 
-- Docker build hiện giả định file cấu hình runtime đã sẵn có trong project tại thời điểm build
-- Với CI/CD, có thể inject `application.yml` từ secret theo tài liệu `docs/secret-management.md`
+- The current Docker build assumes the runtime configuration file is already present in the project at build time
+- In CI/CD, you can inject `application.yml` from secrets as described in `docs/secret-management.md`
 
 ## API Documentation
 
-Sau khi chạy ứng dụng, có thể truy cập:
+After the application is running, you can access:
 
 - Swagger UI: `http://localhost:8080/swagger-ui.html`
 - OpenAPI JSON: `http://localhost:8080/v3/api-docs`
 
-Swagger đang scan các controller chính trong project và phù hợp để frontend hoặc QA kiểm thử nhanh các endpoint.
+Swagger scans the main controllers in the project and is suitable for quick endpoint testing by frontend developers or QA.
 
 ## Testing
 
-Chạy test:
+Run tests:
 
 ```bash
 mvn test
 ```
 
-Project hiện đã có test cho một số luồng quan trọng, ví dụ:
+The project already includes tests for several important flows, for example:
 
 - Authentication
 - Checkout preview
 - Inventory
-- Staff order
+- Staff order processing
 - VNPAY callback
 
-## Tài liệu liên quan
+## Related Documentation
 
-- `docs/secret-management.md`: hướng dẫn quản lý secret và deploy
-- `docs/prescription-ocr-flow.md`: mô tả chi tiết luồng OCR đơn kính thuốc
-- `sql_files/`: schema và dữ liệu mẫu
-- `markdown_files/`: tài liệu nghiệp vụ mở rộng
-- `notes/`: ghi chú API, flow nghiệp vụ và rule xử lý
+- `docs/secret-management.md`: secret management and deployment guide
+- `docs/prescription-ocr-flow.md`: detailed prescription OCR workflow
+- `sql_files/`: schema and sample data
+- `markdown_files/`: extended business documentation
+- `notes/`: API notes, business flows, and processing rules
 
-## Ghi chú bảo mật
+## Security Notes
 
-- Không nên commit `application.yml` chứa thông tin thật của database, mail, payment gateway hoặc AI keys
-- Nếu bất kỳ secret nào bị lộ, cần rotate ngay và cập nhật lại môi trường deploy
-- Nên dùng biến môi trường hoặc secret manager cho production thay vì hard-code cấu hình
+- Do not commit `application.yml` files that contain real database credentials, mail credentials, payment gateway secrets, or AI keys
+- If any secret is exposed, rotate it immediately and update the deployment environment
+- For production, prefer environment variables or a secret manager instead of hard-coded configuration
 
-## Tóm tắt stack thực tế của backend này
+## Additional Backend Stack Summary
 
-Ngoài các công nghệ bạn đã liệt kê, backend hiện còn đang sử dụng thêm:
+In addition to the technologies already listed above, this backend also uses:
 
 - SQL Server
 - Spring Data JPA / Hibernate
@@ -380,4 +380,4 @@ Ngoài các công nghệ bạn đã liệt kê, backend hiện còn đang sử d
 - Spring Mail
 - Thymeleaf
 - Docker
-- JUnit 5 + Mockito cho test
+- JUnit 5 + Mockito for testing
